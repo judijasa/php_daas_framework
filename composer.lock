@@ -1,0 +1,176 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "ff63fb276d4b78320e0adbba4d436e2a",
+    "packages": [
+        {
+            "name": "jakoch/phantomjs-installer",
+            "version": "3.0.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/jakoch/phantomjs-installer.git",
+                "reference": "ce0e1cbe12e8742b1eea5bb7ef31fb19d50dd577"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/jakoch/phantomjs-installer/zipball/ce0e1cbe12e8742b1eea5bb7ef31fb19d50dd577",
+                "reference": "ce0e1cbe12e8742b1eea5bb7ef31fb19d50dd577",
+                "shasum": ""
+            },
+            "require": {
+                "ext-bz2": "*",
+                "ext-openssl": "*",
+                "php": ">5.3"
+            },
+            "require-dev": {
+                "composer/composer": "^2",
+                "phpunit/phpunit": "^11"
+            },
+            "type": "custom-installer",
+            "autoload": {
+                "psr-0": {
+                    "PhantomInstaller\\": "src/"
+                },
+                "psr-4": {
+                    "PhantomInstaller\\Test\\": "tests/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Jens-André Koch",
+                    "email": "jakoch@web.de"
+                }
+            ],
+            "description": "A Composer package which installs the PhantomJS binary (Linux, Windows, Mac) into `/bin` of your project.",
+            "keywords": [
+                "binaries",
+                "headless",
+                "phantomjs"
+            ],
+            "support": {
+                "issues": "https://github.com/jakoch/phantomjs-installer/issues",
+                "source": "https://github.com/jakoch/phantomjs-installer/tree/3.0.3"
+            },
+            "time": "2025-06-10T15:33:59+00:00"
+        },
+        {
+            "name": "jerome-breton/casperjs-installer",
+            "version": "dev-master",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/jerome-breton/casperjs-installer.git",
+                "reference": "4a5c0c03480f824038424cbd9f35233a20de4186"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/jerome-breton/casperjs-installer/zipball/4a5c0c03480f824038424cbd9f35233a20de4186",
+                "reference": "4a5c0c03480f824038424cbd9f35233a20de4186",
+                "shasum": ""
+            },
+            "require": {
+                "ext-openssl": "*",
+                "jakoch/phantomjs-installer": "*"
+            },
+            "default-branch": true,
+            "type": "custom-installer",
+            "autoload": {
+                "psr-0": {
+                    "CasperJsInstaller\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Jérôme Breton",
+                    "email": "jerome.breton@gmail.com"
+                }
+            ],
+            "description": "A Composer package which installs the CasperJS binary for your project.",
+            "keywords": [
+                "binaries",
+                "casperJs",
+                "headless",
+                "phantomjs"
+            ],
+            "support": {
+                "issues": "https://github.com/jerome-breton/casperjs-installer/issues",
+                "source": "https://github.com/jerome-breton/casperjs-installer/tree/master"
+            },
+            "time": "2022-01-27T14:10:21+00:00"
+        },
+        {
+            "name": "phpcasperjs/phpcasperjs",
+            "version": "v1.3.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/alwex/php-casperjs.git",
+                "reference": "5a0f2fbbae1e0f31b12876fa1758f942dc4b01c2"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/alwex/php-casperjs/zipball/5a0f2fbbae1e0f31b12876fa1758f942dc4b01c2",
+                "reference": "5a0f2fbbae1e0f31b12876fa1758f942dc4b01c2",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=5.3.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "4.*",
+                "squizlabs/php_codesniffer": "2.*"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Browser\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "GUIDET Alexandre",
+                    "email": "alwex@free.fr"
+                }
+            ],
+            "description": "Simple PHP wrapper for CasperJS",
+            "homepage": "https://github.com/alwex/php-casperjs",
+            "keywords": [
+                "browser",
+                "phpunit",
+                "test"
+            ],
+            "support": {
+                "issues": "https://github.com/alwex/php-casperjs/issues",
+                "source": "https://github.com/alwex/php-casperjs/tree/v1.3.3"
+            },
+            "time": "2017-04-04T03:15:58+00:00"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {
+        "jerome-breton/casperjs-installer": 20
+    },
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {
+        "php": ">=8.1",
+        "composer-plugin-api": "^2.0"
+    },
+    "platform-dev": {},
+    "plugin-api-version": "2.9.0"
+}

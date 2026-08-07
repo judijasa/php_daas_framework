@@ -1,0 +1,26 @@
+; DB connection config consumed by Utils\Connectivity\Database.
+; The active section is selected by the EMA_TARGET env var (default: local).
+;
+; Note: the database name is NOT taken from here - it is passed to the
+; connector methods (e.g. Database::admin('simo')). SERVER / PORT and the
+; passwords below are what this file provides.
+;
+;   admin  -> Database::admin($dbname)   (uses ADMIN_PASSWORD)
+;   reader -> Database::reader($dbname)  (uses READER_PASSWORD)
+;   public -> Database::public($dbname)  (connects without credentials)
+
+[local]
+SERVER=localhost
+PORT=3306
+DBNAME=test
+DBMS=mariadb
+ADMIN_PASSWORD=
+READER_PASSWORD=
+
+[prod]
+SERVER=
+PORT=3306
+DBNAME=test
+DBMS=mariadb
+ADMIN_PASSWORD=
+READER_PASSWORD=

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Resolve repository and log paths. These come from the environment
+# (e.g. /etc/environment in production, or the nix dev shell).
+if [[ ! -v IN_NIX_SHELL ]]; then
+    source /etc/environment
+fi
+
+REPO_PATH="${PHPRUN_REPO_PATH:-}"
+LOG_PATH="${PHPRUN_LOG_PATH:-}"
+
+if [[ -z "$REPO_PATH" || -z "$LOG_PATH" ]]; then
+    echo "phprun: PHPRUN_REPO_PATH/PHPRUN_LOG_PATH must be set" >&2
+    exit 1
+fi
+
+parent=$(ps -o comm= -p "$PPID")
+if [[ "$parent" == "cron" || "$parent" == "crond" ]]; then
+    cd "$REPO_PATH"
+elif [[ "$PWD" != "$REPO_PATH" ]]; then
+    echo "This command must be executed from the repository's root directory." >&2
+    exit 1
+fi
+
+ARG="${1:-}"
+
+if [[ -z "$ARG" || "$ARG" != *:* ]]; then
+    echo "Usage: phprun 'path/to/script.php:my_agent(args)'" >&2
+    exit 1
+fi
+
+SCRIPT="${ARG%%:*}"
+SCRIPT_NAME=$(basename "$SCRIPT" .php)
+DIR_PREFIX=$(dirname "$SCRIPT" | tr '/' '_')
+LOG_FILE="${LOG_PATH}/${DIR_PREFIX}_${SCRIPT_NAME}.log"
+
+touch -a "$LOG_FILE"
+
+if [ -t 1 ]; then
+    exec > >(tee -a "$LOG_FILE") 2>&1
+else
+    exec >> "$LOG_FILE" 2>&1
+fi
+
+# Locate the PHP runner relative to this wrapper's real location, resolving
+# nix store and vendor/bin symlinks.
+RUNNER_PHP="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/src/phprun.php"
+
+php "$RUNNER_PHP" "$ARG"

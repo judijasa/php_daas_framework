@@ -1,0 +1,26 @@
+{
+  "name": "judijasa/php-daas-framework",
+  "description": "PHP framework for data-as-a-service agent projects: #[Agent]/#[CronJob] attributes, DB connectivity and batch primitives, and the phprun CLI",
+  "type": "composer-plugin",
+  "license": "MIT",
+  "require": {
+    "php": ">=8.1",
+    "composer-plugin-api": "^2.0",
+    "phpcasperjs/phpcasperjs": "^1.3",
+    "jerome-breton/casperjs-installer": "dev-master",
+    "jakoch/phantomjs-installer": "3.0.3"
+  },
+  "scripts": {
+    "post-install-cmd": ["Utils\\Plugin::installCrawlerToolchain"],
+    "post-update-cmd": ["Utils\\Plugin::installCrawlerToolchain"]
+  },
+  "extra": {
+    "class": "Utils\\Plugin"
+  },
+  "autoload": {
+    "psr-4": {
+      "Utils\\": "src/"
+    }
+  },
+  "bin": ["bin/phprun"]
+}
