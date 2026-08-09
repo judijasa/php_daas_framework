@@ -60,10 +60,12 @@ Write your agents under `src/scripts/` (see `src/scripts/demo/hello.php`) and
 run them with:
 
 ```bash
-export PHPRUN_REPO_PATH="$PWD"
-export PHPRUN_LOG_PATH="$PWD/var/log"
+printf 'export PHPRUN_REPO_PATH=%s\nexport PHPRUN_LOG_PATH=%s/var/log\n' "$PWD" "$PWD" > .env
 bin/phprun 'src/scripts/demo/hello.php:hello()'
 ```
+
+`phprun` loads `.env` from the current working directory (the repo root)
+before doing anything else — no manual exports needed.
 
 In template mode the classes are autoloaded from the framework's **own**
 `vendor/autoload.php`, and `etc/reuter.ini` is resolved from the repo root.
@@ -141,6 +143,14 @@ This repo is dual-delivered:
 
 
 ## Environment variables
+
+`phprun` loads its runtime configuration from a `.env` file in the current
+working directory (the consumer repo root) before doing anything else. This
+is the canonical way to configure a deployment: generate `.env` per
+environment (e.g. `make dev-init` in dev, or at deploy time in prod) and
+invoke `phprun` from the repo root. Values in `.env` override anything
+already in the process environment; if neither provides the required
+variables, `phprun` fails loudly.
 
 | Variable | Purpose |
 |---|---|

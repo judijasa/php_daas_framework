@@ -2,9 +2,19 @@
 
 set -euo pipefail
 
+# Load runtime configuration from a .env in the current working directory
+# (the consumer repo root). This is the canonical per-environment config:
+# cron jobs and manual runs `cd` into the repo before invoking phprun.
+# Values in .env override anything already in the environment.
+if [[ -f "$PWD/.env" ]]; then
+    set -a
+    . "$PWD/.env"
+    set +a
+fi
+
 # Resolve repository and log paths. Consumers provide them through the
-# environment: the nix dev shell exports PHPRUN_* directly, and the
-# nix-built phprun wrapper bakes them at build time.
+# environment: the .env above, the nix dev shell, or a nix-built wrapper
+# that bakes them at build time.
 REPO_PATH="${PHPRUN_REPO_PATH:-}"
 LOG_PATH="${PHPRUN_LOG_PATH:-}"
 
