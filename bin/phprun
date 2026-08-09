@@ -2,12 +2,9 @@
 
 set -euo pipefail
 
-# Resolve repository and log paths. These come from the environment
-# (e.g. /etc/environment in production, or the nix dev shell).
-if [[ ! -v IN_NIX_SHELL ]]; then
-    source /etc/environment
-fi
-
+# Resolve repository and log paths. Consumers provide them through the
+# environment: the nix dev shell exports PHPRUN_* directly, and the
+# nix-built phprun wrapper bakes them at build time.
 REPO_PATH="${PHPRUN_REPO_PATH:-}"
 LOG_PATH="${PHPRUN_LOG_PATH:-}"
 

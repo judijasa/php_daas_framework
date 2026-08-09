@@ -13,7 +13,7 @@ class Database extends PDO
     }
 
     private static function configPath(): string {
-        // Production overrides the path explicitly (Apache SetEnv / /etc/environment).
+        // Production overrides the path explicitly (Apache SetEnv / nix-built phprun wrapper).
         $override = getenv('PHPRUN_REUTER_INI');
         if ($override !== false && $override !== '') {
             return $override;
