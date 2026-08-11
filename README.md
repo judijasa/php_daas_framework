@@ -28,7 +28,7 @@ The runner:
    `Utils\Connectivity\Database::admin($dbTarget)` and injects it as the first
    argument of the call.
 3. Eval-dispatches the function, logging start/finish timestamps to a per-script
-   log file (see `PHPRUN_LOG_PATH`).
+   log file (see `REPO_LOG`).
 
 ## Expected consumer directory structure
 
@@ -37,12 +37,12 @@ The framework relies on a few conventions in the consuming project:
 ```
 <consumer repo root>/
 ├── vendor/            # composer autoload; phprun requires vendor/autoload.php from here
-├── etc/reuter.ini     # DB config (or set PHPRUN_REUTER_INI to point elsewhere)
+├── etc/reuter.ini     # DB config (or set REUTER_INI to point elsewhere)
 └── src/…              # agent scripts, referenced relative to the repo root
 ```
 
 `phprun` must be invoked from the consumer repo root (or from cron, in which
-case it cds there automatically via `PHPRUN_REPO_PATH`).
+case it cds there automatically via `REPO_PATH`).
 
 ## Standalone template usage
 
@@ -60,7 +60,7 @@ Write your agents under `src/scripts/` (see `src/scripts/demo/hello.php`) and
 run them with:
 
 ```bash
-printf 'export PHPRUN_REPO_PATH=%s\nexport PHPRUN_LOG_PATH=%s/var/log\n' "$PWD" "$PWD" > .env
+printf 'export REPO_PATH=%s\nexport REPO_LOG=%s/var/log\n' "$PWD" "$PWD" > .env
 bin/phprun 'src/scripts/demo/hello.php:hello()'
 ```
 
@@ -154,9 +154,9 @@ variables, `phprun` fails loudly.
 
 | Variable | Purpose |
 |---|---|
-| `PHPRUN_REPO_PATH` | Consumer repo root. `phprun` must be run from here (when invoked from cron it cds here automatically). |
-| `PHPRUN_LOG_PATH` | Directory where per-script logs are appended. |
-| `PHPRUN_REUTER_INI` | Path to the DB config ini consumed by `Utils\\Connectivity\\Database`; falls back to `$PWD/etc/reuter.ini`. |
+| `REPO_PATH` | Consumer repo root. `phprun` must be run from here (when invoked from cron it cds here automatically). |
+| `REPO_LOG` | Directory where per-script logs are appended. |
+| `REUTER_INI` | Path to the DB config ini consumed by `Utils\\Connectivity\\Database`; falls back to `$PWD/etc/reuter.ini`. |
 | `EMA_TARGET` | Section of the ini to use (`local`, `prod`, ...). |
 | `MYSQL_UNIX_PORT` | Optional unix socket appended to the DSN. |
 

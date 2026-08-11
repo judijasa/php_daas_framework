@@ -14,7 +14,7 @@ class Database extends PDO
 
     private static function configPath(): string {
         // Production overrides the path explicitly (Apache SetEnv / nix-built phprun wrapper).
-        $override = getenv('PHPRUN_REUTER_INI');
+        $override = getenv('REUTER_INI');
         if ($override !== false && $override !== '') {
             return $override;
         }
@@ -24,7 +24,7 @@ class Database extends PDO
         if (file_exists($cwdConfig)) {
             return $cwdConfig;
         }
-        throw new \RuntimeException("reuter.ini not found. Set PHPRUN_REUTER_INI or create etc/reuter.ini in the repo root.");
+        throw new \RuntimeException("reuter.ini not found. Set REUTER_INI or create etc/reuter.ini in the repo root.");
     }
 
     private static function loadConfig(): array {

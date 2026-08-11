@@ -47,9 +47,9 @@
             pkgs.mariadb_118
           ];
           shellHook = ''
-            export PHPRUN_REPO_PATH="$PWD"
-            export PHPRUN_LOG_PATH="$PWD/var/log"
-            export PHPRUN_REUTER_INI="$PWD/etc/reuter.ini"
+            export REPO_PATH="$PWD"
+            export REPO_LOG="$PWD/var/log"
+            export REUTER_INI="$PWD/etc/reuter.ini"
             export EMA_TARGET="local"
 
             export MYSQL_BASE_DIR="$PWD/var/mariadb"
@@ -57,7 +57,7 @@
             export MYSQL_UNIX_PORT="$MYSQL_BASE_DIR/mysql.sock"
             export MYSQL_PID_FILE="$MYSQL_BASE_DIR/mysql.pid"
 
-            mkdir -p "$PHPRUN_LOG_PATH"
+            mkdir -p "$REPO_LOG"
 
             # Initialize the local MariaDB data directory once
             if [ ! -d "$MYSQL_DATA_DIR" ]; then

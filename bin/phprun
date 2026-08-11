@@ -15,18 +15,18 @@ fi
 # Resolve repository and log paths. Consumers provide them through the
 # environment: the .env above, the nix dev shell, or a nix-built wrapper
 # that bakes them at build time.
-REPO_PATH="${PHPRUN_REPO_PATH:-}"
-LOG_PATH="${PHPRUN_LOG_PATH:-}"
+run_dir="${REPO_PATH:-}"
+log_dir="${REPO_LOG:-}"
 
-if [[ -z "$REPO_PATH" || -z "$LOG_PATH" ]]; then
-    echo "phprun: PHPRUN_REPO_PATH/PHPRUN_LOG_PATH must be set" >&2
+if [[ -z "$run_dir" || -z "$log_dir" ]]; then
+    echo "phprun: REPO_PATH/REPO_LOG must be set" >&2
     exit 1
 fi
 
 parent=$(ps -o comm= -p "$PPID")
 if [[ "$parent" == "cron" || "$parent" == "crond" ]]; then
-    cd "$REPO_PATH"
-elif [[ "$PWD" != "$REPO_PATH" ]]; then
+    cd "$run_dir"
+elif [[ "$PWD" != "$run_dir" ]]; then
     echo "This command must be executed from the repository's root directory." >&2
     exit 1
 fi
@@ -41,7 +41,7 @@ fi
 SCRIPT="${ARG%%:*}"
 SCRIPT_NAME=$(basename "$SCRIPT" .php)
 DIR_PREFIX=$(dirname "$SCRIPT" | tr '/' '_')
-LOG_FILE="${LOG_PATH}/${DIR_PREFIX}_${SCRIPT_NAME}.log"
+LOG_FILE="${log_dir}/${DIR_PREFIX}_${SCRIPT_NAME}.log"
 
 touch -a "$LOG_FILE"
 
