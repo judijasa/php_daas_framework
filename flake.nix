@@ -26,14 +26,19 @@
         emaPkg = ema.packages.${system}.default;
       in
       {
-        # PRODUCTION ARTIFACT: the phprun CLI + runner and the deploy CLI, for
-        # flake (e.g. added to a caller's commonPackages).
+        # PRODUCTION ARTIFACT: the phprun CLI + runner, the deploy CLI and
+        # the gen-env/cron-manifest deploy helpers, for flake (e.g. added to
+        # a caller's commonPackages).
         packages.default = pkgs.runCommand "php-daas-framework" { } ''
           mkdir -p $out/bin
           cp ${./bin/phprun} $out/bin/phprun
           chmod +x $out/bin/phprun
           cp ${./bin/deploy} $out/bin/deploy
           chmod +x $out/bin/deploy
+          cp ${./bin/gen-env} $out/bin/gen-env
+          chmod +x $out/bin/gen-env
+          cp ${./bin/cron-manifest} $out/bin/cron-manifest
+          chmod +x $out/bin/cron-manifest
           cp -r ${./src} $out/src
         '';
 

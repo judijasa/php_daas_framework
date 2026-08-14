@@ -23,3 +23,10 @@ export DEPLOY_NIX_GCROOT=/nix/var/nix/gcroots/<app>
 # Optional: shell command run on the remote for `deploy --init` provisioning
 # (e.g. "make prod-init"); skipped if unset.
 # export DEPLOY_INIT_CMD="make prod-init"
+
+# Optional cron config, consumed by the framework `cron-manifest` CLI and the
+# consumer's bin/deploy/post-nix.sh hook. Omit if the project has no cron.
+# CRON_FILE: remote crontab file the manifest is installed to.
+# export CRON_FILE=/etc/cron.d/<app>-orchestrator
+# CRON_USER: user the cron entries run as (default: root).
+# export CRON_USER=root

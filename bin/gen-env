@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# gen-env — regenerate the production .env from a committed consumer template.
+#
+# Framework-owned mechanism; the values are consumer data: the repo ships a
+# committed etc/env.prod (export-style lines, like the .env it produces) and
+# gen-env recreates .env from it with a fail-fast guard.
+#
+# Why this exists: the deployed repo directory is replaced on every deploy,
+# so the gitignored .env must be regenerated every time — and it MUST be
+# complete before cron is installed: cron runs `phprun` from the repo root,
+# the nix wrapper sources .env, and if a key is missing the framework
+# silently falls back to its defaults (e.g. EMA_TARGET=local -> wrong DB
+# section in production). Hence the fail-fast checks below.
+#
+# Usage: gen-env [target-dir]   (defaults to $PWD)
+
+set -euo pipefail
+
+TARGET_DIR="${1:-$PWD}"
+TEMPLATE="$TARGET_DIR/etc/env.prod"
+ENV_FILE="$TARGET_DIR/.env"
+
+if [[ ! -f "$TEMPLATE" ]]; then
+    echo "gen-env: $TEMPLATE not found" >&2
+    echo "  Ship the committed production env template (etc/env.prod) in the consumer repo." >&2
+    exit 1
+fi
+
+{
+    printf '# Production environment (git-ignored, regenerated on every deploy).
+'
+    cat "$TEMPLATE"
+} > "$ENV_FILE"
+
+# Fail-fast guard: every content line of the template must be present in the
+# written file. Catches partial/interrupted writes that would otherwise
+# silently misroute prod cron jobs to the framework defaults.
+while IFS= read -r _need; do
+    if [[ -z "$_need" || "$_need" =~ ^[[:space:]]*# ]]; then
+        continue
+    fi
+    grep -qxF "$_need" "$ENV_FILE" || {
+        echo "ERROR: $ENV_FILE is missing required line: $_need" >&2
+        exit 1
+    }
+done < "$TEMPLATE"
+
+echo "    Wrote $ENV_FILE from $TEMPLATE"

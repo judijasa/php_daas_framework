@@ -185,14 +185,39 @@ deploy --init <target_host>   # + one-time provisioning
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional: remote shell command for `--init` provisioning. |
+| `CRON_FILE` | Optional: remote crontab file installed by the consumer's post-nix hook. |
+| `CRON_USER` | Optional: user the cron entries run as (default `root`). |
 
 - **`.env`** (git-ignored, machine-specific) - same contract as `phprun`;
   deploy needs `REPO_PATH` (set by the consumer's dev-init).
 
 `deploy` fails loudly if `etc/deploy.conf` is missing. Consumer-specific
-post-swap tasks (regenerate `.env`, install cron) belong in an optional
-`bin/deploy/post-swap.sh` in the consumer repo, which `deploy` runs on the
-remote right after the swap if present.
+tasks hook into the deploy flow via two optional scripts in the deployed
+repo, which `deploy` runs on the remote if present:
+
+- **`bin/deploy/post-swap.sh`** — right after the atomic swap, before nix
+  packages are copied. Must be plain bash (no framework CLIs, no nix php on
+  the remote yet).
+- **`bin/deploy/post-nix.sh`** — after the nix closure and composer deps are
+  in place (and, for `--init`, after provisioning). The framework CLIs and
+  nix php are available here, so this is where the consumer regenerates
+  `.env` and installs cron.
+
+The framework ships two more CLIs used by those hooks (also on PATH in the
+consumer's dev shell and production artifact):
+
+- **`gen-env [target-dir]`** — regenerates `.env` from the consumer's
+  committed `etc/env.prod` template (export-style lines, git-ignored output),
+  with a fail-fast guard: every content line of the template must end up in
+  the file. The deployed repo directory is replaced on every deploy, so the
+  gitignored `.env` must be recreated before cron is installed — a missing
+  key would silently fall back to the framework defaults (e.g.
+  `EMA_TARGET=local` -> wrong DB section in production).
+- **`cron-manifest`** — scans the consumer's `src/` for functions decorated
+  with both `#[CronJob]` and `#[Agent]` and prints a crontab to stdout
+  (`CRON_USER`, and `CRON_NIX_BIN` defaulting to
+  `$DEPLOY_NIX_RESULT_DIR/result/bin`, come from `etc/deploy.conf`). The
+  consumer's hook redirects it into `CRON_FILE` and restarts cron.
 
 ## Using in a consumer project
 

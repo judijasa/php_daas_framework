@@ -22,5 +22,5 @@
       "Utils\\": "src/"
     }
   },
-  "bin": ["bin/phprun", "bin/deploy"]
+  "bin": ["bin/phprun", "bin/deploy", "bin/gen-env", "bin/cron-manifest"]
 }

@@ -29,8 +29,16 @@
 #
 # Consumer hooks (optional, shipped in the deployed repo):
 #   bin/deploy/post-swap.sh  run on the remote right after the atomic swap,
-#                            before nix packages are copied (e.g. regenerate
-#                            .env, install cron). The framework stays generic.
+#                            before nix packages are copied. Swap-time tasks
+#                            must be plain bash: framework CLIs and nix php
+#                            are not on the remote yet.
+#   bin/deploy/post-nix.sh   run on the remote after the nix closure and
+#                            composer deps are in place (and after --init
+#                            provisioning). This is where the consumer
+#                            regenerates .env and installs cron: the
+#                            framework CLIs (gen-env, cron-manifest) and nix
+#                            php are available here.
+# The framework stays generic: it only invokes the hooks.
 #
 # Architecture notes:
 # - Nix packages are built locally and copied (not built on the server) to
@@ -352,6 +360,21 @@ main() {
       echo "WARNING: --init requested but DEPLOY_INIT_CMD is not set; skipping provisioning." >&2
     fi
   fi
+
+  # Consumer post-nix hook (optional): runs on the remote after the nix
+  # closure and composer deps are in place (and, for --init, after one-time
+  # provisioning). At this point the framework CLIs (gen-env, cron-manifest)
+  # and nix php are available under the deployed nix result, so the hook can
+  # regenerate .env and install cron — the swap-time post-swap.sh hook runs
+  # earlier, before nix is copied.
+  ssh "root@$REMOTE_HOST" "
+    set -e
+    cd '$REMOTE_TARGET_DIR'
+    if [ -x bin/deploy/post-nix.sh ]; then
+      echo 'Running post-nix hook...' >&2
+      bin/deploy/post-nix.sh
+    fi
+  "
 
   # Here, you can also clear any caches or perform other post-deployment tasks
   # Perhaps better to clear caches in src/scripts/maintenance cron jobs.

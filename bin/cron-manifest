@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# cron-manifest — generate a crontab from #[CronJob]/#[Agent] attributes.
+#
+# Scans the consumer repo's src/ for functions decorated with both
+# #[CronJob] and #[Agent] and prints a crontab to stdout, ready to be
+# installed by the consumer (e.g. its bin/deploy/post-nix.sh hook redirects
+# it into the configured CRON_FILE).
+#
+# Configuration comes from the same two surfaces as `deploy` and `phprun`:
+#   .env            (repo-root, git-ignored)  REPO_PATH (also used to locate
+#                                              src/ and as the cd target).
+#   etc/deploy.conf (committed, required)     CRON_USER, CRON_NIX_BIN (or
+#                                              DEPLOY_NIX_RESULT_DIR, from
+#                                              which the bin dir is derived).
+#
+# Usage: cron-manifest   (run from the consumer repo root)
+
+# Load runtime config from a .env in the current working directory (the
+# consumer repo root), same contract as bin/phprun.
+if [[ -f "$PWD/.env" ]]; then
+  set -a
+  . "$PWD/.env"
+  set +a
+fi
+
+# Load the project-static deploy config; CRON_USER/CRON_NIX_BIN live here.
+if [[ -f "$PWD/etc/deploy.conf" ]]; then
+  set -a
+  . "$PWD/etc/deploy.conf"
+  set +a
+fi
+
+# Locate the PHP script relative to this wrapper's real location, resolving
+# nix store and vendor/bin symlinks (same pattern as bin/phprun).
+RUNNER="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/src/cron_manifest.php"
+
+php "$RUNNER" "$@"
