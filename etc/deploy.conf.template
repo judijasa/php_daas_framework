@@ -1,0 +1,25 @@
+# Project-static deploy configuration (COMMIT this file to the consumer repo).
+# Copy from the framework's etc/deploy.conf.template, fill in the values, and
+# commit it. `deploy` requires it at the repo root and fails loudly if missing.
+#
+# .env (generated, git-ignored) holds machine settings; this file holds the
+# deployment target shared by every machine of the project.
+#
+# PROD_USER: unprivileged app user on the remote host.
+export PROD_USER=<app-user>
+
+# DEPLOY_TARGET_DIR: remote repo location.
+export DEPLOY_TARGET_DIR=/srv/apps/<app>
+
+# DEPLOY_LOG_DIR: remote log dir (deploy_version.log lives here).
+export DEPLOY_LOG_DIR=/var/log/<app>
+
+# DEPLOY_NIX_RESULT_DIR: remote nix result parent.
+export DEPLOY_NIX_RESULT_DIR=/usr/local/<app>
+
+# DEPLOY_NIX_GCROOT: remote nix gcroot.
+export DEPLOY_NIX_GCROOT=/nix/var/nix/gcroots/<app>
+
+# Optional: shell command run on the remote for `deploy --init` provisioning
+# (e.g. "make prod-init"); skipped if unset.
+# export DEPLOY_INIT_CMD="make prod-init"

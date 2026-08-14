@@ -135,11 +135,11 @@ The building blocks behind steps 3–4 live in the repo:
 This repo is dual-delivered:
 
 - **composer package** (`judijasa/php-daas-framework`): the PHP library under
-  the `Utils\` PSR-4 namespace, plus the `bin/phprun` wrapper (installed by
-  composer as `vendor/bin/phprun`).
-- **nix flake** (`packages.default`): installs `bin/phprun` and `src/phprun.php`
+  the `Utils\` PSR-4 namespace, plus the `bin/phprun` and `bin/deploy` wrappers (installed by
+  composer as `vendor/bin/phprun` and `vendor/bin/deploy`).
+- **nix flake** (`packages.default`): installs `bin/phprun`, `bin/deploy` and `src/phprun.php`
   into the nix store. Add as an input and drop into your `commonPackages` to get
-  `phprun` on PATH (dev shell and production artifact).
+  `phprun` and `deploy` on PATH (dev shell and production artifact).
 
 
 ## Environment variables
@@ -159,6 +159,40 @@ variables, `phprun` fails loudly.
 | `REUTER_INI` | Path to the DB config ini consumed by `Utils\\Connectivity\\Database`; falls back to `$PWD/etc/reuter.ini`. |
 | `EMA_TARGET` | Section of the ini to use (`local`, `prod`, ...). |
 | `MYSQL_UNIX_PORT` | Optional unix socket appended to the DSN. |
+
+## Deploying a consumer project
+
+The repo also ships a `deploy` CLI (next to `phprun`) that pushes a consumer
+repo to a remote production server: near-atomic swap of the repo dir, local
+`nix build` + closure copy, conditional `composer install`, and optional
+one-time provisioning (`--init`).
+
+```bash
+deploy <target_host>          # continuous deployment
+deploy --init <target_host>   # + one-time provisioning
+```
+
+`deploy` reads two config surfaces from the consumer repo root:
+
+- **`etc/deploy.conf`** (committed, required) - the project-static deployment
+  target; copy from `etc/deploy.conf.template` and fill in:
+
+| Variable | Purpose |
+|---|---|
+| `PROD_USER` | Unprivileged app user on the remote host. |
+| `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
+| `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
+| `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
+| `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
+| `DEPLOY_INIT_CMD` | Optional: remote shell command for `--init` provisioning. |
+
+- **`.env`** (git-ignored, machine-specific) - same contract as `phprun`;
+  deploy needs `REPO_PATH` (set by the consumer's dev-init).
+
+`deploy` fails loudly if `etc/deploy.conf` is missing. Consumer-specific
+post-swap tasks (regenerate `.env`, install cron) belong in an optional
+`bin/deploy/post-swap.sh` in the consumer repo, which `deploy` runs on the
+remote right after the swap if present.
 
 ## Using in a consumer project
 
