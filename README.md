@@ -52,20 +52,22 @@ and build on directly:
 ```bash
 git clone <repo> php_daas_framework
 cd php_daas_framework
+nix develop
+make dev-init   # creates .env, initializes/starts local MariaDB, composer install
 cp etc/reuter.ini.template etc/reuter.ini   # fill in DB credentials
-composer install                            # generates vendor/ + casperjs/phantomjs binaries
 ```
 
 Write your agents under `src/scripts/` (see `src/scripts/demo/hello.php`) and
 run them with:
 
 ```bash
-printf 'export REPO_PATH=%s\nexport REPO_LOG=%s/var/log\n' "$PWD" "$PWD" > .env
 bin/phprun 'src/scripts/demo/hello.php:hello()'
 ```
 
 `phprun` loads `.env` from the current working directory (the repo root)
-before doing anything else — no manual exports needed.
+before doing anything else — no manual exports needed. `make dev-init`
+writes `.env` with the repo paths, `REUTER_INI`, `EMA_TARGET=local` and, when
+`etc/dev-machines.ini` maps the machine hostname, `DBUSER`.
 
 In template mode the classes are autoloaded from the framework's **own**
 `vendor/autoload.php`, and `etc/reuter.ini` is resolved from the repo root.
@@ -76,23 +78,22 @@ both modes share the identical `Utils\` classes in `src/`.
 
 The dev shell bundles PHP (with `pdo_mysql`), MariaDB, composer and
 [`ema`](https://github.com/judijasa/ema) — a MariaDB package manager.
-It initializes and starts an isolated MariaDB on a
-unix socket under `var/` automatically, so there is no system DB to install.
+`make dev-init` initializes and starts an isolated MariaDB on a
+unix socket under `var/`, so there is no system DB to install.
 
 ```bash
 nix develop
+make dev-init    # dirs, MariaDB init+start, composer install, .env
+source .env      # (or re-enter the shell) so the shell sees the MYSQL_* paths
 
 # 1. DB config (git-ignored). DBNAME=test is what the demo expects.
 cp etc/reuter.ini.template etc/reuter.ini
 
-# 2. Composer dependencies (vendor/ + casperjs/phantomjs binaries)
-composer install
-
-# 3. Create the `test` database + users, then the schema packages
+# 2. Create the `test` database + users, then the schema packages
 ema init db test
 ema init tables demo-8C3A9E1F0D2B4C5D
 
-# 4. Run the integration agent
+# 3. Run the integration agent
 bin/phprun 'src/scripts/demo/db_smoke.php:main()'
 ```
 
@@ -137,9 +138,34 @@ This repo is dual-delivered:
 - **composer package** (`judijasa/php-daas-framework`): the PHP library under
   the `Utils\` PSR-4 namespace, plus the `bin/phprun` and `bin/deploy` wrappers (installed by
   composer as `vendor/bin/phprun` and `vendor/bin/deploy`).
-- **nix flake** (`packages.default`): installs `bin/phprun`, `bin/deploy` and `src/phprun.php`
+- **nix flake** (`packages.default`): installs `bin/phprun`, `bin/deploy`,
+  `bin/gen-env`, `bin/cron-manifest`, the dev-init machinery
+  (`init-local-env.sh`, `init-cluster.sh`, `shell-enter.sh`) and `src/`
   into the nix store. Add as an input and drop into your `commonPackages` to get
-  `phprun` and `deploy` on PATH (dev shell and production artifact).
+  them on PATH (dev shell and production artifact).
+
+### Dev-init machinery for consumers
+
+The dev scripts are on PATH via the flake input, so a consumer's own
+`make dev-init` can delegate the generic steps to them:
+
+```make
+_dev-init-cluster:
+	@init-cluster.sh "$(MYSQL_DATA_DIR)" "$(MYSQL_PID_FILE)" "$(MYSQL_UNIX_PORT)"
+
+_dev-init-local-env:
+	@init-local-env.sh
+```
+
+`init-local-env.sh [target-dir]` (default `$PWD`) writes the repo-root `.env`
+(`REPO_PATH`, `REPO_LOG`, `MYSQL_*`, `REUTER_INI`, `EMA_TARGET=local`, and
+`DBUSER` when `etc/dev-machines.ini` maps the hostname). `init-cluster.sh`
+takes the data-dir/pid-file/socket as arguments. Everything is derived from
+the target directory at runtime — no consumer paths are baked in. Consumer-
+specific steps (git hooks, hosts, ...) stay in the consumer's Makefile, and
+the dev shell shellHook sources `shell-enter.sh` (loads `.env`, resumes the
+local MariaDB daemon): standalone flakes source `./bin/dev/shell-enter.sh`,
+consumers source it from PATH.
 
 
 ## Environment variables
@@ -150,7 +176,9 @@ is the canonical way to configure a deployment: generate `.env` per
 environment (e.g. `make dev-init` in dev, or at deploy time in prod) and
 invoke `phprun` from the repo root. Values in `.env` override anything
 already in the process environment; if neither provides the required
-variables, `phprun` fails loudly.
+variables, `phprun` fails loudly. The dev `.env` is regenerated every time by
+`make dev-init` (`init-local-env.sh`); the production `.env` is regenerated on
+every deploy by `gen-env` from the committed `etc/env.prod` template.
 
 | Variable | Purpose |
 |---|---|

@@ -1,4 +1,6 @@
 /vendor/
 
 /etc/reuter.ini
+/etc/dev-machines.ini
 /var/
+.env

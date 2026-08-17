@@ -1,0 +1,9 @@
+# Maps each dev machine's hostname to the prod DB username used for remote
+# connections (ema uses DBUSER as its default remote user). init-local-env.sh
+# resolves the current hostname here and writes the matching user as DBUSER
+# into .env. Copy to etc/dev-machines.ini (git-ignored) and fill in your
+# entries. In a private fork, the file can also serve as a central team
+# registry once removed from .gitignore.
+# Format: hostname=dbuser
+
+# my-hostname=mydbuser
