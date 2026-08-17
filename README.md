@@ -138,11 +138,14 @@ This repo is dual-delivered:
 - **composer package** (`judijasa/php-daas-framework`): the PHP library under
   the `Utils\` PSR-4 namespace, plus the `bin/phprun` and `bin/deploy` wrappers (installed by
   composer as `vendor/bin/phprun` and `vendor/bin/deploy`).
-- **nix flake** (`packages.default`): installs `bin/phprun`, `bin/deploy`,
+- **nix flake**: `packages.default` installs `bin/phprun`, `bin/deploy`,
   `bin/gen-env`, `bin/cron-manifest`, the dev-init machinery
   (`init-local-env.sh`, `init-cluster.sh`, `shell-enter.sh`) and `src/`
   into the nix store. Add as an input and drop into your `commonPackages` to get
-  them on PATH (dev shell and production artifact).
+  them on PATH (dev shell and production artifact). The flake also exposes
+  the runtime it needs so consumers don't re-declare it: `packages.runtime`
+  (php + composer in one drop-in), the individual `packages.php` /
+  `packages.composer`, and the pinned `packages.ema`.
 
 ### Dev-init machinery for consumers
 
@@ -262,5 +265,9 @@ flake.nix:
 
 ```nix
 inputs.php_daas_framework.url = "github:judijasa/php_daas_framework";
-# ... add php_daas_framework.packages.${system}.default to commonPackages
+# In your let / commonPackages:
+#   phpRuntime          = php_daas_framework.packages.${system}.runtime;  # php + composer
+#   emaPkg              = php_daas_framework.packages.${system}.ema;      # MariaDB package manager
+#   phpDaasFrameworkPkg = php_daas_framework.packages.${system}.default;  # phprun / deploy / gen-env / cron-manifest + dev scripts
+# ... add them to commonPackages to get them on PATH (dev shell and production artifact)
 ```
