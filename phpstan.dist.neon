@@ -1,0 +1,19 @@
+parameters:
+	level: 1
+
+	paths:
+		- .
+
+	excludePaths:
+		- doc/*
+		- vendor/*
+		- var/*
+		- result/*
+
+	# The framework is itself a composer-plugin (src/Plugin.php implements
+	# Composer interfaces). PHPStan's installed.json-based locator does not
+	# resolve classes from packages installed under vendor/composer/ (their
+	# install-path starts with "./"), so the composer/composer source is
+	# scanned directly instead.
+	scanDirectories:
+		- vendor/composer/composer/src/Composer

@@ -23,7 +23,7 @@ _dev-init: DEV_DB_UNIX_PORT = $(MYSQL_UNIX_PORT)
 _dev-init: DEV_DB_PID_FILE = $(MYSQL_PID_FILE)
 _dev-init: DEV_LOG_DIR = $(REPO_LOG)
 
-.PHONY: help dev-init _dev-assert-nix _dev-init _dev-create-dirs \
+.PHONY: help dev-init _dev-assert-nix _dev-init _dev-init-git-hooks _dev-create-dirs \
     _dev-init-cluster _dev-init-composer _dev-init-local-env
 
 help:
@@ -38,8 +38,11 @@ _dev-assert-nix:
 	    exit 1; \
 	fi
 
-_dev-init: _dev-create-dirs _dev-init-cluster _dev-init-composer _dev-init-local-env
+_dev-init: _dev-init-git-hooks _dev-create-dirs _dev-init-cluster _dev-init-composer _dev-init-local-env
 	@echo "Developer environment successfully initialized."
+
+_dev-init-git-hooks:
+	@bin/dev/init-git-hooks.sh
 
 _dev-create-dirs:
 	@echo "Creating local logging and storage directories..."

@@ -1,0 +1,72 @@
+# Install both commit-time and push-time hook shims.
+# - pre-commit: fast, scoped checks on staged files
+# - pre-push:   full-repo analysis gates (see phpstan-full / run-on-clean-tree.sh)
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  # - repo: https://github.com/pre-commit/pre-commit-hooks
+  # Discarded as it requires manually re-staging auto fixed files
+  # Instead use editor configuration
+    # rev: v6.0.0
+    # hooks:
+      # - id: trailing-whitespace
+        # Handle horizontal triling whitespaces
+        # files: \.(php|js|ts|css|html|md|json)$
+      # - id: end-of-file-fixer
+        # Handle EOF whitespace issues
+        # files: \.(php|js|ts|css|html|md|json)$
+
+  - repo: local
+    hooks:
+      - id: general
+        name: My Custom Generic Format Pre-Commit Logic
+        entry: ./hooks/pre-commit-general.sh
+        language: script
+        files: .*
+        stages: [pre-commit]
+
+      - id: composer
+        name: My Custom Composer Pre-Commit Logic
+        entry: ./hooks/pre-commit-composer.sh
+        language: script
+        files: .*
+        stages: [pre-commit]
+
+      # PHP Linter (scoped, commit-time)
+      # pass_filenames: true -> pre-commit passes the staged .php files as
+      # arguments, so phpstan only REPORTS errors in the files being committed.
+      # (phpstan still loads the whole project for type context, so analysis
+      # remains correct, but untouched files can no longer block a commit.)
+      # Full-repo analysis is deferred to the pre-push gate (phpstan-full).
+      - id: phpstan
+        name: phpstan
+        entry: phpstan analyse --memory-limit=512M
+        language: system
+        pass_filenames: true
+        files: \.php$
+        stages: [pre-commit]
+
+      # PHP Linter (full-repo, push-time gate)
+      # pass_filenames: false -> no filenames are passed, so phpstan falls back
+      # to the paths in phpstan.dist.neon (i.e. the whole repository).
+      # The .git/hooks/pre-push shim (installed and patched by `make dev-init`)
+      # routes this whole stage through hooks/run-on-clean-tree.sh, so the
+      # analysis runs against a clean HEAD (dirty working-tree changes are
+      # temporarily stashed). Catches cross-file breakage (e.g. a signature
+      # change breaking a caller in another file) that a scoped commit-time
+      # run would miss.
+      - id: phpstan-full
+        name: phpstan (full repo)
+        entry: phpstan analyse --memory-limit=512M
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # PHP attribute consistency
+      - id: php-attributes
+        name: CronJob requires Agent
+        entry: php hooks/check-php-attributes.php
+        language: system
+        files: \.php$
+        stages: [pre-commit]
