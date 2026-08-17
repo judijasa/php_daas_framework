@@ -52,6 +52,23 @@
           cp -r ${./src} $out/src
         '';
 
+        # PHP runtime + composer, exposed so consumers don't re-declare the
+        # framework's required extension set (mysqli/pdo_mysql for the DB
+        # layer, bz2 for the casperjs/phantomjs composer deps).
+        packages.php = phpPkg;
+        packages.composer = phpComposer;
+
+        # Combined drop-in runtime (php + composer) for a one-line
+        # commonPackages entry.
+        packages.runtime = pkgs.symlinkJoin {
+          name = "php-daas-framework-runtime";
+          paths = [ phpPkg phpComposer ];
+        };
+
+        # The `ema` MariaDB package manager, exposed so consumers share the
+        # same pinned input (used by `ema init tables` / init-cluster.sh).
+        packages.ema = emaPkg;
+
         # DEVELOPMENT ENVIRONMENT: PHP + composer + ema + local MariaDB, for
         # template usage and the quick DB integration test (see README).
         devShells.default = pkgs.mkShell {
