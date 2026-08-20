@@ -1,0 +1,25 @@
+# Production deploy exclusions: the framework `deploy` CLI ships the repo via
+# `git archive`, which honors `export-ignore`. These paths are omitted from
+# the deployed tarball while remaining present in dev checkouts. Everything
+# the remote needs at runtime (composer.json/lock, src/, pkg/, srv/, etc/,
+# bin/ CLIs, LICENSE, README.md) stays in the archive.
+
+# Linting and git tooling
+/.pre-commit-config.yaml export-ignore
+/phpstan.dist.neon export-ignore
+/hooks/ export-ignore
+/.gitignore export-ignore
+
+# Dev-only build and environment plumbing
+/Makefile export-ignore
+/bin/dev/ export-ignore
+/flake.nix export-ignore
+/flake.lock export-ignore
+
+# Dev machine templates (prod reads /etc/..., not these)
+/etc/dev-machines.ini.template export-ignore
+/etc/reuter.ini.template export-ignore
+
+# Demo code (not part of a production deploy)
+/pkg/demo-*/ export-ignore
+/src/scripts/demo/ export-ignore

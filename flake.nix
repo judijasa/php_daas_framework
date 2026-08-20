@@ -49,6 +49,8 @@
           chmod +x $out/bin/gen-env
           cp ${./bin/cron-manifest} $out/bin/cron-manifest
           chmod +x $out/bin/cron-manifest
+          cp ${./bin/provision.sh} $out/bin/provision.sh
+          chmod +x $out/bin/provision.sh
           cp ${./bin/dev/init-local-env.sh} $out/bin/init-local-env.sh
           chmod +x $out/bin/init-local-env.sh
           cp ${./bin/dev/init-cluster.sh} $out/bin/init-cluster.sh

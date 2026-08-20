@@ -46,23 +46,52 @@ case it cds there automatically via `REPO_PATH`).
 
 ## Standalone template usage
 
-The repo also works as a **forkable template** — a plain PHP project you clone
-and build on directly:
+This repo is dual-role. It is a framework **consumed** by external projects,
+and it is also a **standalone repo** meant to behave as much as possible like
+one of its own consumers: every consumer workflow (`make dev-init`,
+`bin/phprun`, `bin/deploy`, `gen-env`, `cron-manifest`) should work from
+inside this repo exactly as it would in a consumer — only the config data is
+this repo's own (`etc/deploy.conf`, `etc/reuter.ini`, ...). The one
+structural difference vs. an external consumer: the framework does not
+consume itself via its own `flake.nix` and `composer.json` (that would be
+circular) — its Makefile and `bin/` scripts invoke the local copies, and
+those same files are the artifacts external consumers pull in. The framework
+owns the mechanism; the consumer (or this repo, standalone) owns the data
+and policy.
 
-```bash
-git clone <repo> php_daas_framework
-cd php_daas_framework
-nix develop
-make dev-init   # creates .env, initializes/starts local MariaDB, composer install
-cp etc/reuter.ini.template etc/reuter.ini   # fill in DB credentials
-```
+The repo works as a **forkable template** — a plain PHP project you clone
+and build on directly.
 
-Write your agents under `src/scripts/` (see `src/scripts/demo/hello.php`) and
-run them with:
+### Standalone dev init
 
-```bash
-bin/phprun 'src/scripts/demo/hello.php:hello()'
-```
+1. Clone, enter the dev shell, and build the sandbox (creates `var/`,
+   initializes/starts an isolated MariaDB, runs `composer install`, and
+   writes the git-ignored `.env`):
+
+   ```bash
+   git clone <repo> php_daas_framework
+   cd php_daas_framework
+   nix develop
+   make dev-init
+   ```
+
+2. Create the DB config from its template (git-ignored) and fill in the
+   credentials:
+
+   ```bash
+   cp etc/reuter.ini.template etc/reuter.ini
+   ```
+
+   Optional: `cp etc/dev-machines.ini.template etc/dev-machines.ini` and map
+   this machine's hostname to a DB user — only needed for remote DB access.
+
+3. Re-enter the shell (or `source .env`) so the shell sees the `MYSQL_*`
+   paths. Write your agents under `src/scripts/` (see
+   `src/scripts/demo/hello.php`) and run them from the repo root:
+
+   ```bash
+   bin/phprun 'src/scripts/demo/hello.php:hello()'
+   ```
 
 `phprun` loads `.env` from the current working directory (the repo root)
 before doing anything else — no manual exports needed. `make dev-init`
@@ -73,6 +102,43 @@ In template mode the classes are autoloaded from the framework's **own**
 `vendor/autoload.php`, and `etc/reuter.ini` is resolved from the repo root.
 The same code base is consumed as a library by other projects (see below) —
 both modes share the identical `Utils\` classes in `src/`.
+
+### Standalone prod init
+
+Deploying this repo to a production server runs the exact same `bin/deploy`
+workflow as a consumer — only the config data is this repo's own. Two
+committed config files must exist before the first deploy:
+
+1. **`etc/deploy.conf`** — copy from `etc/deploy.conf.template`, fill in the
+   deployment target (`PROD_USER`, `DEPLOY_TARGET_DIR`, `DEPLOY_LOG_DIR`,
+   `DEPLOY_DB_DATA_DIR`, `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`), and
+   commit. Optional: `DEPLOY_INIT_CMD` (consumer-specific provisioning
+   command run after the framework's generic `bin/provision.sh`) and cron
+   vars (`CRON_FILE`, `CRON_USER`). `deploy` fails loudly if this file is
+   missing. The remote host must already have the `PROD_USER` account with
+   SSH access — see "Before the first deploy" under "Deploying a consumer
+   project".
+
+2. **`etc/env.prod`** — copy from `etc/env.prod.template`, fill in the
+   production values (same contract as the dev `.env`, with
+   `EMA_TARGET=prod`), and commit. `gen-env` regenerates the git-ignored
+   `.env` from it on the remote on every deploy. Values must match
+   `etc/deploy.conf` (`REPO_PATH` = `DEPLOY_TARGET_DIR`,
+   `REPO_LOG` = `DEPLOY_LOG_DIR`); `gen-env` fails loudly if the file is
+   missing or a content line is lost in the output.
+
+The local `.env` (with `REPO_PATH`) comes from `make dev-init` — machine
+settings, git-ignored. Then deploy from the repo root, inside `nix develop`,
+on `main`, with a clean tree:
+
+```bash
+bin/deploy <target_host>          # continuous deployment
+bin/deploy --init <target_host>   # + one-time provisioning (DEPLOY_INIT_CMD)
+```
+
+Optional hooks shipped in the deployed repo: `bin/deploy/post-swap.sh` and
+`bin/deploy/post-nix.sh` — same contract as consumers (see "Deploying a
+consumer project" below).
 
 ## Quick test: PHP–MariaDB integration with ema
 
@@ -198,6 +264,11 @@ repo to a remote production server: near-atomic swap of the repo dir, local
 `nix build` + closure copy, conditional `composer install`, and optional
 one-time provisioning (`--init`).
 
+Standalone, the same CLI deploys this repo itself — the required committed
+config (`etc/deploy.conf`, `etc/env.prod`) and the exact steps are in
+"Standalone prod init" under "Standalone template usage". The workflow is
+identical to a consumer's; only the config data differs.
+
 ```bash
 deploy <target_host>          # continuous deployment
 deploy --init <target_host>   # + one-time provisioning
@@ -210,21 +281,60 @@ deploy --init <target_host>   # + one-time provisioning
 
 | Variable | Purpose |
 |---|---|
-| `PROD_USER` | Unprivileged app user on the remote host. |
+| `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name (e.g. `php_daas_framework` -> `daas`). Must exist with SSH access before the first deploy (see below). |
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
+| `DEPLOY_DB_DATA_DIR` | Remote MariaDB cluster data dir, created and initialized by `deploy --init` (generic `bin/provision.sh`). |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
-| `DEPLOY_INIT_CMD` | Optional: remote shell command for `--init` provisioning. |
+| `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/provision.sh` on `--init`. |
 | `CRON_FILE` | Optional: remote crontab file installed by the consumer's post-nix hook. |
 | `CRON_USER` | Optional: user the cron entries run as (default `root`). |
 
 - **`.env`** (git-ignored, machine-specific) - same contract as `phprun`;
   deploy needs `REPO_PATH` (set by the consumer's dev-init).
 
-`deploy` fails loudly if `etc/deploy.conf` is missing. Consumer-specific
-tasks hook into the deploy flow via two optional scripts in the deployed
-repo, which `deploy` runs on the remote if present:
+`deploy` fails loudly if `etc/deploy.conf` is missing.
+
+### Before the first deploy
+
+The remote host must have the app user in place before the first `deploy`
+(or `deploy --init`) — the CLI does not create it (assert-only):
+
+1. **Create the app user** (`PROD_USER` from `etc/deploy.conf`) as root:
+
+   ```bash
+   useradd --create-home --shell /bin/bash --comment "Production app user" <PROD_USER>
+   passwd --lock <PROD_USER>
+   ```
+
+   `--create-home` is required (the nix installation stores per-user state in
+   `~<PROD_USER>`); `passwd --lock` disables password login, making the SSH
+   key the only entry point.
+
+2. **Install SSH access** for that user — the same public key used to log in
+   as `root`:
+
+   ```bash
+   mkdir -p /home/<PROD_USER>/.ssh
+   chmod 700 /home/<PROD_USER>/.ssh
+   echo "<ssh-ed25519 AAAA... your-key>" >> /home/<PROD_USER>/.ssh/authorized_keys
+   chmod 600 /home/<PROD_USER>/.ssh/authorized_keys
+   chown -R <PROD_USER>:<PROD_USER> /home/<PROD_USER>/.ssh
+   ```
+
+   `deploy` SSHes into the server as both `root` and `<PROD_USER>` — the nix
+   closure copy and `composer install` run as the app user. `deploy` fails
+   loudly if the user does not exist, and those steps fail until the key is
+   installed.
+
+Everything else (repo swap, dirs, MariaDB cluster init, `.env`, cron) is
+handled by `deploy` itself: the repo swap as `root`, and the one-time
+provisioning (`deploy --init`) via the framework's generic `bin/provision.sh`
+plus the optional consumer-specific `DEPLOY_INIT_CMD`.
+
+Consumer-specific tasks hook into the deploy flow via two optional scripts in
+the deployed repo, which `deploy` runs on the remote if present:
 
 - **`bin/deploy/post-swap.sh`** — right after the atomic swap, before nix
   packages are copied. Must be plain bash (no framework CLIs, no nix php on

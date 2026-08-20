@@ -18,12 +18,15 @@
 # Two config surfaces in the consumer repo root:
 #   etc/deploy.conf  (COMMITTED, required) - project-static deployment target:
 #     PROD_USER              unprivileged app user on the remote host
+#                            (must exist with SSH access before first deploy)
 #     DEPLOY_TARGET_DIR      remote repo location (e.g. /srv/apps/<app>)
 #     DEPLOY_LOG_DIR         remote log dir (deploy_version.log lives here)
+#     DEPLOY_DB_DATA_DIR     remote MariaDB data dir created/initialized by
+#                            --init provisioning
 #     DEPLOY_NIX_RESULT_DIR  remote nix result parent (e.g. /usr/local/<app>)
 #     DEPLOY_NIX_GCROOT      remote nix gcroot (e.g. /nix/var/nix/gcroots/<app>)
-#     DEPLOY_INIT_CMD        optional: shell command run on the remote for
-#                            --init provisioning; skipped if unset.
+#     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
+#                            run after the generic provision; skipped if unset.
 #   .env  (git-ignored, machine-specific) - same contract as `phprun`:
 #     REPO_PATH              consumer repo root (set by the consumer's dev-init)
 #
@@ -74,7 +77,7 @@ set +a
 
 require_config() {
   local missing="" _v
-  for _v in REPO_PATH PROD_USER DEPLOY_TARGET_DIR DEPLOY_LOG_DIR DEPLOY_NIX_RESULT_DIR DEPLOY_NIX_GCROOT; do
+  for _v in REPO_PATH PROD_USER DEPLOY_TARGET_DIR DEPLOY_LOG_DIR DEPLOY_DB_DATA_DIR DEPLOY_NIX_RESULT_DIR DEPLOY_NIX_GCROOT; do
     if [ -z "${!_v:-}" ]; then
       missing="$missing $_v"
     fi
@@ -353,11 +356,15 @@ main() {
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR" "$PREVIOUS_REV" "$REV"
   deploy_website "$REMOTE_HOST" "$REMOTE_TARGET_DIR"
   if [ "$INIT" = "true" ]; then
+    # Generic provisioning (framework mechanism, shipped in the deployed
+    # repo): assert PROD_USER, create permanent dirs, initialize the MariaDB
+    # cluster — all parameterized by etc/deploy.conf.
+    echo "Running generic provisioning (bin/provision.sh) on remote..." >&2
+    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bin/provision.sh"
+    # Optional consumer-specific extras, run after the generic step.
     if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
-      echo "Running one-time provisioning on remote..." >&2
+      echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2
       ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $DEPLOY_INIT_CMD"
-    else
-      echo "WARNING: --init requested but DEPLOY_INIT_CMD is not set; skipping provisioning." >&2
     fi
   fi
 
