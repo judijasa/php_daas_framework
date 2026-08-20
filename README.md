@@ -111,7 +111,7 @@ committed config files must exist before the first deploy:
 
 1. **`etc/deploy.conf`** — copy from `etc/deploy.conf.template`, fill in the
    deployment target (`PROD_USER`, `DEPLOY_TARGET_DIR`, `DEPLOY_LOG_DIR`,
-   `DEPLOY_DB_DATA_DIR`, `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`), and
+   `DEPLOY_DB_BASE`, `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`), and
    commit. Optional: `DEPLOY_INIT_CMD` (consumer-specific provisioning
    command run after the framework's generic `bin/provision.sh`) and cron
    vars (`CRON_FILE`, `CRON_USER`). `deploy` fails loudly if this file is
@@ -284,7 +284,9 @@ deploy --init <target_host>   # + one-time provisioning
 | `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name (e.g. `php_daas_framework` -> `daas`). Must exist with SSH access before the first deploy (see below). |
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
-| `DEPLOY_DB_DATA_DIR` | Remote MariaDB cluster data dir, created and initialized by `deploy --init` (generic `bin/provision.sh`). |
+| `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance; datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `deploy --init` (generic `bin/provision.sh`) via a `mariadb@<instance>` systemd unit. |
+| `DEPLOY_DB_INSTANCE` | Optional: systemd unit + config-dir name (`mariadb@<instance>`, `/etc/<instance>/my.cnf`); defaults to the basename of `DEPLOY_TARGET_DIR`. |
+| `DEPLOY_DB_PORT` | Optional: TCP port for the instance. Unset → socket-only (`skip-networking`, like the dev sandbox); set it only for TCP access. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/provision.sh` on `--init`. |
@@ -332,6 +334,28 @@ Everything else (repo swap, dirs, MariaDB cluster init, `.env`, cron) is
 handled by `deploy` itself: the repo swap as `root`, and the one-time
 provisioning (`deploy --init`) via the framework's generic `bin/provision.sh`
 plus the optional consumer-specific `DEPLOY_INIT_CMD`.
+
+### Multiple MariaDB instances on one server
+
+`deploy --init` *initializes* the project's datadir and starts its daemon via
+a systemd template unit (`mariadb@<instance>`, enabled exactly once). To host
+several consumers on one server, each instance must own its full runtime
+identity — the Debian defaults (TCP 3306, `/run/mysqld/*`, the `/etc/mysql/`
+includes) belong to the distro instance and will collide:
+
+| Conflict | Avoid |
+|---|---|
+| TCP port 3306 taken by the distro `mariadb.service` or another instance | socket-only instances (`skip-networking`, the default) or a per-project `DEPLOY_DB_PORT` |
+| Default socket/pid under `/run/mysqld/` | per-project socket + pid-file under `DEPLOY_DB_BASE` (derived automatically) |
+| Global `/etc/mysql/` includes inject distro paths into any started daemon | per-project defaults file `/etc/<instance>/my.cnf`, selected via `--defaults-file=/etc/%i/my.cnf` in the unit |
+| Shared error log | per-project `log-error` under `DEPLOY_LOG_DIR` |
+| AppArmor (Debian/Ubuntu) denies datadirs outside `/var/lib/mysql/` | per-project AppArmor profile, or disable the distro `usr.sbin.mariadbd` profile when no distro instance runs |
+| Two daemons at boot | keep the distro `mariadb.service` disabled on hosts running per-project instances |
+
+Provisioning refuses to start an instance whose socket or port is already
+taken — with deliberately generic messages (no pid/owner disclosure, logs may
+be read beyond the operator) — and cleans up stale pid-files/sockets left by
+crashes.
 
 Consumer-specific tasks hook into the deploy flow via two optional scripts in
 the deployed repo, which `deploy` runs on the remote if present:
