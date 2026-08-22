@@ -28,9 +28,9 @@
 # The per-project defaults file (/etc/<instance>/my.cnf) shields the daemon
 # from the global /etc/mysql/ includes, which would inject the distro
 # socket/port/pid paths and collide with other instances on the same host.
-# TCP is opt-in: set DEPLOY_DB_PORT (required when app servers run on other
-# hosts) and the daemon binds DEPLOY_DB_BIND (default 0.0.0.0) on that port;
-# otherwise it is socket-only (skip-networking, like dev).
+# The daemon binds DEPLOY_DB_BIND (default 0.0.0.0) on DEPLOY_DB_PORT,
+# which is required on a database host — every prod script, on the DB host
+# and on app-only hosts, connects to the database over TCP.
 #
 # Conflict diagnostics stay generic on purpose (no pid/owner disclosure):
 # provisioning logs may be read beyond the operator.
@@ -49,8 +49,17 @@ set +a
 
 # --- Host role: does this server run the database? -----------------------
 PROVISION_DB="${DEPLOY_PROVISION_DB:-0}"
-# ZeroTier address the daemon binds to when DEPLOY_DB_PORT is set.
+# Address the daemon binds to (set it to the DB host's ZeroTier IP).
 DB_BIND="${DEPLOY_DB_BIND:-0.0.0.0}"
+
+# Database hosts must expose TCP on DEPLOY_DB_PORT: gen-reuter writes
+# SERVER/PORT into the prod reuter.ini sections and every prod script —
+# on the DB host and on app-only hosts — connects to the database over
+# TCP on that port.
+if [ "$PROVISION_DB" = "1" ] && [ -z "${DEPLOY_DB_PORT:-}" ]; then
+    echo "ERROR: DEPLOY_DB_PORT is required on a database host (every prod script connects to the database over TCP)." >&2
+    exit 1
+fi
 
 # --- Instance identity: consumer data in, convention out ----------------
 DB_BASE="${DEPLOY_DB_BASE:?DEPLOY_DB_BASE is required (see etc/deploy.conf.template)}"
@@ -133,12 +142,8 @@ echo "Writing per-project MariaDB defaults file ($DB_CONF_FILE)..."
     echo "pid-file  = $DB_PID_FILE"
     echo "log-error = $DB_ERROR_LOG"
     echo "user      = $PROD_USER"
-    if [ -n "${DEPLOY_DB_PORT:-}" ]; then
-        echo "port         = $DEPLOY_DB_PORT"
-        echo "bind-address = $DB_BIND"
-    else
-        echo "skip-networking"
-    fi
+    echo "port         = $DEPLOY_DB_PORT"
+    echo "bind-address = $DB_BIND"
 } > "$DB_CONF_FILE"
 chmod 644 "$DB_CONF_FILE"
 
@@ -195,12 +200,10 @@ if [ -S "$DB_SOCKET" ]; then
     rm -f "$DB_SOCKET"
 fi
 
-# TCP port already in use (only relevant when networking is enabled).
-if [ -n "${DEPLOY_DB_PORT:-}" ]; then
-    if command -v ss >/dev/null 2>&1 && ss -tln | awk '{print $4}' | grep -q ":$DEPLOY_DB_PORT$"; then
-        echo "ERROR: TCP port $DEPLOY_DB_PORT already taken." >&2
-        exit 1
-    fi
+# TCP port already in use.
+if command -v ss >/dev/null 2>&1 && ss -tln | awk '{print $4}' | grep -q ":$DEPLOY_DB_PORT$"; then
+    echo "ERROR: TCP port $DEPLOY_DB_PORT already taken." >&2
+    exit 1
 fi
 
 # All clear: start the instance once via systemd (also survives reboots).

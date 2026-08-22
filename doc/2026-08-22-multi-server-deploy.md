@@ -53,8 +53,8 @@ database can serve the website against the database host.
       databases). Enforces that each database is hosted by exactly one server. Passes
       `DEPLOY_PROVISION_DB=1` and `DEPLOY_DB_BIND` to DB-host provisioning.
 - [x] `bin/provision.sh`: MariaDB block runs only when `DEPLOY_PROVISION_DB=1`;
-      with `DEPLOY_DB_PORT` it writes `bind-address` instead of
-      `skip-networking`.
+      `DEPLOY_DB_PORT` is mandatory on database hosts (TCP only; the
+      socket-only mode was removed — the framework connects over TCP only).
 - [x] `bin/dev/init-local-env.sh`: reads `[dev]` from `etc/machines.ini`; calls
       `gen-reuter` when available.
 - [x] `.gitignore`: `/etc/dev-machines.ini` → `/etc/machines.ini`.

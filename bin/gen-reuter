@@ -103,7 +103,11 @@ function main(): int
     }
 
     $deploy = load_deploy_conf($root . '/etc/deploy.conf');
-    $port = $deploy['DEPLOY_DB_PORT'] ?? '3306';
+    if (!isset($deploy['DEPLOY_DB_PORT'])) {
+        fwrite(STDERR, 'gen-reuter: DEPLOY_DB_PORT is not set in etc/deploy.conf; a database host must expose TCP on the ZeroTier interface.' . PHP_EOL);
+        exit(1);
+    }
+    $port = $deploy['DEPLOY_DB_PORT'];
 
     $cnf = is_file($target) ? (parse_ini_file($target, true, INI_SCANNER_RAW) ?: []) : [];
     foreach ($mapping as $db => $info) {

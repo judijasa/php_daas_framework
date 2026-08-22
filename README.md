@@ -289,8 +289,8 @@ deploy --init                 # + one-time provisioning (MariaDB only on the DB 
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
 | `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance (DB host only); datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `deploy --init` (generic `bin/provision.sh`) via a `mariadb@<instance>` systemd unit. |
 | `DEPLOY_DB_INSTANCE` | Optional: systemd unit + config-dir name (`mariadb@<instance>`, `/etc/<instance>/my.cnf`); defaults to the basename of `DEPLOY_TARGET_DIR`. |
-| `DEPLOY_DB_PORT` | Optional: TCP port for the instance. Required when app servers run on other hosts (they reach the DB over ZeroTier). Unset → socket-only (`skip-networking`), valid only when app and DB are co-located. |
-| `DEPLOY_DB_BIND` | Optional: address the daemon binds to when `DEPLOY_DB_PORT` is set (default `0.0.0.0`); set it to the DB host's ZeroTier IP to restrict access to the overlay network. |
+| `DEPLOY_DB_PORT` | Required on the database host: TCP port the MariaDB instance listens on. Scripts on every prod server — the DB host and app-only hosts alike — connect to the database over TCP. |
+| `DEPLOY_DB_BIND` | Optional: address the daemon binds to (default `0.0.0.0`); set it to the DB host's ZeroTier IP to restrict access to the overlay network. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/provision.sh` on `--init`. |
@@ -364,7 +364,7 @@ includes) belong to the distro instance and will collide:
 
 | Conflict | Avoid |
 |---|---|
-| TCP port 3306 taken by the distro `mariadb.service` or another instance | socket-only instances (`skip-networking`, the default) or a per-project `DEPLOY_DB_PORT` |
+| TCP port 3306 taken by the distro `mariadb.service` or another instance | a per-project `DEPLOY_DB_PORT` (mandatory on DB hosts) |
 | Default socket/pid under `/run/mysqld/` | per-project socket + pid-file under `DEPLOY_DB_BASE` (derived automatically) |
 | Global `/etc/mysql/` includes inject distro paths into any started daemon | per-project defaults file `/etc/<instance>/my.cnf`, selected via `--defaults-file=/etc/%i/my.cnf` in the unit |
 | Shared error log | per-project `log-error` under `DEPLOY_LOG_DIR` |
@@ -423,4 +423,6 @@ inputs.php_daas_framework.url = "github:judijasa/php_daas_framework";
 #   emaPkg              = php_daas_framework.packages.${system}.ema;      # MariaDB package manager
 #   phpDaasFrameworkPkg = php_daas_framework.packages.${system}.default;  # phprun / deploy / gen-env / cron-manifest + dev scripts
 # ... add them to commonPackages to get them on PATH (dev shell and production artifact)
+```
+n artifact)
 ```
