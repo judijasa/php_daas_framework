@@ -2,6 +2,11 @@
 # Copy from the framework's etc/deploy.conf.template, fill in the values, and
 # commit it. `deploy` requires it at the repo root and fails loudly if missing.
 #
+# This is the common deploy config for every prod server listed in
+# etc/machines.ini: PROD_USER and the DEPLOY_* paths are identical on all
+# hosts. The DEPLOY_DB_* values apply only on the database host — the single
+# [prod] entry in etc/machines.ini that carries a non-empty database name.
+#
 # .env (generated, git-ignored) holds machine settings; this file holds the
 # deployment target shared by every machine of the project.
 #
@@ -12,22 +17,23 @@
 # deploy").
 export PROD_USER=<app-user>
 
-# DEPLOY_TARGET_DIR: remote repo location.
+# DEPLOY_TARGET_DIR: remote repo location (identical on every prod host).
 export DEPLOY_TARGET_DIR=/srv/apps/<app>
 
 # DEPLOY_LOG_DIR: remote log dir (deploy_version.log and the MariaDB error
 # log live here).
 export DEPLOY_LOG_DIR=/var/log/<app>
 
-# DEPLOY_DB_BASE: remote root of the per-project MariaDB instance. The
-# instance identity is derived from it by convention (same shape as the dev
-# sandbox's var/mariadb):
+# DEPLOY_DB_BASE: remote root of the per-project MariaDB instance (used only
+# on the database host). The instance identity is derived from it by
+# convention (same shape as the dev sandbox's var/mariadb):
 #   datadir  = $DEPLOY_DB_BASE/data
 #   socket   = $DEPLOY_DB_BASE/mysql.sock
 #   pid-file = $DEPLOY_DB_BASE/mysql.pid
 # Created and initialized by `deploy --init` (the framework's generic
-# bin/provision.sh); the daemon runs as PROD_USER via a systemd template
-# unit (mariadb@<instance>), started exactly once and durable across reboots.
+# bin/provision.sh) only on the database host; the daemon runs as PROD_USER
+# via a systemd template unit (mariadb@<instance>), started exactly once and
+# durable across reboots.
 export DEPLOY_DB_BASE=/var/lib/<app>/mariadb
 
 # DEPLOY_DB_INSTANCE: optional systemd unit instance name and config dir
@@ -35,11 +41,17 @@ export DEPLOY_DB_BASE=/var/lib/<app>/mariadb
 # DEPLOY_TARGET_DIR; set it explicitly if that is not a good unit name.
 # export DEPLOY_DB_INSTANCE=<app>
 
-# DEPLOY_DB_PORT: optional TCP port for the instance. Unset (default): the
-# instance listens on its unix socket only (skip-networking, like the dev
-# sandbox) — no TCP port conflicts possible. Set it only if the DB must be
-# reachable over TCP from outside the host.
+# DEPLOY_DB_PORT: TCP port for the database instance. Required when app
+# servers run on other hosts (they reach the database over ZeroTier).
+# Unset (default): the instance listens on its unix socket only
+# (skip-networking, like the dev sandbox) — only valid when the app and the
+# database are co-located on the same host.
 # export DEPLOY_DB_PORT=3307
+
+# DEPLOY_DB_BIND: address the daemon binds to when DEPLOY_DB_PORT is set.
+# Defaults to 0.0.0.0 (all interfaces); set it to the DB host's ZeroTier IP
+# to restrict access to the overlay network.
+# export DEPLOY_DB_BIND=<zerotier-ip>
 
 # DEPLOY_NIX_RESULT_DIR: remote nix result parent.
 export DEPLOY_NIX_RESULT_DIR=/usr/local/<app>

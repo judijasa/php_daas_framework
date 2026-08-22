@@ -82,7 +82,8 @@ and build on directly.
    cp etc/reuter.ini.template etc/reuter.ini
    ```
 
-   Optional: `cp etc/dev-machines.ini.template etc/dev-machines.ini` and map
+   Optional: `cp etc/machines.ini.template etc/machines.ini` and fill in the
+  [dev] hostname-to-dbuser mapping and the [prod] ZeroTier deploy roster
    this machine's hostname to a DB user — only needed for remote DB access.
 
 3. Re-enter the shell (or `source .env`) so the shell sees the `MYSQL_*`
@@ -96,7 +97,7 @@ and build on directly.
 `phprun` loads `.env` from the current working directory (the repo root)
 before doing anything else — no manual exports needed. `make dev-init`
 writes `.env` with the repo paths, `REUTER_INI`, `EMA_TARGET=local` and, when
-`etc/dev-machines.ini` maps the machine hostname, `DBUSER`.
+`etc/machines.ini` `[dev]` maps the machine hostname to the prod DB username (`DBUSER`); `[prod]` lists the prod deploy targets (ZeroTier IP = database name on the DB host).
 
 In template mode the classes are autoloaded from the framework's **own**
 `vendor/autoload.php`, and `etc/reuter.ini` is resolved from the repo root.
@@ -132,8 +133,9 @@ settings, git-ignored. Then deploy from the repo root, inside `nix develop`,
 on `main`, with a clean tree:
 
 ```bash
-bin/deploy <target_host>          # continuous deployment
-bin/deploy --init <target_host>   # + one-time provisioning (DEPLOY_INIT_CMD)
+bin/deploy                       # continuous deployment to every [prod] host in etc/machines.ini
+bin/deploy <target_host>          # deploy to a single prod host (must be in [prod])
+bin/deploy --init                 # + one-time provisioning (MariaDB only on the DB host)
 ```
 
 Optional hooks shipped in the deployed repo: `bin/deploy/post-swap.sh` and
@@ -228,7 +230,7 @@ _dev-init-local-env:
 
 `init-local-env.sh [target-dir]` (default `$PWD`) writes the repo-root `.env`
 (`REPO_PATH`, `REPO_LOG`, `MYSQL_*`, `REUTER_INI`, `EMA_TARGET=local`, and
-`DBUSER` when `etc/dev-machines.ini` maps the hostname). `init-cluster.sh`
+`DBUSER` when `etc/machines.ini` maps the hostname). `init-cluster.sh`
 takes the data-dir/pid-file/socket as arguments. Everything is derived from
 the target directory at runtime — no consumer paths are baked in. Consumer-
 specific steps (git hooks, hosts, ...) stay in the consumer's Makefile, and
@@ -270,11 +272,12 @@ config (`etc/deploy.conf`, `etc/env.prod`) and the exact steps are in
 identical to a consumer's; only the config data differs.
 
 ```bash
-deploy <target_host>          # continuous deployment
-deploy --init <target_host>   # + one-time provisioning
+deploy                       # continuous deployment to every [prod] host in etc/machines.ini
+deploy <target_host>          # deploy to a single prod host (must be in [prod])
+deploy --init                 # + one-time provisioning (MariaDB only on the DB host)
 ```
 
-`deploy` reads two config surfaces from the consumer repo root:
+`deploy` reads three config surfaces from the consumer repo root:
 
 - **`etc/deploy.conf`** (committed, required) - the project-static deployment
   target; copy from `etc/deploy.conf.template` and fill in:
@@ -284,19 +287,32 @@ deploy --init <target_host>   # + one-time provisioning
 | `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name (e.g. `php_daas_framework` -> `daas`). Must exist with SSH access before the first deploy (see below). |
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
-| `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance; datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `deploy --init` (generic `bin/provision.sh`) via a `mariadb@<instance>` systemd unit. |
+| `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance (DB host only); datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `deploy --init` (generic `bin/provision.sh`) via a `mariadb@<instance>` systemd unit. |
 | `DEPLOY_DB_INSTANCE` | Optional: systemd unit + config-dir name (`mariadb@<instance>`, `/etc/<instance>/my.cnf`); defaults to the basename of `DEPLOY_TARGET_DIR`. |
-| `DEPLOY_DB_PORT` | Optional: TCP port for the instance. Unset → socket-only (`skip-networking`, like the dev sandbox); set it only for TCP access. |
+| `DEPLOY_DB_PORT` | Optional: TCP port for the instance. Required when app servers run on other hosts (they reach the DB over ZeroTier). Unset → socket-only (`skip-networking`), valid only when app and DB are co-located. |
+| `DEPLOY_DB_BIND` | Optional: address the daemon binds to when `DEPLOY_DB_PORT` is set (default `0.0.0.0`); set it to the DB host's ZeroTier IP to restrict access to the overlay network. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/provision.sh` on `--init`. |
 | `CRON_FILE` | Optional: remote crontab file installed by the consumer's post-nix hook. |
 | `CRON_USER` | Optional: user the cron entries run as (default `root`). |
 
+- **`etc/machines.ini`** (git-ignored; template committed) - the machine
+  registry: `[dev]` hostname→prod DB username, `[prod]` ZeroTier-IP→database
+  name roster. `deploy` (default mode) targets every `[prod]` host; the single
+  entry with a non-empty database name is the DB host and gets the MariaDB
+  instance on `--init`. Commit this file only in a private fork.
+
 - **`.env`** (git-ignored, machine-specific) - same contract as `phprun`;
   deploy needs `REPO_PATH` (set by the consumer's dev-init).
 
-`deploy` fails loudly if `etc/deploy.conf` is missing.
+`deploy` fails loudly if `etc/deploy.conf` or `etc/machines.ini` is missing.
+
+`gen-reuter` (shipped alongside `deploy`) refreshes the `[prod]` connectivity
+section of `etc/reuter.ini` (SERVER/PORT/DBNAME) from `etc/machines.ini` +
+`etc/deploy.conf`, preserving credentials — run it after changing the mapping
+(dev: `init-local-env.sh` runs it automatically; prod: the consumer's
+`bin/deploy/post-nix.sh` calls it with the `REUTER_INI` path).
 
 ### Before the first deploy
 

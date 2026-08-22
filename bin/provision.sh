@@ -6,16 +6,19 @@
 # Parameterized entirely by the committed etc/deploy.conf; the consumer owns
 # the values, the framework owns the mechanism. Idempotent.
 #
+# Multi-server model: `deploy` sets DEPLOY_PROVISION_DB=1 only for the prod
+# server that holds the database (the non-empty [prod] entry in
+# etc/machines.ini). Every host gets the system user + log/deploy dirs;
+# only the DB host gets the MariaDB instance below.
+#
 # What this covers:
 #   1. Assert the app user (PROD_USER) exists — creation and SSH access are
 #      documented pre-deploy prerequisites (assert-only by design).
-#   2. Create the permanent dirs (log dir, DB base dir, deploy parent),
+#   2. Create the permanent system dirs (log dir, deploy parent),
 #      owned by PROD_USER.
-#   3. Initialize the MariaDB instance datadir if missing/empty.
-#   4. Write the per-project server defaults file and install the
-#      mariadb@.service systemd template unit.
-#   5. Preflight conflict detection, then enable + start the instance
-#      (exactly once; idempotent, survives reboots).
+#   3. On the DB host: create the DB base dir, initialize the datadir if
+#      empty, write the per-project defaults file, install the
+#      mariadb@.service systemd template unit, and start the instance once.
 #
 # The instance identity is derived by convention from one base dir — the
 # same shape as the dev sandbox's $PWD/var/mariadb:
@@ -25,8 +28,9 @@
 # The per-project defaults file (/etc/<instance>/my.cnf) shields the daemon
 # from the global /etc/mysql/ includes, which would inject the distro
 # socket/port/pid paths and collide with other instances on the same host.
-# Socket-only by default (skip-networking, like dev); set DEPLOY_DB_PORT to
-# enable TCP on a per-project port instead.
+# TCP is opt-in: set DEPLOY_DB_PORT (required when app servers run on other
+# hosts) and the daemon binds DEPLOY_DB_BIND (default 0.0.0.0) on that port;
+# otherwise it is socket-only (skip-networking, like dev).
 #
 # Conflict diagnostics stay generic on purpose (no pid/owner disclosure):
 # provisioning logs may be read beyond the operator.
@@ -43,6 +47,11 @@ set -a
 . ./etc/deploy.conf
 set +a
 
+# --- Host role: does this server run the database? -----------------------
+PROVISION_DB="${DEPLOY_PROVISION_DB:-0}"
+# ZeroTier address the daemon binds to when DEPLOY_DB_PORT is set.
+DB_BIND="${DEPLOY_DB_BIND:-0.0.0.0}"
+
 # --- Instance identity: consumer data in, convention out ----------------
 DB_BASE="${DEPLOY_DB_BASE:?DEPLOY_DB_BASE is required (see etc/deploy.conf.template)}"
 DB_INSTANCE="${DEPLOY_DB_INSTANCE:-$(basename "$DEPLOY_TARGET_DIR")}"
@@ -58,8 +67,31 @@ DB_SYSTEMD_DIR="${DEPLOY_SYSTEMD_DIR:-/etc/systemd/system}"
 DB_UNIT_FILE="$DB_SYSTEMD_DIR/mariadb@.service"
 DB_UNIT="mariadb@$DB_INSTANCE"
 
-# Resolve the server binary once (Debian ships mariadbd with a mysqld
-# symlink; other distros may ship mysqld only).
+# 1. Assert the provisioning system user exists (assert-only by decision;
+#    ssh access to PROD_USER is a documented pre-deploy prerequisite).
+echo "Asserting that system user '$PROD_USER' exists..."
+if ! id -u "$PROD_USER" >/dev/null 2>&1; then
+    echo "ERROR: System user '$PROD_USER' does not exist on this host." >&2
+    echo "Please provision the user (and its ssh access) before running this deployment." >&2
+    exit 1
+fi
+
+# 2. Create permanent system dirs owned by the app user (every host), plus
+#    the deploy parent dir.
+echo "Creating permanent system logging and storage directories..."
+mkdir -p "$DEPLOY_LOG_DIR"
+chown -R "$PROD_USER:$PROD_USER" "$DEPLOY_LOG_DIR"
+mkdir -p "$(dirname "$DEPLOY_TARGET_DIR")"
+chown "$PROD_USER:$PROD_USER" "$(dirname "$DEPLOY_TARGET_DIR")"
+
+# 3. App-only hosts stop here: no MariaDB instance to provision.
+if [ "$PROVISION_DB" != "1" ]; then
+    echo "    App-only host: skipping MariaDB instance provisioning."
+    exit 0
+fi
+
+# 4. Resolve the server binary once (Debian ships mariadbd with a mysqld
+#    symlink; other distros may ship mysqld only).
 MARIADBD="$(command -v mariadbd || command -v mysqld || true)"
 if [ -z "$MARIADBD" ]; then
     echo "ERROR: mariadbd/mysqld not found on this host (install MariaDB server)." >&2
@@ -72,25 +104,14 @@ if [ -z "$INSTALL_DB_BIN" ]; then
 fi
 PING_BIN="$(command -v mariadb-admin || command -v mysqladmin || true)"
 
-# 1. Assert the provisioning system user exists (assert-only by decision;
-#    ssh access to PROD_USER is a documented pre-deploy prerequisite).
-echo "Asserting that system user '$PROD_USER' exists..."
-if ! id -u "$PROD_USER" >/dev/null 2>&1; then
-    echo "ERROR: System user '$PROD_USER' does not exist on this host." >&2
-    echo "Please provision the user (and its ssh access) before running this deployment." >&2
-    exit 1
-fi
+# 5. Create the per-project DB dirs: the data dir is owned by the app user,
+#    the /etc/<instance> config dir stays root-owned (the daemon drops
+#    privileges itself via user= in the defaults file).
+echo "Creating per-project MariaDB instance directories..."
+mkdir -p "$DB_DATA_DIR" "$DB_CONF_DIR"
+chown -R "$PROD_USER:$PROD_USER" "$DB_BASE"
 
-# 2. Create permanent system dirs owned by the app user, plus the deploy
-#    parent dir. The /etc/<instance> config dir stays root-owned (the daemon
-#    drops privileges itself via user= in the defaults file).
-echo "Creating permanent system logging and storage directories..."
-mkdir -p "$DEPLOY_LOG_DIR" "$DB_DATA_DIR" "$DB_CONF_DIR"
-chown -R "$PROD_USER:$PROD_USER" "$DEPLOY_LOG_DIR" "$DB_BASE"
-mkdir -p "$(dirname "$DEPLOY_TARGET_DIR")"
-chown "$PROD_USER:$PROD_USER" "$(dirname "$DEPLOY_TARGET_DIR")"
-
-# 3. Initialize the raw MariaDB instance structures (datadir owned by the
+# 6. Initialize the raw MariaDB instance structures (datadir owned by the
 #    app user). No --auth-root-authentication-method flag here: prod uses
 #    unix_socket auth, unlike the dev sandbox. The emptiness check (not just
 #    existence) is deliberate: mkdir -p above creates the dir, so a bare
@@ -102,7 +123,7 @@ else
     echo "    MariaDB datadir already initialized. Skipping."
 fi
 
-# 4. Per-project defaults file: keeps this instance away from the global
+# 7. Per-project defaults file: keeps this instance away from the global
 #    /etc/mysql/ includes (they inject the distro socket/port/pid paths).
 echo "Writing per-project MariaDB defaults file ($DB_CONF_FILE)..."
 {
@@ -113,14 +134,15 @@ echo "Writing per-project MariaDB defaults file ($DB_CONF_FILE)..."
     echo "log-error = $DB_ERROR_LOG"
     echo "user      = $PROD_USER"
     if [ -n "${DEPLOY_DB_PORT:-}" ]; then
-        echo "port      = $DEPLOY_DB_PORT"
+        echo "port         = $DEPLOY_DB_PORT"
+        echo "bind-address = $DB_BIND"
     else
         echo "skip-networking"
     fi
 } > "$DB_CONF_FILE"
 chmod 644 "$DB_CONF_FILE"
 
-# 5. systemd template unit: one file, one unit instance per project; the
+# 8. systemd template unit: one file, one unit instance per project; the
 #    instance name selects the defaults file (/etc/<instance>/my.cnf).
 echo "Installing systemd template unit ($DB_UNIT_FILE)..."
 cat > "$DB_UNIT_FILE" <<EOF
@@ -139,7 +161,7 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
 
-# 6. Preflight + start (idempotent). Diagnostics are generic — never reveal
+# 9. Preflight + start (idempotent). Diagnostics are generic — never reveal
 #    which pid/owner holds a taken path.
 if systemctl is-active --quiet "$DB_UNIT" 2>/dev/null; then
     echo "    MariaDB unit $DB_UNIT already active. Skipping."

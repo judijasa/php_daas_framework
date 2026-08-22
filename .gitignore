@@ -1,7 +1,7 @@
 /vendor/
 
 /etc/reuter.ini
-/etc/dev-machines.ini
+/etc/machines.ini
 /var/
 .env
 /result/

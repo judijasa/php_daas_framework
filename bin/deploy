@@ -7,27 +7,35 @@
 # optionally runs one-time provisioning (--init).
 #
 # Configuration is loaded from the consumer repo root: `.env` (machine
-# settings, same contract as `phprun`) for REPO_PATH, and a committed
-# etc/deploy.conf for the project-static deploy parameters. Run from the repo
-# root, inside `nix develop`.
+# settings, same contract as `phprun`) for REPO_PATH, a committed
+# etc/deploy.conf for the project-static deploy parameters, and the
+# git-ignored etc/machines.ini machine registry. Run from the repo root,
+# inside `nix develop`.
 #
-# Usage:
-#   deploy <target_host>          # continuous deployment
-#   deploy --init <target_host>   # + one-time system provisioning
-#
-# Two config surfaces in the consumer repo root:
-#   etc/deploy.conf  (COMMITTED, required) - project-static deployment target:
+# Config surfaces in the consumer repo root:
+#   etc/deploy.conf  (COMMITTED, required) - project-static deployment target,
+#   shared by every prod host:
 #     PROD_USER              unprivileged app user on the remote host
 #                            (must exist with SSH access before first deploy)
 #     DEPLOY_TARGET_DIR      remote repo location (e.g. /srv/apps/<app>)
 #     DEPLOY_LOG_DIR         remote log dir (deploy_version.log lives here)
 #     DEPLOY_DB_BASE        remote MariaDB instance base dir (datadir/socket/
-#                            pid-file derived by convention); created and
-#                            started by --init provisioning
+#                            pid-file derived by convention); used only on the
+#                            database host, created/started by --init
 #     DEPLOY_NIX_RESULT_DIR  remote nix result parent (e.g. /usr/local/<app>)
 #     DEPLOY_NIX_GCROOT      remote nix gcroot (e.g. /nix/var/nix/gcroots/<app>)
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
 #                            run after the generic provision; skipped if unset.
+#   etc/machines.ini  (git-ignored; template committed) - machine registry:
+#     [dev]  hostname -> prod DB username (DBUSER)
+#     [prod] ZeroTier-IP -> database name (the single non-empty entry is the
+#            database host; empty entries are app-only servers)
+#
+# Usage:
+#   deploy                # deploy to every [prod] host in etc/machines.ini
+#   deploy <target_host>  # deploy to a single prod host (must be in [prod])
+#   deploy --init ...     # + one-time system provisioning (MariaDB only on
+#                         #   the database host)
 #   .env  (git-ignored, machine-specific) - same contract as `phprun`:
 #     REPO_PATH              consumer repo root (set by the consumer's dev-init)
 #
@@ -76,6 +84,30 @@ set -a
 . "$PWD/etc/deploy.conf"
 set +a
 
+# Load the machine registry (git-ignored; copy from machines.ini.template).
+# [prod] lists every prod deploy target by ZeroTier IP; the single entry
+# with a non-empty database name is the database host.
+if [[ ! -f "$PWD/etc/machines.ini" ]]; then
+  echo "deploy: $PWD/etc/machines.ini not found" >&2
+  echo "  Copy the framework's etc/machines.ini.template into the repo and fill in the [prod] roster." >&2
+  exit 1
+fi
+
+# Print each [prod] entry as "zerotier-ip=dbname" (dbname empty on app-only
+# hosts). `main` parses this to build the deploy roster.
+read_prod_roster() {
+  php -r '
+    $cnf = parse_ini_file($argv[1], true, INI_SCANNER_RAW);
+    if (!$cnf || !isset($cnf["prod"])) {
+      fwrite(STDERR, "deploy: no [prod] section in etc/machines.ini" . PHP_EOL);
+      exit(1);
+    }
+    foreach ($cnf["prod"] as $host => $db) {
+      echo $host . "=" . $db . PHP_EOL;
+    }
+  ' "$PWD/etc/machines.ini"
+}
+
 require_config() {
   local missing="" _v
   for _v in REPO_PATH PROD_USER DEPLOY_TARGET_DIR DEPLOY_LOG_DIR DEPLOY_DB_BASE DEPLOY_NIX_RESULT_DIR DEPLOY_NIX_GCROOT; do
@@ -90,6 +122,7 @@ require_config() {
 }
 
 flight_checks() {
+  local REMOTE_HOST="$1"
   if [[ ! -n $IN_NIX_SHELL ]]; then
       echo "ERROR: This script must be run inside 'nix develop'"
       exit 1
@@ -335,10 +368,58 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 main() {
-  local INIT="$INIT"
-  local REMOTE_HOST="${1:?ERROR: Missing REMOTE_HOST argument. Usage: $0 <remote_host>}"
   require_config
-  flight_checks
+
+  # Build the prod roster from etc/machines.ini: hosts are ZeroTier IPs; the
+  # single non-empty dbname marks the database host.
+  local -a hosts=() dbnames=()
+  local host dbname i
+  while IFS='=' read -r host dbname; do
+    [ -n "$host" ] || continue
+    hosts+=("$host")
+    dbnames+=("$dbname")
+  done < <(read_prod_roster)
+
+  if [ "${#hosts[@]}" -eq 0 ]; then
+    echo "deploy: [prod] roster in etc/machines.ini is empty." >&2
+    exit 1
+  fi
+
+  # Optional explicit host: deploy to that one only (must be in [prod]).
+  if [ "${#ARGS[@]}" -gt 0 ]; then
+    if [ "${#ARGS[@]}" -gt 1 ]; then
+      echo "deploy: at most one target host may be given (got: ${ARGS[*]})" >&2
+      exit 1
+    fi
+    local wanted="${ARGS[0]}"
+    for i in "${!hosts[@]}"; do
+      if [ "${hosts[$i]}" = "$wanted" ]; then
+        deploy_to_host "${hosts[$i]}" "${dbnames[$i]}"
+        return 0
+      fi
+    done
+    echo "deploy: host '$wanted' is not in the [prod] roster of etc/machines.ini." >&2
+    exit 1
+  fi
+
+  # Default: deploy to every prod host.
+  for i in "${!hosts[@]}"; do
+    deploy_to_host "${hosts[$i]}" "${dbnames[$i]}"
+  done
+}
+
+# Per-host deploy pipeline. The database host (non-empty dbname) gets the
+# MariaDB instance on `--init`; app-only hosts skip it.
+deploy_to_host() {
+  local HOST="$1"
+  local DBNAME="$2"
+  local IS_DB_HOST=0
+  if [ -n "$DBNAME" ]; then
+    IS_DB_HOST=1
+  fi
+
+  flight_checks "$HOST"
+  local REMOTE_HOST="$HOST"
   local PROD_USER="${PROD_USER:?}"
   local REMOTE_TARGET_DIR="$DEPLOY_TARGET_DIR"
   local REV=$(git rev-parse HEAD)
@@ -361,7 +442,11 @@ main() {
     # repo): assert PROD_USER, create permanent dirs, initialize the MariaDB
     # cluster — all parameterized by etc/deploy.conf.
     echo "Running generic provisioning (bin/provision.sh) on remote..." >&2
-    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bin/provision.sh"
+    local PROVISION_ENV=""
+    if [ "$IS_DB_HOST" = "1" ]; then
+      PROVISION_ENV="DEPLOY_PROVISION_DB=1 DEPLOY_DB_BIND=$REMOTE_HOST"
+    fi
+    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $PROVISION_ENV bin/provision.sh"
     # Optional consumer-specific extras, run after the generic step.
     if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
       echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2

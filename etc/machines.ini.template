@@ -1,0 +1,21 @@
+# Machine registry: dev + prod machines.
+# Copy to etc/machines.ini (git-ignored; commit it only in a private fork) and
+# fill in your entries. `deploy` reads the [prod] roster; `init-local-env.sh`
+# reads [dev] for the local machine's DBUSER; `gen-reuter` reads [prod] for the
+# database mapping.
+#
+# [dev]  dev machine hostname -> prod DB username (DBUSER) used for remote DB
+#        access. Run `hostname` to find yours.
+# [prod] prod deploy targets. Each key is the server's ZeroTier IP (the same
+#        address `deploy` uses for SSH). A non-empty value marks that server as
+#        the database host and names the database it runs; a server with an
+#        empty value is app-only (it deploys the codebase but no MariaDB
+#        instance). Exactly one server holds the database.
+
+[dev]
+# my-hostname=mydbuser
+
+[prod]
+# 10.147.x.10=mydb
+# 10.147.x.11=
+# 10.147.x.12=

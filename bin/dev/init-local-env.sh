@@ -4,9 +4,11 @@
 #     by phprun and the framework's Database class (framework contract);
 #   - MYSQL_*: derived from the target dir (pure path arithmetic); consumed
 #     by the dev shell bootstrap (shell-enter.sh) and the Makefile;
-#   - DBUSER: mapped for this machine in etc/dev-machines.ini (needed for
-#     remote access to prod; skipped with a warning when the mapping does
-#     not exist).
+#   - DBUSER: mapped for this machine in the [dev] section of
+#     etc/machines.ini (needed for remote access to prod; skipped with a
+#     warning when the mapping does not exist).
+# Also refreshes etc/reuter.ini [prod] connectivity from etc/machines.ini via
+# gen-reuter (when available).
 # Backend for the Makefile target _dev-init-local-env (make dev-init) in
 # this repo and in consumer repos (shipped in the nix package, on PATH).
 # Always regenerates the file: a stale .env would silently misconfigure
@@ -34,16 +36,30 @@ MYSQL_PID_FILE="$MYSQL_BASE_DIR/mysql.pid"
     printf 'export REUTER_INI=%s/etc/reuter.ini\n' "$REPO_PATH"
     printf 'export EMA_TARGET=local\n'
 
-    if [ ! -f "$REPO_PATH/etc/dev-machines.ini" ]; then
-        echo "WARNING: $REPO_PATH/etc/dev-machines.ini not found. Skipping DBUSER (needed for remote access only)." >&2
+    if [ ! -f "$REPO_PATH/etc/machines.ini" ]; then
+        echo "WARNING: $REPO_PATH/etc/machines.ini not found. Skipping DBUSER (needed for remote access only)." >&2
     else
-        _dbuser=$(grep "^$(hostname)=" "$REPO_PATH/etc/dev-machines.ini" | cut -d= -f2)
+        _dbuser=$(awk -F= -v h="$(hostname)" '
+            /^[[:space:]]*#/ { next }
+            /^[[:space:]]*$/ { next }
+            /^\[/ { sec = $1; next }
+            sec == "[dev]" && $1 == h { print substr($0, index($0, "=") + 1); exit }
+        ' "$REPO_PATH/etc/machines.ini")
         if [ -z "$_dbuser" ]; then
-            echo "WARNING: hostname '$(hostname)' not found in $REPO_PATH/etc/dev-machines.ini. Skipping DBUSER (needed for remote access only)." >&2
+            echo "WARNING: hostname '$(hostname)' not found in the [dev] section of $REPO_PATH/etc/machines.ini. Skipping DBUSER (needed for remote access only)." >&2
         else
             printf 'export DBUSER=%s\n' "$_dbuser"
         fi
     fi
 } > "$REPO_PATH/.env"
+
+# Refresh the prod connectivity section of etc/reuter.ini from
+# etc/machines.ini. gen-reuter exits 0 (with a warning) when there is no
+# [prod] database host, so a fresh repo without a prod mapping is safe.
+if command -v gen-reuter >/dev/null 2>&1; then
+    ( cd "$REPO_PATH" && gen-reuter )
+elif [ -x "$REPO_PATH/bin/gen-reuter" ]; then
+    ( cd "$REPO_PATH" && "$REPO_PATH/bin/gen-reuter" )
+fi
 
 echo "    Created $REPO_PATH/.env (dev: REPO_PATH=$REPO_PATH, EMA_TARGET=local)"

@@ -22,7 +22,7 @@
       "Utils\\": "src/"
     }
   },
-  "bin": ["bin/phprun", "bin/deploy", "bin/gen-env", "bin/cron-manifest"],
+  "bin": ["bin/phprun", "bin/deploy", "bin/gen-env", "bin/gen-reuter", "bin/cron-manifest"],
   "require-dev": {
     "composer/composer": "^2"
   }

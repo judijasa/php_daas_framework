@@ -47,6 +47,8 @@
           chmod +x $out/bin/deploy
           cp ${./bin/gen-env} $out/bin/gen-env
           chmod +x $out/bin/gen-env
+          cp ${./bin/gen-reuter} $out/bin/gen-reuter
+          chmod +x $out/bin/gen-reuter
           cp ${./bin/cron-manifest} $out/bin/cron-manifest
           chmod +x $out/bin/cron-manifest
           cp ${./bin/provision.sh} $out/bin/provision.sh
