@@ -27,11 +27,22 @@ class Database extends PDO
         throw new \RuntimeException("reuter.ini not found. Set REUTER_INI or create etc/reuter.ini in the repo root.");
     }
 
-    private static function loadConfig(): array {
-        $target = getenv('EMA_TARGET') ?: 'local';
+    private static function loadConfig(string $dbname): array {
         $path = self::configPath();
         $cnf = parse_ini_file($path, true);
-        if ($cnf === false || !isset($cnf[$target])) {
+        if ($cnf === false) {
+            throw new \RuntimeException("Could not parse $path");
+        }
+        $env = getenv('EMA_TARGET') ?: 'local';
+        if ($env === 'local') {
+            // Prefer a per-database local section ([local:<dbname>]); fall
+            // back to the default dev sandbox section [local].
+            $target = isset($cnf['local:' . $dbname]) ? 'local:' . $dbname : 'local';
+        } else {
+            // Prod: sections are keyed by database name ([<dbname>]).
+            $target = $dbname;
+        }
+        if (!isset($cnf[$target])) {
             throw new \RuntimeException("Target '$target' not found in $path");
         }
         return $cnf[$target];
@@ -59,7 +70,7 @@ class Database extends PDO
     }
 
     public static function admin(string $dbname): self {
-        $cnf = self::loadConfig();
+        $cnf = self::loadConfig($dbname);
         return new self(
             self::buildDsn($dbname, $cnf),
             'admin',
@@ -69,7 +80,7 @@ class Database extends PDO
     }
 
     public static function reader(string $dbname): self {
-        $cnf = self::loadConfig();
+        $cnf = self::loadConfig($dbname);
         return new self(
             self::buildDsn($dbname, $cnf),
             'reader',
@@ -79,7 +90,7 @@ class Database extends PDO
     }
 
     public static function public(string $dbname): self {
-        $cnf = self::loadConfig();
+        $cnf = self::loadConfig($dbname);
         return new self(
             self::buildDsn($dbname, $cnf),
             'public',

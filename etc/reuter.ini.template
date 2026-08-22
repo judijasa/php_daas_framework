@@ -1,9 +1,16 @@
 ; DB connection config consumed by Utils\Connectivity\Database.
-; The active section is selected by the EMA_TARGET env var (default: local).
 ;
-; Note: the database name is NOT taken from here - it is passed to the
-; connector methods (e.g. Database::admin('simo')). SERVER / PORT and the
-; passwords below are what this file provides.
+; Section selection:
+;   - EMA_TARGET=local (default) uses [local] (dev sandbox socket), or a
+;     per-database [local:<dbname>] section when present.
+;   - any other EMA_TARGET (e.g. prod) resolves [<dbname>] by the database
+;     name passed to the connector (e.g. Database::admin('mydb')).
+; The `gen-reuter` CLI refreshes the prod [<dbname>] sections from
+; etc/machines.ini + etc/deploy.conf; the local sections are dev-side.
+;
+; The database name is NOT taken from here - it is passed to the connector
+; methods (e.g. Database::admin('mydb')). SERVER / PORT and the passwords
+; below are what this file provides.
 ;
 ;   admin  -> Database::admin($dbname)   (uses ADMIN_PASSWORD)
 ;   reader -> Database::reader($dbname)  (uses READER_PASSWORD)
@@ -17,10 +24,21 @@ DBMS=mariadb
 ADMIN_PASSWORD=
 READER_PASSWORD=
 
-[prod]
-SERVER=
+; Example: a second local database on the dev sandbox socket.
+[local:mydb]
+SERVER=localhost
 PORT=3306
-DBNAME=test
+DBNAME=mydb
+DBMS=mariadb
+ADMIN_PASSWORD=
+READER_PASSWORD=
+
+; Prod sections are generated per database by gen-reuter (one per mapped
+; database in etc/machines.ini [prod]):
+[mydb]
+SERVER=10.147.x.10
+PORT=3307
+DBNAME=mydb
 DBMS=mariadb
 ADMIN_PASSWORD=
 READER_PASSWORD=

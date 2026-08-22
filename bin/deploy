@@ -28,8 +28,9 @@
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - machine registry:
 #     [dev]  hostname -> prod DB username (DBUSER)
-#     [prod] ZeroTier-IP -> database name (the single non-empty entry is the
-#            database host; empty entries are app-only servers)
+#     [prod] ZeroTier-IP -> comma-separated database names (a non-empty
+#            entry is a database host; empty entries are app-only servers;
+#            each database maps to exactly one server)
 #
 # Usage:
 #   deploy                # deploy to every [prod] host in etc/machines.ini
@@ -93,8 +94,9 @@ if [[ ! -f "$PWD/etc/machines.ini" ]]; then
   exit 1
 fi
 
-# Print each [prod] entry as "zerotier-ip=dbname" (dbname empty on app-only
-# hosts). `main` parses this to build the deploy roster.
+# Print each [prod] entry as "zerotier-ip=<comma-separated database list>"
+# (empty list on app-only hosts). `main` parses this to build the deploy
+# roster.
 read_prod_roster() {
   php -r '
     $cnf = parse_ini_file($argv[1], true, INI_SCANNER_RAW);
@@ -265,10 +267,10 @@ deploy_nix_packages() {
   #   if server is hardware limited, as it needs build resources:
   #   compilers, -dev packages, 20GB of disk, etc.
   # - Ship Nix store folder structure (i.e. the symlinks to nix/store)
-  # - Keep /usr/local/simox/result/ root owned. This because
+  # - Keep /usr/local/<app>/result/ root owned. This because
   #   PROD_USER only needs to read/exec Nix binaries and if
   #   PROD_USER writes here, it could inject malicious executables.
-  # - Keep the store gcroot at /nix/var/nix/gcroots/simox (root-owned).
+  # - Keep the store gcroot at /nix/var/nix/gcroots/<app> (root-owned).
   #   With one user per project, a project-named path under /home is
   #   redundant, so the root lives in the system gcroot dir instead.
   local REMOTE_HOST="$1"
@@ -370,20 +372,38 @@ done
 main() {
   require_config
 
-  # Build the prod roster from etc/machines.ini: hosts are ZeroTier IPs; the
-  # single non-empty dbname marks the database host.
-  local -a hosts=() dbnames=()
-  local host dbname i
-  while IFS='=' read -r host dbname; do
+  # Build the prod roster from etc/machines.ini: hosts are ZeroTier IPs; a
+  # non-empty database list marks that host as a database host.
+  local -a hosts=() dblists=()
+  local host dblist i
+  while IFS='=' read -r host dblist; do
     [ -n "$host" ] || continue
     hosts+=("$host")
-    dbnames+=("$dbname")
+    dblists+=("$dblist")
   done < <(read_prod_roster)
 
   if [ "${#hosts[@]}" -eq 0 ]; then
     echo "deploy: [prod] roster in etc/machines.ini is empty." >&2
     exit 1
   fi
+
+  # Enforce one-to-one database -> server: a database name may not be listed
+  # on two servers.
+  local -A seen_db=()
+  local -a _dbs
+  local _d
+  for dblist in "${dblists[@]}"; do
+    dblist="${dblist//[[:space:]]/}"
+    [ -z "$dblist" ] && continue
+    IFS=',' read -ra _dbs <<< "$dblist"
+    for _d in "${_dbs[@]}"; do
+      if [ -n "${seen_db[$_d]:-}" ]; then
+        echo "deploy: database '$_d' is listed more than once in the [prod] roster (a database maps to exactly one server)." >&2
+        exit 1
+      fi
+      seen_db[$_d]=1
+    done
+  done
 
   # Optional explicit host: deploy to that one only (must be in [prod]).
   if [ "${#ARGS[@]}" -gt 0 ]; then
@@ -394,7 +414,7 @@ main() {
     local wanted="${ARGS[0]}"
     for i in "${!hosts[@]}"; do
       if [ "${hosts[$i]}" = "$wanted" ]; then
-        deploy_to_host "${hosts[$i]}" "${dbnames[$i]}"
+        deploy_to_host "${hosts[$i]}" "${dblists[$i]}"
         return 0
       fi
     done
@@ -404,17 +424,17 @@ main() {
 
   # Default: deploy to every prod host.
   for i in "${!hosts[@]}"; do
-    deploy_to_host "${hosts[$i]}" "${dbnames[$i]}"
+    deploy_to_host "${hosts[$i]}" "${dblists[$i]}"
   done
 }
 
-# Per-host deploy pipeline. The database host (non-empty dbname) gets the
-# MariaDB instance on `--init`; app-only hosts skip it.
+# Per-host deploy pipeline. A database host (non-empty database list) gets
+# the MariaDB instance on `--init`; app-only hosts skip it.
 deploy_to_host() {
   local HOST="$1"
-  local DBNAME="$2"
+  local DBLIST="$2"
   local IS_DB_HOST=0
-  if [ -n "$DBNAME" ]; then
+  if [ -n "$DBLIST" ]; then
     IS_DB_HOST=1
   fi
 

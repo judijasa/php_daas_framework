@@ -97,7 +97,7 @@ and build on directly.
 `phprun` loads `.env` from the current working directory (the repo root)
 before doing anything else — no manual exports needed. `make dev-init`
 writes `.env` with the repo paths, `REUTER_INI`, `EMA_TARGET=local` and, when
-`etc/machines.ini` `[dev]` maps the machine hostname to the prod DB username (`DBUSER`); `[prod]` lists the prod deploy targets (ZeroTier IP = database name on the DB host).
+`etc/machines.ini` `[dev]` maps the machine hostname to the prod DB username (`DBUSER`); `[prod]` lists the prod deploy targets (ZeroTier IP = comma-separated database names that server hosts; each database maps to exactly one server).
 
 In template mode the classes are autoloaded from the framework's **own**
 `vendor/autoload.php`, and `etc/reuter.ini` is resolved from the repo root.
@@ -256,7 +256,7 @@ every deploy by `gen-env` from the committed `etc/env.prod` template.
 | `REPO_PATH` | Consumer repo root. `phprun` must be run from here (when invoked from cron it cds here automatically). |
 | `REPO_LOG` | Directory where per-script logs are appended. |
 | `REUTER_INI` | Path to the DB config ini consumed by `Utils\\Connectivity\\Database`; falls back to `$PWD/etc/reuter.ini`. |
-| `EMA_TARGET` | Section of the ini to use (`local`, `prod`, ...). |
+| `EMA_TARGET` | `local` (dev sandbox) or any other value (prod). Non-local targets resolve the reuter.ini section by database name (`[<dbname>]`); `local` prefers `[local:<dbname>]`, falling back to `[local]`. |
 | `MYSQL_UNIX_PORT` | Optional unix socket appended to the DSN. |
 
 ## Deploying a consumer project
@@ -299,20 +299,23 @@ deploy --init                 # + one-time provisioning (MariaDB only on the DB 
 
 - **`etc/machines.ini`** (git-ignored; template committed) - the machine
   registry: `[dev]` hostname→prod DB username, `[prod]` ZeroTier-IP→database
-  name roster. `deploy` (default mode) targets every `[prod]` host; the single
-  entry with a non-empty database name is the DB host and gets the MariaDB
-  instance on `--init`. Commit this file only in a private fork.
+  names (comma-separated per server). `deploy` (default mode) targets every
+  `[prod]` host; a server with a non-empty list is a database host and gets a
+  MariaDB instance on `--init` (one instance serves all its databases). Each
+  database maps to exactly one server; a server may host several databases.
+  Commit this file only in a private fork.
 
 - **`.env`** (git-ignored, machine-specific) - same contract as `phprun`;
   deploy needs `REPO_PATH` (set by the consumer's dev-init).
 
 `deploy` fails loudly if `etc/deploy.conf` or `etc/machines.ini` is missing.
 
-`gen-reuter` (shipped alongside `deploy`) refreshes the `[prod]` connectivity
-section of `etc/reuter.ini` (SERVER/PORT/DBNAME) from `etc/machines.ini` +
-`etc/deploy.conf`, preserving credentials — run it after changing the mapping
-(dev: `init-local-env.sh` runs it automatically; prod: the consumer's
-`bin/deploy/post-nix.sh` calls it with the `REUTER_INI` path).
+`gen-reuter` (shipped alongside `deploy`) writes one reuter.ini section per
+prod database (`[<dbname>]` with SERVER/PORT/DBNAME) from `etc/machines.ini`
++ `etc/deploy.conf`, preserving credentials and the `[local]`/`[local:<dbname>]`
+dev sections — run it after changing the mapping (dev: `init-local-env.sh` runs
+it automatically; prod: the consumer's `bin/deploy/post-nix.sh` calls it with
+the `REUTER_INI` path).
 
 ### Before the first deploy
 
