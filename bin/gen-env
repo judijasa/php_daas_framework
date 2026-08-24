@@ -8,7 +8,7 @@
 #   REPO_PATH        := DEPLOY_TARGET_DIR
 #   REPO_LOG         := DEPLOY_LOG_DIR
 #   REUTER_INI       := /etc/<DEPLOY_DB_INSTANCE>/reuter.ini
-#   EMA_TARGET       := prod                        (constant)
+#   EMA_MODE         := prod                        (constant)
 #
 # The .env is deliberately MYSQL_*-free: the
 # app layer (Database.php) must stay on TCP, and the `ema` CLI reads the
@@ -19,7 +19,7 @@
 # so the gitignored .env must be regenerated every time — and it MUST be
 # complete before cron is installed: cron runs `phprun` from the repo root,
 # the nix wrapper sources .env, and if a key is missing the framework
-# silently falls back to its defaults (e.g. EMA_TARGET=local -> wrong DB
+# silently falls back to its defaults (e.g. EMA_MODE=dev -> wrong DB
 # section in production). Hence the fail-fast checks below.
 #
 # Usage: gen-env [target-dir]   (defaults to $PWD)
@@ -63,13 +63,13 @@ DB_INSTANCE="${DEPLOY_DB_INSTANCE:-$(basename "$DEPLOY_TARGET_DIR")}"
     printf 'export REPO_PATH=%s\n' "$DEPLOY_TARGET_DIR"
     printf 'export REPO_LOG=%s\n' "$DEPLOY_LOG_DIR"
     printf 'export REUTER_INI=/etc/%s/reuter.ini\n' "$DB_INSTANCE"
-    printf 'export EMA_TARGET=prod\n'
+    printf 'export EMA_MODE=prod\n'
 } > "$ENV_FILE"
 
 # Fail-fast guard: every projected key must be present in the written file.
 # Catches partial/interrupted writes that would otherwise silently misroute
 # prod cron jobs to the framework defaults.
-for _k in REPO_PATH REPO_LOG REUTER_INI EMA_TARGET; do
+for _k in REPO_PATH REPO_LOG REUTER_INI EMA_MODE; do
     grep -qE "^export $_k=" "$ENV_FILE" || {
         echo "ERROR: $ENV_FILE is missing required key: $_k" >&2
         exit 1

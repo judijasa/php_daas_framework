@@ -2,7 +2,7 @@
 # Create .env (git-ignored) with the full machine configuration:
 #   - REPO_PATH/REPO_LOG/REUTER_INI: runtime config consumed by phprun and
 #     the framework's Database class (REUTER_INI -> var/reuter.local.ini);
-#   - EMA_TARGET=local: machine-mode signal for the ema CLI only;
+#   - EMA_MODE=dev: machine-mode signal for the ema CLI only;
 #   - MYSQL_*: derived from the target dir (pure path arithmetic); consumed
 #     by the dev shell bootstrap (shell-enter.sh) and the Makefile;
 #   - DBUSER: mapped for this machine in the [dev] section of
@@ -35,7 +35,7 @@ MYSQL_PID_FILE="$MYSQL_BASE_DIR/mysql.pid"
     printf 'export MYSQL_UNIX_PORT=%s\n' "$MYSQL_UNIX_PORT"
     printf 'export MYSQL_PID_FILE=%s\n' "$MYSQL_PID_FILE"
     printf 'export REUTER_INI=%s/var/reuter.local.ini\n' "$REPO_PATH"
-    printf 'export EMA_TARGET=local\n'
+    printf 'export EMA_MODE=dev\n'
 
     if [ ! -f "$REPO_PATH/etc/machines.ini" ]; then
         echo "WARNING: $REPO_PATH/etc/machines.ini not found. Skipping DBUSER (needed for remote access only)." >&2
@@ -63,4 +63,4 @@ elif [ -x "$REPO_PATH/bin/gen-reuter" ]; then
     ( cd "$REPO_PATH" && "$REPO_PATH/bin/gen-reuter" )
 fi
 
-echo "    Created $REPO_PATH/.env (dev: REPO_PATH=$REPO_PATH, EMA_TARGET=local)"
+echo "    Created $REPO_PATH/.env (dev: REPO_PATH=$REPO_PATH, EMA_MODE=dev)"

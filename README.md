@@ -96,7 +96,7 @@ and build on directly.
 
 `phprun` loads `.env` from the current working directory (the repo root)
 before doing anything else — no manual exports needed. `make dev-init`
-writes `.env` with the repo paths, `REUTER_INI`, `EMA_TARGET=local` and, when
+writes `.env` with the repo paths, `REUTER_INI`, `EMA_MODE=dev` and, when
 `etc/machines.ini` `[dev]` maps the machine hostname to the prod DB username (`DBUSER`); `[prod]` lists the prod deploy targets (ZeroTier IP = comma-separated database names that server hosts; each database maps to exactly one server).
 
 In template mode the classes are autoloaded from the framework's **own**
@@ -124,7 +124,7 @@ The git-ignored `.env` is generated on the remote on every deploy — there is
 no committed `etc/env.prod` anymore: `gen-env` projects it deterministically
 from `etc/deploy.conf` (`REPO_PATH` = `DEPLOY_TARGET_DIR`, `REPO_LOG` =
 `DEPLOY_LOG_DIR`, `REUTER_INI` = `/etc/<DEPLOY_DB_INSTANCE>/reuter.ini`,
-`EMA_TARGET = prod`; the `.env` stays `MYSQL_*`-free — the DB host's socket
+`EMA_MODE = prod`; the `.env` stays `MYSQL_*`-free — the DB host's socket
 lives in the prod `reuter.ini` sections (`gen-reuter`), not in `.env`).
 `gen-env` fails loudly if a required `deploy.conf` key is missing or a
 projected key is lost in the output.
@@ -229,7 +229,7 @@ _dev-init-local-env:
 ```
 
 `init-local-env.sh [target-dir]` (default `$PWD`) writes the repo-root `.env`
-(`REPO_PATH`, `REPO_LOG`, `MYSQL_*`, `REUTER_INI`, `EMA_TARGET=local`, and
+(`REPO_PATH`, `REPO_LOG`, `MYSQL_*`, `REUTER_INI`, `EMA_MODE=dev`, and
 `DBUSER` when `etc/machines.ini` maps the hostname). `init-cluster.sh`
 takes the data-dir/pid-file/socket as arguments. Everything is derived from
 the target directory at runtime — no consumer paths are baked in. Consumer-
@@ -257,7 +257,7 @@ every deploy by `gen-env` as a deterministic projection of the committed
 | `REPO_PATH` | Consumer repo root. `phprun` must be run from here (when invoked from cron it cds here automatically). |
 | `REPO_LOG` | Directory where per-script logs are appended. |
 | `REUTER_INI` | Path to the DB config ini consumed by `Utils\\Connectivity\\Database`; falls back to `$PWD/etc/reuter.ini`. |
-| `EMA_TARGET` | Machine-mode signal for the `ema` CLI only (`local` = dev sandbox, `prod` = remote). The app layer ignores it; a database is always resolved to its `[<dbname>]` section. |
+| `EMA_MODE` | Machine-mode signal for the `ema` CLI only (`dev` = local sandbox, `prod` = server). The app layer ignores it; a database is always resolved to its `[<dbname>]` section. |
 | `MYSQL_UNIX_PORT` | Dev-only: unix socket appended to the DSN (set by `init-local-env.sh`). Prod `.env` stays `MYSQL_*`-free; the prod socket lives in the `reuter.ini` section (`gen-reuter`). |
 
 ## Deploying a consumer project
@@ -394,14 +394,14 @@ consumer's dev shell and production artifact):
 
 - **`gen-env [target-dir]`** — regenerates `.env` as a deterministic
   projection of the consumer's committed `etc/deploy.conf`
-  (`REPO_PATH`/`REPO_LOG`/`REUTER_INI`/`EMA_TARGET=prod`; the `.env` stays
+  (`REPO_PATH`/`REPO_LOG`/`REUTER_INI`/`EMA_MODE=prod`; the `.env` stays
   `MYSQL_*`-free — the DB host's socket lives in the prod `reuter.ini`
   sections written by `gen-reuter`), with a fail-fast guard: a required
   `deploy.conf` key missing, or a
   projected key lost from the output, aborts. The deployed repo directory is
   replaced on every deploy, so the gitignored `.env` must be recreated before
   cron is installed — a missing key would silently fall back to the framework
-  defaults (e.g. `EMA_TARGET=local` -> wrong DB section in production).
+  defaults (e.g. `EMA_MODE=dev` -> wrong DB section in production).
 - **`cron-manifest`** — scans the consumer's `src/` for functions decorated
   with both `#[CronJob]` and `#[Agent]` and prints a crontab to stdout
   (`CRON_USER`, and `CRON_NIX_BIN` defaulting to
