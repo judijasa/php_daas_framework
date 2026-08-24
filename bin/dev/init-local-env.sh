@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Create .env (git-ignored) with the full machine configuration:
-#   - REPO_PATH/REPO_LOG/REUTER_INI + EMA_TARGET: runtime config consumed
-#     by phprun and the framework's Database class (framework contract);
+#   - REPO_PATH/REPO_LOG/REUTER_INI: runtime config consumed by phprun and
+#     the framework's Database class (REUTER_INI -> var/reuter.local.ini);
+#   - EMA_TARGET=local: machine-mode signal for the ema CLI only;
 #   - MYSQL_*: derived from the target dir (pure path arithmetic); consumed
 #     by the dev shell bootstrap (shell-enter.sh) and the Makefile;
 #   - DBUSER: mapped for this machine in the [dev] section of
@@ -33,7 +34,7 @@ MYSQL_PID_FILE="$MYSQL_BASE_DIR/mysql.pid"
     printf 'export MYSQL_DATA_DIR=%s\n' "$MYSQL_DATA_DIR"
     printf 'export MYSQL_UNIX_PORT=%s\n' "$MYSQL_UNIX_PORT"
     printf 'export MYSQL_PID_FILE=%s\n' "$MYSQL_PID_FILE"
-    printf 'export REUTER_INI=%s/etc/reuter.ini\n' "$REPO_PATH"
+    printf 'export REUTER_INI=%s/var/reuter.local.ini\n' "$REPO_PATH"
     printf 'export EMA_TARGET=local\n'
 
     if [ ! -f "$REPO_PATH/etc/machines.ini" ]; then

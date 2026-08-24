@@ -33,15 +33,7 @@ class Database extends PDO
         if ($cnf === false) {
             throw new \RuntimeException("Could not parse $path");
         }
-        $env = getenv('EMA_TARGET') ?: 'local';
-        if ($env === 'local') {
-            // Prefer a per-database local section ([local:<dbname>]); fall
-            // back to the default dev sandbox section [local].
-            $target = isset($cnf['local:' . $dbname]) ? 'local:' . $dbname : 'local';
-        } else {
-            // Prod: sections are keyed by database name ([<dbname>]).
-            $target = $dbname;
-        }
+        $target = $dbname;
         if (!isset($cnf[$target])) {
             throw new \RuntimeException("Target '$target' not found in $path");
         }
