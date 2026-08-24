@@ -17,8 +17,11 @@
 #   REPO_LOG       := DEPLOY_LOG_DIR
 #   REUTER_INI     := /etc/<DEPLOY_DB_INSTANCE>/reuter.ini
 #   EMA_TARGET     := prod (constant)
-#   MYSQL_*        := DEPLOY_DB_BASE/{data,mysql.sock,mysql.pid} — emitted
-#                     only on the database host (socket present)
+#
+# .env stays MYSQL_*-free: the socket lives in
+# the prod reuter.ini section — gen-reuter writes
+# MYSQL_UNIX_PORT=$DEPLOY_DB_BASE/mysql.sock into each [<dbname>] section for
+# the `ema` CLI (root/unix_socket auth). The app layer stays TCP-only.
 #
 # PROD_USER: unprivileged app user on the remote host. Choose a short,
 # deliberate name — NOT the repo name (e.g. php_daas_framework -> daas). The
@@ -40,6 +43,8 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 #   datadir  = $DEPLOY_DB_BASE/data
 #   socket   = $DEPLOY_DB_BASE/mysql.sock
 #   pid-file = $DEPLOY_DB_BASE/mysql.pid
+# gen-reuter writes MYSQL_UNIX_PORT=$DEPLOY_DB_BASE/mysql.sock into each prod
+# reuter.ini section (for `ema init db <name>` root socket access on the DB host).
 # Created and initialized by `deploy --init` (the framework's generic
 # bin/provision.sh) only on the database host; the daemon runs as PROD_USER
 # via a systemd template unit (mariadb@<instance>), started exactly once and

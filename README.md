@@ -259,7 +259,7 @@ every deploy by `gen-env` as a deterministic projection of the committed
 | `REPO_LOG` | Directory where per-script logs are appended. |
 | `REUTER_INI` | Path to the DB config ini consumed by `Utils\\Connectivity\\Database`; falls back to `$PWD/etc/reuter.ini`. |
 | `EMA_TARGET` | `local` (dev sandbox) or any other value (prod). Non-local targets resolve the reuter.ini section by database name (`[<dbname>]`); `local` prefers `[local:<dbname>]`, falling back to `[local]`. |
-| `MYSQL_UNIX_PORT` | Optional unix socket appended to the DSN. |
+| `MYSQL_UNIX_PORT` | Dev-only: unix socket appended to the DSN (set by `init-local-env.sh`). Prod `.env` stays `MYSQL_*`-free; the prod socket lives in the `reuter.ini` section (`gen-reuter`). |
 
 ## Deploying a consumer project
 

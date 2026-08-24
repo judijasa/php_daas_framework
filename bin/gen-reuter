@@ -10,10 +10,14 @@ declare(strict_types=1);
 //
 // It writes ONE section per prod database, keyed by the database name, so
 // both the framework Database class and the `ema` CLI resolve a database to
-// the server that hosts it. It fills only the non-secret keys (SERVER, PORT,
-// DBNAME, DBMS) and preserves credentials (ADMIN_PASSWORD, READER_PASSWORD)
-// and every other section/key already present in the file (including
-// [local], the dev sandbox section).
+// the server that hosts it. It fills the connectivity keys (SERVER, PORT,
+// DBNAME, DBMS, and MYSQL_UNIX_PORT - the DB host's local socket path, so
+// `ema init db <name>` run on the DB host can authenticate as root over the
+// socket) and preserves credentials (ADMIN_PASSWORD, READER_PASSWORD) and
+// every other section/key already present in the file (including [local],
+// the dev sandbox section). MYSQL_UNIX_PORT is the only socket signal the
+// prod sections carry: the prod .env stays MYSQL_*-free so the app layer
+// (Database.php) remains TCP-only.
 //
 // Constraint enforced here: each database name must map to exactly one server.
 //
@@ -108,6 +112,11 @@ function main(): int
         exit(1);
     }
     $port = $deploy['DEPLOY_DB_PORT'];
+    // The prod sections carry the DB host's local socket path so `ema init
+    // db <name>` (run on the DB host) can authenticate as root over the
+    // socket (prod root = unix_socket auth). The app layer reads .env, not
+    // this key, and .env is MYSQL_*-free, so it stays TCP-only.
+    $dbBase = $deploy['DEPLOY_DB_BASE'] ?? '';
 
     $cnf = is_file($target) ? (parse_ini_file($target, true, INI_SCANNER_RAW) ?: []) : [];
     foreach ($mapping as $db => $info) {
@@ -123,6 +132,9 @@ function main(): int
         $cnf[$db]['DBMS'] = 'mariadb';
         $cnf[$db]['ADMIN_PASSWORD'] = $admin;
         $cnf[$db]['READER_PASSWORD'] = $reader;
+        if ($dbBase !== '') {
+            $cnf[$db]['MYSQL_UNIX_PORT'] = $dbBase . '/mysql.sock';
+        }
     }
 
     if (file_put_contents($target, ini_write($cnf)) === false) {
