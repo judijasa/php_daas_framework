@@ -107,8 +107,8 @@ both modes share the identical `Utils\` classes in `src/`.
 ### Standalone prod init
 
 Deploying this repo to a production server runs the exact same `bin/deploy`
-workflow as a consumer — only the config data is this repo's own. Two
-committed config files must exist before the first deploy:
+workflow as a consumer — only the config data is this repo's own. One
+committed config file must exist before the first deploy:
 
 1. **`etc/deploy.conf`** — copy from `etc/deploy.conf.template`, fill in the
    deployment target (`PROD_USER`, `DEPLOY_TARGET_DIR`, `DEPLOY_LOG_DIR`,
@@ -120,13 +120,14 @@ committed config files must exist before the first deploy:
    SSH access — see "Before the first deploy" under "Deploying a consumer
    project".
 
-2. **`etc/env.prod`** — copy from `etc/env.prod.template`, fill in the
-   production values (same contract as the dev `.env`, with
-   `EMA_TARGET=prod`), and commit. `gen-env` regenerates the git-ignored
-   `.env` from it on the remote on every deploy. Values must match
-   `etc/deploy.conf` (`REPO_PATH` = `DEPLOY_TARGET_DIR`,
-   `REPO_LOG` = `DEPLOY_LOG_DIR`); `gen-env` fails loudly if the file is
-   missing or a content line is lost in the output.
+The git-ignored `.env` is generated on the remote on every deploy — there is
+no committed `etc/env.prod` anymore: `gen-env` projects it deterministically
+from `etc/deploy.conf` (`REPO_PATH` = `DEPLOY_TARGET_DIR`, `REPO_LOG` =
+`DEPLOY_LOG_DIR`, `REUTER_INI` = `/etc/<DEPLOY_DB_INSTANCE>/reuter.ini`,
+`EMA_TARGET = prod`; plus the `MYSQL_*` paths when
+`$DEPLOY_DB_BASE/mysql.sock` exists — i.e. on the database host). `gen-env`
+fails loudly if a required `deploy.conf` key is missing or a projected key is
+lost in the output.
 
 The local `.env` (with `REPO_PATH`) comes from `make dev-init` — machine
 settings, git-ignored. Then deploy from the repo root, inside `nix develop`,
@@ -249,7 +250,8 @@ invoke `phprun` from the repo root. Values in `.env` override anything
 already in the process environment; if neither provides the required
 variables, `phprun` fails loudly. The dev `.env` is regenerated every time by
 `make dev-init` (`init-local-env.sh`); the production `.env` is regenerated on
-every deploy by `gen-env` from the committed `etc/env.prod` template.
+every deploy by `gen-env` as a deterministic projection of the committed
+`etc/deploy.conf`.
 
 | Variable | Purpose |
 |---|---|
@@ -267,9 +269,9 @@ repo to a remote production server: near-atomic swap of the repo dir, local
 one-time provisioning (`--init`).
 
 Standalone, the same CLI deploys this repo itself — the required committed
-config (`etc/deploy.conf`, `etc/env.prod`) and the exact steps are in
-"Standalone prod init" under "Standalone template usage". The workflow is
-identical to a consumer's; only the config data differs.
+config (`etc/deploy.conf`) and the exact steps are in "Standalone prod init"
+under "Standalone template usage". The workflow is identical to a consumer's;
+only the config data differs.
 
 ```bash
 deploy                       # continuous deployment to every [prod] host in etc/machines.ini
@@ -288,7 +290,7 @@ deploy --init                 # + one-time provisioning (MariaDB only on the DB 
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
 | `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance (DB host only); datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `deploy --init` (generic `bin/provision.sh`) via a `mariadb@<instance>` systemd unit. |
-| `DEPLOY_DB_INSTANCE` | Optional: systemd unit + config-dir name (`mariadb@<instance>`, `/etc/<instance>/my.cnf`); defaults to the basename of `DEPLOY_TARGET_DIR`. |
+| `DEPLOY_DB_INSTANCE` | Optional: systemd unit + config-dir name (`mariadb@<instance>`, `/etc/<instance>/my.cnf`); also the prod `reuter.ini` path (`/etc/<instance>/reuter.ini`) that `gen-env` writes into `.env` as `REUTER_INI`; defaults to the basename of `DEPLOY_TARGET_DIR`. |
 | `DEPLOY_DB_PORT` | Required on the database host: TCP port the MariaDB instance listens on. Scripts on every prod server — the DB host and app-only hosts alike — connect to the database over TCP. |
 | `DEPLOY_DB_BIND` | Optional: address the daemon binds to (default `0.0.0.0`); set it to the DB host's ZeroTier IP to restrict access to the overlay network. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
@@ -390,13 +392,15 @@ the deployed repo, which `deploy` runs on the remote if present:
 The framework ships two more CLIs used by those hooks (also on PATH in the
 consumer's dev shell and production artifact):
 
-- **`gen-env [target-dir]`** — regenerates `.env` from the consumer's
-  committed `etc/env.prod` template (export-style lines, git-ignored output),
-  with a fail-fast guard: every content line of the template must end up in
-  the file. The deployed repo directory is replaced on every deploy, so the
-  gitignored `.env` must be recreated before cron is installed — a missing
-  key would silently fall back to the framework defaults (e.g.
-  `EMA_TARGET=local` -> wrong DB section in production).
+- **`gen-env [target-dir]`** — regenerates `.env` as a deterministic
+  projection of the consumer's committed `etc/deploy.conf`
+  (`REPO_PATH`/`REPO_LOG`/`REUTER_INI`/`EMA_TARGET=prod`, plus the `MYSQL_*`
+  paths when `$DEPLOY_DB_BASE/mysql.sock` exists — i.e. on the database
+  host), with a fail-fast guard: a required `deploy.conf` key missing, or a
+  projected key lost from the output, aborts. The deployed repo directory is
+  replaced on every deploy, so the gitignored `.env` must be recreated before
+  cron is installed — a missing key would silently fall back to the framework
+  defaults (e.g. `EMA_TARGET=local` -> wrong DB section in production).
 - **`cron-manifest`** — scans the consumer's `src/` for functions decorated
   with both `#[CronJob]` and `#[Agent]` and prints a crontab to stdout
   (`CRON_USER`, and `CRON_NIX_BIN` defaulting to

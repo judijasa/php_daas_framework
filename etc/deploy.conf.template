@@ -10,6 +10,16 @@
 # .env (generated, git-ignored) holds machine settings; this file holds the
 # deployment target shared by every machine of the project.
 #
+# `gen-env` (run on the remote by the consumer's bin/deploy/post-nix.sh hook
+# on every deploy) projects the git-ignored .env from THIS file — there is
+# no separate etc/env.prod anymore. The projection:
+#   REPO_PATH      := DEPLOY_TARGET_DIR
+#   REPO_LOG       := DEPLOY_LOG_DIR
+#   REUTER_INI     := /etc/<DEPLOY_DB_INSTANCE>/reuter.ini
+#   EMA_TARGET     := prod (constant)
+#   MYSQL_*        := DEPLOY_DB_BASE/{data,mysql.sock,mysql.pid} — emitted
+#                     only on the database host (socket present)
+#
 # PROD_USER: unprivileged app user on the remote host. Choose a short,
 # deliberate name — NOT the repo name (e.g. php_daas_framework -> daas). The
 # user must already exist on the remote host with SSH access before the first
@@ -37,8 +47,10 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 export DEPLOY_DB_BASE=/var/lib/<app>/mariadb
 
 # DEPLOY_DB_INSTANCE: optional systemd unit instance name and config dir
-# name (/etc/<instance>/my.cnf). Defaults to the basename of
-# DEPLOY_TARGET_DIR; set it explicitly if that is not a good unit name.
+# name (/etc/<instance>/my.cnf). Also names the production reuter.ini path
+# (/etc/<instance>/reuter.ini) that `gen-env` writes into `.env` as
+# REUTER_INI. Defaults to the basename of DEPLOY_TARGET_DIR; set it
+# explicitly if that is not a good unit name.
 # export DEPLOY_DB_INSTANCE=<app>
 
 # DEPLOY_DB_PORT: REQUIRED on the database host — the TCP port the MariaDB

@@ -34,7 +34,7 @@ database can serve the website against the database host.
 |---|---|---|
 | `etc/machines.ini` | no (git-ignored; template committed) | `[dev]` hostname→dbuser, `[prod]` ZeroTier-IP→database-names roster |
 | `etc/deploy.conf` | yes | common deploy config for all prod hosts; `DEPLOY_DB_*` apply only on the DB host |
-| `etc/env.prod` | yes | uniform runtime template (no `MYSQL_*`; TCP everywhere) |
+| `.env` | no (generated) | runtime settings projected by `gen-env` from `etc/deploy.conf` (`REPO_PATH`/`REPO_LOG`/`REUTER_INI`/`EMA_TARGET=prod`; `MYSQL_*` only on the DB host) |
 | `etc/reuter.ini` | no (git-ignored) | connectivity contract; one `[<dbname>]` section per prod database refreshed by `gen-reuter`, plus `[local]`/`[local:<dbname>]` for dev |
 
 ## Changes
@@ -66,7 +66,9 @@ database can serve the website against the database host.
 - [x] `etc/machines.ini` (+ template): migrate `dev-machines.ini` into `[dev]`,
       add `[prod]` ZeroTier roster.
 - [x] `etc/deploy.conf`: add `DEPLOY_DB_PORT` / `DEPLOY_DB_BIND`.
-- [x] `etc/env.prod`: drop `MYSQL_*` (TCP everywhere).
+- [x] `etc/env.prod`: drop `MYSQL_*` (TCP everywhere). *(2026-08-24:
+      `etc/env.prod` merged into `etc/deploy.conf`; `gen-env` now projects
+      `.env` from it, re-emitting `MYSQL_*` on the DB host only.)*
 - [x] `bin/deploy/post-nix.sh`: call `gen-reuter "$REUTER_INI"`.
 - [x] `.gitignore`, `README.md`.
 
