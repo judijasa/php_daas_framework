@@ -1,6 +1,7 @@
 # php_daas_framework Makefile (dev-only; the framework CLIs phprun/deploy/
-# gen-env/cron-manifest and the dev scripts init-local-env.sh, init-cluster.sh
-# and shell-enter.sh are also shipped in the nix package for consumers).
+# gen-env/cron-manifest and the dev scripts init-local-env.sh and
+# shell-enter.sh are also shipped in the nix package for consumers;
+# init-cluster.sh is owned by ema and provided via packages.ema).
 
 SHELL := $(shell which bash 2>/dev/null)
 
@@ -49,7 +50,7 @@ _dev-create-dirs:
 	mkdir -p $(DEV_LOG_DIR) $(DEV_DB_DATA_DIR)
 
 _dev-init-cluster:
-	@bin/dev/init-cluster.sh "$(DEV_DB_DATA_DIR)" "$(DEV_DB_PID_FILE)" "$(DEV_DB_UNIX_PORT)"
+	@init-cluster.sh "$(DEV_DB_DATA_DIR)" "$(DEV_DB_PID_FILE)" "$(DEV_DB_UNIX_PORT)"
 
 _dev-init-composer:
 	@echo "Removing vendor/ if exists..."

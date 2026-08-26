@@ -34,7 +34,8 @@
       {
         # PRODUCTION ARTIFACT: the phprun CLI + runner, the deploy CLI, the
         # gen-env/cron-manifest deploy helpers, and the dev-init machinery
-        # (init-local-env.sh, init-cluster.sh, shell-enter.sh), for flakes
+        # (init-local-env.sh, shell-enter.sh; init-cluster.sh is owned by ema
+        # and provided via packages.ema), for flakes
         # (e.g. added to a caller's commonPackages). The dev scripts are
         # fully parameterized / CWD-relative, so consumers call them from
         # their own dev-init chain and keep their consumer-specific steps
@@ -55,8 +56,6 @@
           chmod +x $out/bin/provision.sh
           cp ${./bin/dev/init-local-env.sh} $out/bin/init-local-env.sh
           chmod +x $out/bin/init-local-env.sh
-          cp ${./bin/dev/init-cluster.sh} $out/bin/init-cluster.sh
-          chmod +x $out/bin/init-cluster.sh
           cp ${./bin/dev/shell-enter.sh} $out/bin/shell-enter.sh
           chmod +x $out/bin/shell-enter.sh
           cp -r ${./src} $out/src
@@ -76,7 +75,7 @@
         };
 
         # The `ema` MariaDB package manager, exposed so consumers share the
-        # same pinned input (used by `ema init tables` / init-cluster.sh).
+        # same pinned input (ships the `ema` CLI and init-cluster.sh).
         packages.ema = emaPkg;
 
         # DEVELOPMENT ENVIRONMENT: PHP + composer + ema + local MariaDB, for
