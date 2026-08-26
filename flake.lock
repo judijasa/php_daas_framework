@@ -6,11 +6,11 @@
         "utils": "utils"
       },
       "locked": {
-        "lastModified": 1787606880,
-        "narHash": "sha256-7cPwMWiCMT6u85xUwfSiAKKnhf8cwYDes9cbKq99kp0=",
+        "lastModified": 1787787802,
+        "narHash": "sha256-gRsflnxRioG9BVesxaoNaAvVODdHjaVuLsWeyJ5H/0Q=",
         "owner": "judijasa",
         "repo": "ema",
-        "rev": "72b4c287b220b30aeaab4ada21fd9d2464a63899",
+        "rev": "31b4e5f68c0fb976e27b190327f46886f06e28df",
         "type": "github"
       },
       "original": {
