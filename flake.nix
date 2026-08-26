@@ -27,6 +27,8 @@
         # (.pre-commit-config.yaml): phpstan powers the scoped commit-time and
         # full-repo push-time gates; pre-commit installs the pre-commit/pre-push
         # hook shims via `make dev-init` (bin/dev/init-git-hooks.sh).
+        bashPkg = pkgs.bash;
+        mariadbPkg = pkgs.mariadb_118;
         phpLinter = pkgs.phpstan;
         pre-commit = pkgs.pre-commit;
         emaPkg = ema.packages.${system}.default;
@@ -88,16 +90,20 @@
         # same pinned input (ships the `ema` CLI and init-cluster.sh).
         packages.ema = emaPkg;
 
+        # bash and mariadb re-exported so consumers (e.g. simox) import
+        # them from the framework instead of re-declaring their own.
+        packages.bash = bashPkg;
+        packages.mariadb = mariadbPkg;
+
         # DEVELOPMENT ENVIRONMENT: PHP + composer + ema + local MariaDB, for
         # template usage and the quick DB integration test (see README).
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            pkgs.bash
+            bashPkg
             phpPkg
             phpComposer
             emaPkg
-            pkgs.jq      # used by `ema init tables`
-            pkgs.mariadb_118
+            mariadbPkg
             phpLinter   # phpstan: scoped commit-time + full-repo push-time gates
             pre-commit  # pre-commit framework (hook shims installed by make dev-init)
           ];
