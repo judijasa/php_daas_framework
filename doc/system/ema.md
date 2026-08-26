@@ -109,7 +109,7 @@ user for prod targets.
 ## Notes / open items
 
 - `srv/*.sql` grants are host-pinned to `{{servername}}`; per-host grants are
-  applied manually for now (tracked in this framework's doc/todo.txt).
+  applied manually for now.
 - The framework's `src/Connectivity/Database.php` must stay agnostic to ema:
   it resolves sections by dbname alone and does not read `EMA_MODE`
   (see ema doc/2026-08-22-reuter-redesign.md, issue 1).
