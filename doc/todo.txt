@@ -1,0 +1,10 @@
+[.] Deploy has a problem, it starts the mysqld daemon in prod and deploy cron jobs,
+    but it does even when the db targeted by the cron job does not exist!! This
+    leads to errors if cron triggers those jobs before the database is created.
+
+[.] Issue 8 (ema doc/2026-08-22-reuter-redesign.md): per-host DB grants, manual for now.
+    The developer's own db user/host (e.g. 'jorge'@'jorge-workstation') must be granted
+    access to prod databases by hand. srv/<dbname>.sql keeps {{servername}} as-is
+    (still a prototype for building DB servers); ema is not involved.
+    Eventual mechanism (idea): generate grants automatically from etc/machines.ini —
+    [dev] already maps workstation hostname -> DBUSER, [prod] maps server -> databases.
