@@ -208,12 +208,14 @@ This repo is dual-delivered:
   composer as `vendor/bin/phprun` and `vendor/bin/deploy`).
 - **nix flake**: `packages.default` installs `bin/phprun`, `bin/deploy`,
   `bin/gen-env`, `bin/cron-manifest`, the dev-init machinery
-  (`init-local-env.sh`, `shell-enter.sh`) and `src/`
-  into the nix store. Add as an input and drop into your `commonPackages` to get
-  them on PATH (dev shell and production artifact). The flake also exposes
-  the runtime it needs so consumers don't re-declare it: `packages.runtime`
-  (php + composer in one drop-in), the individual `packages.php` /
-  `packages.composer`, and the pinned `packages.ema` (which ships `init-cluster.sh`).
+  (`init-local-env.sh`, `shell-enter.sh`) and `src/` into the nix store, and
+  re-exports the `ema` CLI + `init-cluster.sh` (joined from `emaPkg`). Add as
+  an input and drop into your `commonPackages` to get them on PATH (dev shell
+  and production artifact). The flake also exposes the runtime it needs so
+  consumers don't re-declare it: `packages.runtime` (php + composer in one
+  drop-in), the individual `packages.php` / `packages.composer`, and
+  `packages.ema` for consumers that want ema alone (without the framework
+  binaries).
 
 ### Dev-init machinery for consumers
 
@@ -232,8 +234,8 @@ _dev-init-local-env:
 (`REPO_PATH`, `REPO_LOG`, `MYSQL_*`, `REUTER_INI`, `EMA_MODE=dev`, and
 `DBUSER` when `etc/machines.ini` maps the hostname). `init-cluster.sh`
 (the MariaDB cluster init: `mariadb-install-db` + start `mysqld`, taking
-the data-dir/pid-file/socket as arguments) is **owned by ema** and provided
-via `packages.ema` (already in the dev shell) — this framework reuses it
+the data-dir/pid-file/socket as arguments) is **owned by ema** and re-exported
+via `packages.default` (joined from `emaPkg`, already in the dev shell) — this framework reuses it
 rather than keeping a duplicate copy. Everything is derived from
 the target directory at runtime — no consumer paths are baked in. Consumer-
 specific steps (git hooks, hosts, ...) stay in the consumer's Makefile, and
@@ -428,9 +430,6 @@ flake.nix:
 inputs.php_daas_framework.url = "github:judijasa/php_daas_framework";
 # In your let / commonPackages:
 #   phpRuntime          = php_daas_framework.packages.${system}.runtime;  # php + composer
-#   emaPkg              = php_daas_framework.packages.${system}.ema;      # MariaDB package manager
-#   phpDaasFrameworkPkg = php_daas_framework.packages.${system}.default;  # phprun / deploy / gen-env / cron-manifest + dev scripts
+#   phpDaasFrameworkPkg = php_daas_framework.packages.${system}.default;  # phprun / deploy / gen-env / cron-manifest + dev scripts + ema (CLI + init-cluster.sh)
 # ... add them to commonPackages to get them on PATH (dev shell and production artifact)
-```
-n artifact)
 ```
