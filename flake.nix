@@ -30,17 +30,10 @@
         phpLinter = pkgs.phpstan;
         pre-commit = pkgs.pre-commit;
         emaPkg = ema.packages.${system}.default;
-      in
-      {
-        # PRODUCTION ARTIFACT: the phprun CLI + runner, the deploy CLI, the
-        # gen-env/cron-manifest deploy helpers, and the dev-init machinery
-        # (init-local-env.sh, shell-enter.sh; init-cluster.sh is owned by ema
-        # and provided via packages.ema), for flakes
-        # (e.g. added to a caller's commonPackages). The dev scripts are
-        # fully parameterized / CWD-relative, so consumers call them from
-        # their own dev-init chain and keep their consumer-specific steps
-        # (git hooks, hosts, etc.) in their own Makefile.
-        packages.default = pkgs.runCommand "php-daas-framework" { } ''
+
+        # Framework binaries (phprun/deploy/dev scripts) joined with ema
+        # below so packages.default re-exports the ema CLI + init-cluster.sh.
+        frameworkBin = pkgs.runCommand "php-daas-framework-bin" { } ''
           mkdir -p $out/bin
           cp ${./bin/phprun} $out/bin/phprun
           chmod +x $out/bin/phprun
@@ -60,6 +53,23 @@
           chmod +x $out/bin/shell-enter.sh
           cp -r ${./src} $out/src
         '';
+      in
+      {
+        # PRODUCTION ARTIFACT: the phprun CLI + runner, the deploy CLI, the
+        # gen-env/cron-manifest deploy helpers, and the dev-init machinery
+        # (init-local-env.sh, shell-enter.sh) for flakes (e.g. added to a
+        # caller's commonPackages). init-cluster.sh (and the `ema` CLI) are
+        # owned by ema and re-exported here: packages.default is a symlinkJoin
+        # of frameworkBin + emaPkg, so a consumer (simox) sees them as coming
+        # from phpDaasFrameworkPkg while the framework itself sources them
+        # from emaPkg. The dev scripts are fully parameterized / CWD-relative,
+        # so consumers call them from their own dev-init chain and keep their
+        # consumer-specific steps (git hooks, hosts, etc.) in their own
+        # Makefile.
+        packages.default = pkgs.symlinkJoin {
+          name = "php-daas-framework";
+          paths = [ frameworkBin emaPkg ];
+        };
 
         # PHP runtime + composer, exposed so consumers don't re-declare the
         # framework's required extension set (mysqli/pdo_mysql for the DB
