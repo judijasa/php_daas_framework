@@ -13,8 +13,11 @@
 # Dev-only build and environment plumbing
 /Makefile export-ignore
 /bin/dev/ export-ignore
-/flake.nix export-ignore
-/flake.lock export-ignore
+# NOTE: flake.nix/flake.lock are intentionally NOT export-ignored. Excluding
+# them would break the github: flake fetcher for consumers: the GitHub
+# archive would omit flake.nix, so 'nix flake' reports "flake.nix does not
+# exist". The convenience of direct consumption outweighs the few bytes they
+# add to the deploy archive.
 
 # Dev machine templates (prod reads /etc/..., not these)
 /etc/dev-machines.ini.template export-ignore
