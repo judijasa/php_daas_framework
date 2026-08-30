@@ -145,8 +145,9 @@ consumer project" below).
 
 ## Quick test: PHP–MariaDB integration with ema
 
-The dev shell bundles PHP (with `pdo_mysql`), MariaDB, composer and
-[`ema`](https://github.com/judijasa/ema) — a MariaDB package manager.
+The dev shell bundles PHP (with `pdo_mysql`), MariaDB and composer.
+[`ema`](https://github.com/judijasa/ema) — a MariaDB package manager — is
+Composer-delivered (`vendor/bin/ema`).
 `make dev-init` initializes and starts an isolated MariaDB on a
 unix socket under `var/`, so there is no system DB to install.
 
@@ -201,48 +202,50 @@ The building blocks behind steps 3–4 live in the repo:
 
 ## Distribution
 
-This repo is dual-delivered:
+The framework code is delivered by Composer only. The `composer.json` `bin`
+array installs the CLIs and scripts into `vendor/bin`:
 
-- **composer package** (`judijasa/php-daas-framework`): the PHP library under
-  the `Utils\` PSR-4 namespace, plus the `bin/phprun` and `bin/deploy` wrappers (installed by
-  composer as `vendor/bin/phprun` and `vendor/bin/deploy`).
-- **nix flake**: `packages.default` installs `bin/phprun`, `bin/deploy`,
-  `bin/gen-env`, `bin/cron-manifest`, the dev-init machinery
-  (`init-local-env.sh`, `shell-enter.sh`) and `src/` into the nix store, and
-  re-exports the `ema` CLI + `init-cluster.sh` (joined from `emaPkg`). Add as
-  an input and drop into your `commonPackages` to get them on PATH (dev shell
-  and production artifact). The flake also exposes the runtime it needs so
-  consumers don't re-declare it: `packages.runtime` (php + composer in one
-  drop-in), the individual `packages.php` / `packages.composer`, and
-  `packages.ema` for consumers that want ema alone (without the framework
-  binaries).
+- `bin/phprun`, `bin/deploy`, `bin/gen-env`, `bin/gen-reuter`,
+  `bin/cron-manifest` — the framework CLIs.
+- `bin/dev/shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
+  machinery.
+- `bin/provision.sh` — the generic production provisioning script, invoked
+  by `deploy --init` as `vendor/bin/provision.sh`.
+
+The PHP library itself (the `Utils\` PSR-4 namespace under `src/`) is
+autoloaded from `vendor/autoload.php`.
+
+The `flake.nix` is dev-only: it declares the environment binaries (PHP with
+the `mysqli`/`pdo_mysql`/`bz2` extensions, composer, MariaDB, bash, phpstan,
+pre-commit) for the standalone dev shell. It no longer re-exports framework
+code or the `ema` CLI — `ema` (`judijasa/ema`) is its own Composer package,
+pinned independently.
 
 ### Dev-init machinery for consumers
 
-The dev scripts are on PATH via the flake input, so a consumer's own
+The dev scripts are Composer-delivered (`vendor/bin`), so a consumer's own
 `make dev-init` can delegate the generic steps to them:
 
 ```make
 _dev-init-cluster:
-	@init-cluster.sh "$(MYSQL_DATA_DIR)" "$(MYSQL_PID_FILE)" "$(MYSQL_UNIX_PORT)"
+        @vendor/bin/init-cluster.sh "$(MYSQL_DATA_DIR)" "$(MYSQL_PID_FILE)" "$(MYSQL_UNIX_PORT)"
 
 _dev-init-local-env:
-	@init-local-env.sh
+        @vendor/bin/init-local-env.sh
 ```
 
 `init-local-env.sh [target-dir]` (default `$PWD`) writes the repo-root `.env`
 (`REPO_PATH`, `REPO_LOG`, `MYSQL_*`, `REUTER_INI`, `EMA_MODE=dev`, and
 `DBUSER` when `etc/machines.ini` maps the hostname). `init-cluster.sh`
 (the MariaDB cluster init: `mariadb-install-db` + start `mysqld`, taking
-the data-dir/pid-file/socket as arguments) is **owned by ema** and re-exported
-via `packages.default` (joined from `emaPkg`, already in the dev shell) — this framework reuses it
-rather than keeping a duplicate copy. Everything is derived from
-the target directory at runtime — no consumer paths are baked in. Consumer-
-specific steps (git hooks, hosts, ...) stay in the consumer's Makefile, and
-the dev shell shellHook sources `shell-enter.sh` (loads `.env`, resumes the
-local MariaDB daemon): standalone flakes source `./bin/dev/shell-enter.sh`,
-consumers source it from PATH.
-
+the data-dir/pid-file/socket as arguments) is **owned by ema** and shipped in
+ema's own `composer.json` `bin` array (`vendor/bin/init-cluster.sh`) — this
+framework reuses it rather than keeping a duplicate copy. Everything is
+derived from the target directory at runtime — no consumer paths are baked
+in. Consumer-specific steps (git hooks, hosts, ...) stay in the consumer's
+Makefile, and the dev shell shellHook sources `shell-enter.sh` (loads `.env`,
+resumes the local MariaDB daemon): standalone flakes source
+`./bin/dev/shell-enter.sh`, consumers source `vendor/bin/shell-enter.sh`.
 
 ## Environment variables
 
@@ -269,7 +272,7 @@ every deploy by `gen-env` as a deterministic projection of the committed
 
 The repo also ships a `deploy` CLI (next to `phprun`) that pushes a consumer
 repo to a remote production server: near-atomic swap of the repo dir, local
-`nix build` + closure copy, conditional `composer install`, and optional
+`nix build` + closure copy, `composer install` on every deploy (`git archive` wipes `vendor/` each time), and optional
 one-time provisioning (`--init`).
 
 Standalone, the same CLI deploys this repo itself — the required committed
@@ -427,9 +430,8 @@ composer.json:
 flake.nix:
 
 ```nix
-inputs.php_daas_framework.url = "github:judijasa/php_daas_framework";
-# In your let / commonPackages:
-#   phpRuntime          = php_daas_framework.packages.${system}.runtime;  # php + composer
-#   phpDaasFrameworkPkg = php_daas_framework.packages.${system}.default;  # phprun / deploy / gen-env / cron-manifest + dev scripts + ema (CLI + init-cluster.sh)
-# ... add them to commonPackages to get them on PATH (dev shell and production artifact)
+# The framework flake no longer ships framework code — it is Composer-only.
+# Declare the environment binaries (php + mysqli/pdo_mysql/bz2, composer,
+# mariadb, bash) in your own flake, and add vendor/bin to PATH after
+# composer install (see "Dev-init machinery for consumers").
 ```

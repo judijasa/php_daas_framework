@@ -32,13 +32,6 @@ repos:
         files: .*
         stages: [pre-commit]
 
-      - id: lock-sync
-        name: Nix/Composer lock pin sync check
-        entry: ./hooks/pre-commit-lock-sync.sh
-        language: script
-        files: .*
-        stages: [pre-commit]
-
       # PHP Linter (scoped, commit-time)
       # pass_filenames: true -> pre-commit passes the staged .php files as
       # arguments, so phpstan only REPORTS errors in the files being committed.

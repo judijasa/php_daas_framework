@@ -12,13 +12,12 @@
 
 # Dev-only build and environment plumbing
 /Makefile export-ignore
-# NOTE: flake.nix/flake.lock and bin/dev/ are intentionally NOT
-# export-ignored. Excluding them breaks the github: flake fetcher for
-# consumers: the GitHub archive omits flake.nix (so 'nix flake' reports
-# "flake.nix does not exist") and bin/dev/init-local-env.sh + shell-enter.sh
-# (which flake.nix paths into frameworkBin), so the flake fails to evaluate.
-# The convenience of direct consumption outweighs the few bytes they add to
-# the deploy archive.
+# NOTE: bin/dev/ is intentionally NOT export-ignored: init-local-env.sh and
+# shell-enter.sh are listed in composer.json's `bin` array, so `composer
+# install` (run on the remote from the git archive) must find them to install
+# them into vendor/bin. flake.nix/flake.lock are dev-only now (the flake no
+# longer ships framework code or re-exports the ema CLI) but stay in the
+# archive for the standalone dev shell / template usage.
 
 # Dev machine templates (prod reads /etc/..., not these)
 /etc/dev-machines.ini.template export-ignore

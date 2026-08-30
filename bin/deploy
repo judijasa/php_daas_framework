@@ -314,34 +314,17 @@ deploy_composer_dependencies() {
   local REMOTE_HOST="$1"
   local PROD_USER="$2"
   local REMOTE_TARGET_DIR="$3"
-  local PREVIOUS_HASH_DEPLOYED="$4"
-  local CURRENT_HASH_DEPLOYED="$5"
-  local COMPOSER_JSON="composer.json"
-  local COMPOSER_LOCK="composer.lock"
-  local DEPLOY_VENDOR=$(git_target_changed $PREVIOUS_HASH_DEPLOYED $CURRENT_HASH_DEPLOYED $COMPOSER_JSON)
 
-  if [ "$DEPLOY_VENDOR" = "true" ] || [ "$INIT" = "true" ]; then
-      echo "File $COMPOSER_LOCK has changed. Running composer install and system level updates in remote host..."
-      # TO DO: Add minimal test for modified vendor/
+  # Run `composer install` on every deploy: `git archive` wipes vendor/ on
+  # each deploy, so vendor/bin (the Composer-delivered framework CLIs, dev
+  # scripts, and provision.sh) would otherwise be empty on the remote. The
+  # install is idempotent (composer.lock pins the exact dependency set), so
+  # re-running it when nothing changed is cheap.
+  echo "Running composer install on remote host..."
       ssh "$PROD_USER@$REMOTE_HOST" "
           export PATH='$DEPLOY_NIX_RESULT_DIR/result/bin':\$PATH
           cd \\\"$REMOTE_TARGET_DIR\\\" && composer install
       "
-  else
-      echo "File $COMPOSER_JSON has not changed between deployments. Skipping deployment of vendor/..."
-  fi
-}
-
-git_target_changed() {
-  local PREVIOUS_HASH_DEPLOYED="$1"
-  local CURRENT_HASH_DEPLOYED="$2"
-  local TARGET="$3"  # file (or directory) relative path
-
-  if [ -n "$PREVIOUS_HASH_DEPLOYED" ] && git diff --quiet "$PREVIOUS_HASH_DEPLOYED" "$CURRENT_HASH_DEPLOYED" -- "$TARGET"; then
-    echo "false"
-  else
-    echo "true"
-  fi
 }
 
 deploy_website() {
@@ -455,18 +438,18 @@ deploy_to_host() {
   fi
   [ "$NIX_EXISTS" != "true" ] && install_nix_remotely "$REMOTE_HOST" "$PROD_USER" || true
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
-  deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR" "$PREVIOUS_REV" "$REV"
+  deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
   deploy_website "$REMOTE_HOST" "$REMOTE_TARGET_DIR"
   if [ "$INIT" = "true" ]; then
     # Generic provisioning (framework mechanism, shipped in the deployed
     # repo): assert PROD_USER, create permanent dirs, initialize the MariaDB
     # cluster — all parameterized by etc/deploy.conf.
-    echo "Running generic provisioning (bin/provision.sh) on remote..." >&2
+    echo "Running generic provisioning (vendor/bin/provision.sh) on remote..." >&2
     local PROVISION_ENV=""
     if [ "$IS_DB_HOST" = "1" ]; then
       PROVISION_ENV="DEPLOY_PROVISION_DB=1 DEPLOY_DB_BIND=$REMOTE_HOST"
     fi
-    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $PROVISION_ENV bin/provision.sh"
+    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $PROVISION_ENV vendor/bin/provision.sh"
     # Optional consumer-specific extras, run after the generic step.
     if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
       echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2

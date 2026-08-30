@@ -4,10 +4,9 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     utils.url = "github:numtide/flake-utils";
-    ema.url = "github:judijasa/ema";
   };
 
-  outputs = { self, nixpkgs, utils, ema }:
+  outputs = { self, nixpkgs, utils }:
     utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -31,78 +30,20 @@
         mariadbPkg = pkgs.mariadb_118;
         phpLinter = pkgs.phpstan;
         pre-commit = pkgs.pre-commit;
-        emaPkg = ema.packages.${system}.default;
-
-        # Framework binaries (phprun/deploy/dev scripts) joined with ema
-        # below so packages.default re-exports the ema CLI + init-cluster.sh.
-        frameworkBin = pkgs.runCommand "php-daas-framework-bin" { } ''
-          mkdir -p $out/bin
-          cp ${./bin/phprun} $out/bin/phprun
-          chmod +x $out/bin/phprun
-          cp ${./bin/deploy} $out/bin/deploy
-          chmod +x $out/bin/deploy
-          cp ${./bin/gen-env} $out/bin/gen-env
-          chmod +x $out/bin/gen-env
-          cp ${./bin/gen-reuter} $out/bin/gen-reuter
-          chmod +x $out/bin/gen-reuter
-          cp ${./bin/cron-manifest} $out/bin/cron-manifest
-          chmod +x $out/bin/cron-manifest
-          cp ${./bin/provision.sh} $out/bin/provision.sh
-          chmod +x $out/bin/provision.sh
-          cp ${./bin/dev/init-local-env.sh} $out/bin/init-local-env.sh
-          chmod +x $out/bin/init-local-env.sh
-          cp ${./bin/dev/shell-enter.sh} $out/bin/shell-enter.sh
-          chmod +x $out/bin/shell-enter.sh
-          cp -r ${./src} $out/src
-        '';
       in
       {
-        # PRODUCTION ARTIFACT: the phprun CLI + runner, the deploy CLI, the
-        # gen-env/cron-manifest deploy helpers, and the dev-init machinery
-        # (init-local-env.sh, shell-enter.sh) for flakes (e.g. added to a
-        # caller's commonPackages). init-cluster.sh (and the `ema` CLI) are
-        # owned by ema and re-exported here: packages.default is a symlinkJoin
-        # of frameworkBin + emaPkg, so a consumer (simox) sees them as coming
-        # from phpDaasFrameworkPkg while the framework itself sources them
-        # from emaPkg. The dev scripts are fully parameterized / CWD-relative,
-        # so consumers call them from their own dev-init chain and keep their
-        # consumer-specific steps (git hooks, hosts, etc.) in their own
-        # Makefile.
-        packages.default = pkgs.symlinkJoin {
-          name = "php-daas-framework";
-          paths = [ frameworkBin emaPkg ];
-        };
-
-        # PHP runtime + composer, exposed so consumers don't re-declare the
-        # framework's required extension set (mysqli/pdo_mysql for the DB
-        # layer, bz2 for the casperjs/phantomjs composer deps).
-        packages.php = phpPkg;
-        packages.composer = phpComposer;
-
-        # Combined drop-in runtime (php + composer) for a one-line
-        # commonPackages entry.
-        packages.runtime = pkgs.symlinkJoin {
-          name = "php-daas-framework-runtime";
-          paths = [ phpPkg phpComposer ];
-        };
-
-        # The `ema` MariaDB package manager, exposed so consumers share the
-        # same pinned input (ships the `ema` CLI and init-cluster.sh).
-        packages.ema = emaPkg;
-
-        # bash and mariadb re-exported so consumers (e.g. simox) import
-        # them from the framework instead of re-declaring their own.
-        packages.bash = bashPkg;
-        packages.mariadb = mariadbPkg;
-
-        # DEVELOPMENT ENVIRONMENT: PHP + composer + ema + local MariaDB, for
-        # template usage and the quick DB integration test (see README).
+        # DEVELOPMENT ENVIRONMENT ONLY: PHP + composer + local MariaDB, for
+        # standalone/template usage. Framework code (src/, the CLIs, and the
+        # dev scripts) is Composer-delivered (vendor/bin), not re-exported
+        # here, so the flake keeps only the environment binaries (php runtime
+        # + extensions, composer, mariadb, bash, phpstan, pre-commit). ema
+        # (CLI + init-cluster.sh) is also Composer-delivered via the
+        # `judijasa/ema` package, so it is absent from this shell.
         devShells.default = pkgs.mkShell {
           buildInputs = [
             bashPkg
             phpPkg
             phpComposer
-            emaPkg
             mariadbPkg
             phpLinter   # phpstan: scoped commit-time + full-repo push-time gates
             pre-commit  # pre-commit framework (hook shims installed by make dev-init)
