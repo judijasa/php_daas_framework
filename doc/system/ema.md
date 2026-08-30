@@ -8,8 +8,10 @@ connectivity and deploy model.
 
 `ema` is a Bash CLI that manages MariaDB databases from a repo's `pkg/`
 (schema packages) and `srv/` (per-database `srv/<dbname>.sql` init scripts).
-It ships to servers via this framework's `packages.ema`; the nix result puts
-`ema`, `gen-env`, and `gen-reuter` on the server PATH.
+It ships as its own Composer package (`judijasa/ema`), installed under
+`vendor/judijasa/ema` with `vendor/bin/ema` and `vendor/bin/init-cluster.sh`
+on the PATH — the same remote `composer install` that delivers the
+framework's own CLIs (`gen-env`, `gen-reuter`, ...) to `vendor/bin`.
 
 ## The reuter.ini contract
 
@@ -74,16 +76,20 @@ section header is the dbname).
 
 ## Deploy chain
 
-- `deploy` ships `pkg/` and `srv/` (gitattributes keeps them in the archive).
+- `deploy` ships `pkg/` and `srv/` (gitattributes keeps them in the archive),
+  then runs `composer install` on the remote so the framework CLIs
+  (`gen-env`, `gen-reuter`, `provision.sh`, ...) and `ema` land in
+  `vendor/bin`. (The nix closure ships only the PHP runtime + extensions;
+  framework code is Composer-only.)
 - `post-nix.sh` (remote hook, root):
   1. `gen-env` → `.env` with `EMA_MODE=prod`,
      `REUTER_INI=/etc/<instance>/reuter.ini`;
   2. `gen-reuter "$REUTER_INI"` → the `[<dbname>]` sections exist on the DB
      host before any database is created.
-- `provision.sh` (`deploy --init`, root) provisions only the instance:
-  `$DEPLOY_DB_BASE/{data,mysql.sock,mysql.pid}`, `/etc/<instance>/my.cnf`,
-  `mariadb@<instance>` systemd unit. It never creates databases or users —
-  that is ema's job.
+- `vendor/bin/provision.sh` (`deploy --init`, root) provisions only the
+  instance: `$DEPLOY_DB_BASE/{data,mysql.sock,mysql.pid}`,
+  `/etc/<instance>/my.cnf`, `mariadb@<instance>` systemd unit. It never
+  creates databases or users — that is ema's job.
 - Consumer repos git-ignore `/var/`, `/etc/reuter.ini`, `/etc/machines.ini`,
   and `.env`.
 

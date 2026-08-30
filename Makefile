@@ -25,7 +25,7 @@ _dev-init: DEV_DB_PID_FILE = $(MYSQL_PID_FILE)
 _dev-init: DEV_LOG_DIR = $(REPO_LOG)
 
 .PHONY: help dev-init _dev-assert-nix _dev-init _dev-init-git-hooks _dev-create-dirs \
-    _dev-init-cluster _dev-init-composer _dev-init-local-env
+    _dev-init-composer _dev-init-cluster _dev-init-local-env
 
 help:
 	@echo "Available initialization targets:"
@@ -39,7 +39,7 @@ _dev-assert-nix:
 	    exit 1; \
 	fi
 
-_dev-init: _dev-init-git-hooks _dev-create-dirs _dev-init-cluster _dev-init-composer _dev-init-local-env
+_dev-init: _dev-init-git-hooks _dev-create-dirs _dev-init-composer _dev-init-cluster _dev-init-local-env
 	@echo "Developer environment successfully initialized."
 
 _dev-init-git-hooks:
@@ -49,14 +49,14 @@ _dev-create-dirs:
 	@echo "Creating local logging and storage directories..."
 	mkdir -p $(DEV_LOG_DIR) $(DEV_DB_DATA_DIR)
 
-_dev-init-cluster:
-	@init-cluster.sh "$(DEV_DB_DATA_DIR)" "$(DEV_DB_PID_FILE)" "$(DEV_DB_UNIX_PORT)"
-
 _dev-init-composer:
 	@echo "Removing vendor/ if exists..."
 	-rm -rf vendor
 	@echo "Running composer install...";
 	composer install
+
+_dev-init-cluster:
+	@vendor/bin/init-cluster.sh "$(DEV_DB_DATA_DIR)" "$(DEV_DB_PID_FILE)" "$(DEV_DB_UNIX_PORT)"
 
 _dev-init-local-env:
 	@bin/dev/init-local-env.sh

@@ -35,7 +35,14 @@
     "bin/dev/init-local-env.sh",
     "bin/provision.sh"
   ],
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/judijasa/ema"
+    }
+  ],
   "require-dev": {
-    "composer/composer": "^2"
+    "composer/composer": "^2",
+    "judijasa/ema": "dev-main"
   }
 }

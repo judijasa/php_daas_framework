@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "390900ff58a57ad4a6965967a5b3c46b",
+    "content-hash": "2f0532727da3f779a893aee35943748a",
     "packages": [
         {
             "name": "jakoch/phantomjs-installer",
@@ -773,6 +773,39 @@
                 }
             ],
             "time": "2024-05-06T16:37:16+00:00"
+        },
+        {
+            "name": "judijasa/ema",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/judijasa/ema.git",
+                "reference": "8ce8a1641fe7874502af1f7b104be1dac8a7505b"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/judijasa/ema/zipball/8ce8a1641fe7874502af1f7b104be1dac8a7505b",
+                "reference": "8ce8a1641fe7874502af1f7b104be1dac8a7505b",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.1"
+            },
+            "default-branch": true,
+            "bin": [
+                "ema",
+                "bin/dev/init-cluster.sh"
+            ],
+            "type": "library",
+            "license": [
+                "MIT"
+            ],
+            "description": "Package manager for MariaDB — schema packages + CLI distributed as a Composer library",
+            "support": {
+                "source": "https://github.com/judijasa/ema/tree/main",
+                "issues": "https://github.com/judijasa/ema/issues"
+            },
+            "time": "2026-08-30T18:03:42+00:00"
         },
         {
             "name": "justinrainbow/json-schema",
@@ -2566,12 +2599,16 @@
     "aliases": [],
     "minimum-stability": "stable",
     "stability-flags": {
-        "jerome-breton/casperjs-installer": 20
+        "jerome-breton/casperjs-installer": 20,
+        "judijasa/ema": 20
     },
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
         "php": ">=8.1",
+        "ext-mysqli": "*",
+        "ext-pdo_mysql": "*",
+        "ext-bz2": "*",
         "composer-plugin-api": "^2.0"
     },
     "platform-dev": {},
