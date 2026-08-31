@@ -29,7 +29,14 @@ repos:
         name: My Custom Composer Pre-Commit Logic
         entry: ./hooks/pre-commit-composer.sh
         language: script
-        files: .*
+        files: ^composer\.json$
+        stages: [pre-commit]
+
+      - id: flake
+        name: Nix flake lock in sync check
+        entry: ./hooks/pre-commit-flake.sh
+        language: script
+        files: ^flake\.nix$
         stages: [pre-commit]
 
       # PHP Linter (scoped, commit-time)

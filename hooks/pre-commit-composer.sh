@@ -1,15 +1,18 @@
 #!/usr/bin/env sh
-
 set -euo pipefail
 
-# If composer.json is staged, recreate composer.lock (and stage it) and vendor/
-if git diff --cached --name-only | grep -qx "composer.json"; then
-    echo "composer.json is staged. Performing tasks..."
-    echo "Removing old composer.lock and vendor/..."
-    rm -f composer.lock
-    rm -rf vendor
-    echo "Running composer install..."
-    composer install
-    echo "Staging new composer.lock..."
-    git add composer.lock
+# Only act when composer.json is staged.
+git diff --cached --name-only | grep -qx 'composer.json' || exit 0
+
+if composer validate --no-check-all --no-check-publish --no-check-version \
+        --check-lock --strict; then
+    exit 0
 fi
+
+cat >&2 <<'EOF'
+composer.lock is out of date with composer.json.
+
+Run:  composer update --minimal-changes   # re-lock, no bumps; adds/removes as needed
+Then: git add composer.lock
+EOF
+exit 1
