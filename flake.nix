@@ -49,7 +49,7 @@
             pre-commit  # pre-commit framework (hook shims installed by make dev-init)
           ];
           shellHook = ''
-            . ./bin/dev/shell-enter.sh
+            . ./bin/dev/shell-enter.sh php_daas
 
             # Customize the prompt (PS1)
             # Define ANSI color codes for readability
@@ -58,11 +58,6 @@
             GREEN='\033[0;32m'
             NC='\033[0m' # No Color
             export PS1="\[$CYAN\] \u@\h:\[$GREEN\]\w\[$NC\]\$ "
-
-            # Inherit nix shell env in tmux (doesn't include PS1)
-            # Requires `set -g default-command ...` in .tmux.conf
-            PROJECT_NAME="php_daas"
-            alias tmux="command tmux -L \$PROJECT_NAME new-session -A -s \$PROJECT_NAME"
           '';
         };
       }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Dev-shell runtime bootstrap, sourced by the shellHook of this repo's
-# flake (./bin/dev/shell-enter.sh) and of consumer flakes (shipped on PATH
+# flake (./bin/dev/shell-enter.sh <PROJECT_NAME>) and of consumer flakes (shipped on PATH
 # via the framework's nix package). Must be sourced (not executed): the
 # .env exports must reach the interactive shell, and the MariaDB stop trap
 # must bind to it. Must run from the repo root ($PWD).
@@ -14,6 +14,12 @@ if ! (return 0 2>/dev/null); then
     echo "shell-enter.sh must be sourced, not executed" >&2
     exit 1
 fi
+
+if [ -z "${1:-}" ]; then
+    echo "usage: source shell-enter.sh <PROJECT_NAME>" >&2
+    return 1 2>/dev/null || exit 1
+fi
+PROJECT_NAME="$1"
 
 if [ -f .env ]; then
     set -a
@@ -33,3 +39,7 @@ if [ -f .env ]; then
 else
     echo "No .env found - run 'make dev-init' inside this shell (required for MariaDB and runtime config)."
 fi
+
+# Inherit nix shell env in tmux (doesn't include PS1)
+# Requires 'set -g default-command ...' in .tmux.conf
+alias tmux="command tmux -L \$PROJECT_NAME new-session -A -s \$PROJECT_NAME"
