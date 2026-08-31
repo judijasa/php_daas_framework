@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# deploy — project-agnostic deployment CLI (php_daas_framework).
+# pf-deploy.sh — project-agnostic deployment CLI (php_daas_framework).
 #
 # Ships a consumer repo to a remote production server with a near-atomic
 # swap, then copies the nix closure, installs composer dependencies, and
@@ -33,10 +33,10 @@
 #            each database maps to exactly one server)
 #
 # Usage:
-#   deploy                # deploy to every [prod] host in etc/machines.ini
-#   deploy <target_host>  # deploy to a single prod host (must be in [prod])
-#   deploy --init ...     # + one-time system provisioning (MariaDB only on
-#                         #   the database host)
+#   pf-deploy.sh                # deploy to every [prod] host in etc/machines.ini
+#   pf-deploy.sh <target_host>  # deploy to a single prod host (must be in [prod])
+#   pf-deploy.sh --init ...     # + one-time system provisioning (MariaDB only on
+#                               #   the database host)
 #   .env  (git-ignored, machine-specific) - same contract as `phprun`:
 #     REPO_PATH              consumer repo root (set by the consumer's dev-init)
 #
@@ -61,7 +61,7 @@ fi
 # .env (generated per environment, git-ignored), deploy.conf is committed and
 # describes the deployment target. It is required.
 if [[ ! -f "$PWD/etc/deploy.conf" ]]; then
-  echo "deploy: $PWD/etc/deploy.conf not found" >&2
+  echo "pf-deploy: $PWD/etc/deploy.conf not found" >&2
   echo "  Copy the framework's etc/deploy.conf.template into the repo and fill in the values." >&2
   exit 1
 fi
@@ -73,7 +73,7 @@ set +a
 # [prod] lists every prod deploy target by ZeroTier IP; the single entry
 # with a non-empty database name is the database host.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
-  echo "deploy: $PWD/etc/machines.ini not found" >&2
+  echo "pf-deploy: $PWD/etc/machines.ini not found" >&2
   echo "  Copy the framework's etc/machines.ini.template into the repo and fill in the [prod] roster." >&2
   exit 1
 fi
@@ -85,7 +85,7 @@ read_prod_roster() {
   php -r '
     $cnf = parse_ini_file($argv[1], true, INI_SCANNER_RAW);
     if (!$cnf || !isset($cnf["prod"])) {
-      fwrite(STDERR, "deploy: no [prod] section in etc/machines.ini" . PHP_EOL);
+      fwrite(STDERR, "pf-deploy: no [prod] section in etc/machines.ini" . PHP_EOL);
       exit(1);
     }
     foreach ($cnf["prod"] as $host => $db) {
@@ -102,7 +102,7 @@ require_config() {
     fi
   done
   if [ -n "$missing" ]; then
-    echo "deploy: missing required config (REPO_PATH from .env; PROD_USER/DEPLOY_* from etc/deploy.conf):$missing" >&2
+    echo "pf-deploy: missing required config (REPO_PATH from .env; PROD_USER/DEPLOY_* from etc/deploy.conf):$missing" >&2
     exit 1
   fi
 }
@@ -113,7 +113,7 @@ flight_checks() {
       echo "ERROR: This script must be run inside 'nix develop'"
       exit 1
   fi
-  
+
   if [[ "$PWD" != "$REPO_PATH" ]]
   then
     echo "This command must be executed from the repository's root directory."
@@ -159,8 +159,8 @@ deploy_repo_remotely() {
 
   # Deploy (atomic on remote)
   git archive "$REV" | ssh "root@$REMOTE_HOST" "
-      set -e     
-      
+      set -e
+
       if ! id \"$PROD_USER\" &>/dev/null; then
           echo \"User $PROD_USER doesn't exist. Create and setup ssh access to it.\" >&2
           exit 1
@@ -177,7 +177,7 @@ deploy_repo_remotely() {
       TMP_DIR=\$(mktemp -d -p \"\$BASE_DIR\")
       echo 'Unpacking to temp...' >&2
       tar -x -C \"\$TMP_DIR\"
-      
+
       # Ensure permissions are set before pushing live
       mkdir -p \"\$LOG_DIR\"
       chown -R $PROD_USER:$PROD_USER \"\$TMP_DIR\"
@@ -199,7 +199,7 @@ deploy_repo_remotely() {
       LOG_FILE=\"\$LOG_DIR/deploy_version.log\"
       touch \"\$LOG_FILE\"
       chown $PROD_USER:$PROD_USER \"\$LOG_FILE\"
-      
+
       # Append current deployment info
       echo \"\$(date +'%Y-%m-%d %H:%M:%S %Z'): $REV\" >> \"\$LOG_FILE\"
       echo \"Deploy complete: $REV\" > \"\$FINAL_DIR/.deploy_version\"
@@ -342,7 +342,7 @@ main() {
   done < <(read_prod_roster)
 
   if [ "${#hosts[@]}" -eq 0 ]; then
-    echo "deploy: [prod] roster in etc/machines.ini is empty." >&2
+    echo "pf-deploy: [prod] roster in etc/machines.ini is empty." >&2
     exit 1
   fi
 
@@ -357,7 +357,7 @@ main() {
     IFS=',' read -ra _dbs <<< "$dblist"
     for _d in "${_dbs[@]}"; do
       if [ -n "${seen_db[$_d]:-}" ]; then
-        echo "deploy: database '$_d' is listed more than once in the [prod] roster (a database maps to exactly one server)." >&2
+        echo "pf-deploy: database '$_d' is listed more than once in the [prod] roster (a database maps to exactly one server)." >&2
         exit 1
       fi
       seen_db[$_d]=1
@@ -367,7 +367,7 @@ main() {
   # Optional explicit host: deploy to that one only (must be in [prod]).
   if [ "${#ARGS[@]}" -gt 0 ]; then
     if [ "${#ARGS[@]}" -gt 1 ]; then
-      echo "deploy: at most one target host may be given (got: ${ARGS[*]})" >&2
+      echo "pf-deploy: at most one target host may be given (got: ${ARGS[*]})" >&2
       exit 1
     fi
     local wanted="${ARGS[0]}"
@@ -377,7 +377,7 @@ main() {
         return 0
       fi
     done
-    echo "deploy: host '$wanted' is not in the [prod] roster of etc/machines.ini." >&2
+    echo "pf-deploy: host '$wanted' is not in the [prod] roster of etc/machines.ini." >&2
     exit 1
   fi
 
@@ -438,4 +438,3 @@ deploy_to_host() {
 }
 main "${ARGS[@]}"
 exit 0
-

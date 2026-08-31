@@ -1,4 +1,4 @@
-# php_daas_framework Makefile (dev-only; the framework CLIs phprun/deploy/
+# php_daas_framework Makefile (dev-only; the framework CLIs phprun/pf-deploy.sh/
 # gen-env/cron-manifest and the dev scripts init-local-env.sh and
 # pf-shell-enter.sh are Composer-delivered to consumers via the `bin` array;
 # init-cluster.sh is owned by ema and Composer-delivered via ema's package).

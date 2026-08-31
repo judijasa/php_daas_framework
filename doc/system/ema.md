@@ -76,17 +76,17 @@ section header is the dbname).
 
 ## Deploy chain
 
-- `deploy` ships `pkg/` and `srv/` (gitattributes keeps them in the archive),
+- `pf-deploy.sh` ships `pkg/` and `srv/` (gitattributes keeps them in the archive),
   then runs `composer install` on the remote so the framework CLIs
   (`gen-env`, `gen-reuter`, `pf-provision.sh`, ...) and `ema` land in
   `vendor/bin`. (The nix closure ships only the PHP runtime + extensions;
   framework code is Composer-only.)
-- The consumer's deploy wrapper (run after `vendor/bin/deploy`, root):
+- The consumer's deploy wrapper (run after `vendor/bin/pf-deploy.sh`, root):
   1. `gen-env` → `.env` with `EMA_MODE=prod`,
      `REUTER_INI=/etc/<instance>/reuter.ini`;
   2. `gen-reuter "$REUTER_INI"` → the `[<dbname>]` sections exist on the DB
      host before any database is created.
-- `vendor/bin/pf-provision.sh` (`deploy --init`, root) provisions only the
+- `vendor/bin/pf-provision.sh` (`pf-deploy.sh --init`, root) provisions only the
   instance: `$DEPLOY_DB_BASE/{data,mysql.sock,mysql.pid}`,
   `/etc/<instance>/my.cnf`, `mariadb@<instance>` systemd unit. It never
   creates databases or users — that is ema's job.

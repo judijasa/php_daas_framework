@@ -36,7 +36,7 @@ if [[ ! -f "$DEPLOY_CONF" ]]; then
     exit 1
 fi
 
-# Load the project-static deploy config (same loading contract as bin/deploy:
+# Load the project-static deploy config (same loading contract as bin/pf-deploy.sh:
 # the file is sourced, so the `export` markers are optional).
 set -a
 # shellcheck disable=SC1090

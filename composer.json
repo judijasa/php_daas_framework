@@ -27,7 +27,7 @@
   },
   "bin": [
     "bin/phprun",
-    "bin/deploy",
+    "bin/pf-deploy.sh",
     "bin/gen-env",
     "bin/gen-reuter",
     "bin/cron-manifest",
