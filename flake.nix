@@ -61,7 +61,7 @@
 
             # Inherit nix shell env in tmux (doesn't include PS1)
             # Requires `set -g default-command ...` in .tmux.conf
-            PROJECT_NAME="php_daas_framework"
+            PROJECT_NAME="php_daas"
             alias tmux="command tmux -L \$PROJECT_NAME new-session -A -s \$PROJECT_NAME"
           '';
         };
