@@ -3,8 +3,8 @@
 
 // Scans all PHP files under the consumer repo's src/ for functions decorated
 // with both #[CronJob] and #[Agent] and prints a crontab to stdout, ready to
-// be installed (e.g. /etc/cron.d/<app>-orchestrator by the consumer's
-// bin/deploy/post-nix.sh hook).
+// be installed (e.g. /etc/cron.d/<app>-orchestrator by the consumer's deploy
+// wrapper).
 //
 // Config-driven, same config surfaces as `deploy`/`phprun`:
 //   - REPO_PATH    from the repo-root .env (phprun contract); src/ is scanned

@@ -81,7 +81,7 @@ section header is the dbname).
   (`gen-env`, `gen-reuter`, `pf-provision.sh`, ...) and `ema` land in
   `vendor/bin`. (The nix closure ships only the PHP runtime + extensions;
   framework code is Composer-only.)
-- `post-nix.sh` (remote hook, root):
+- The consumer's deploy wrapper (run after `vendor/bin/deploy`, root):
   1. `gen-env` → `.env` with `EMA_MODE=prod`,
      `REUTER_INI=/etc/<instance>/reuter.ini`;
   2. `gen-reuter "$REUTER_INI"` → the `[<dbname>]` sections exist on the DB

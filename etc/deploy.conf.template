@@ -10,8 +10,8 @@
 # .env (generated, git-ignored) holds machine settings; this file holds the
 # deployment target shared by every machine of the project.
 #
-# `gen-env` (run on the remote by the consumer's bin/deploy/post-nix.sh hook
-# on every deploy) projects the git-ignored .env from THIS file — there is
+# `gen-env` (run on the remote by the consumer's deploy wrapper on every
+# deploy) projects the git-ignored .env from THIS file — there is
 # no separate etc/env.prod anymore. The projection:
 #   REPO_PATH      := DEPLOY_TARGET_DIR
 #   REPO_LOG       := DEPLOY_LOG_DIR
@@ -81,8 +81,8 @@ export DEPLOY_NIX_GCROOT=/nix/var/nix/gcroots/<app>
 # skipped if unset.
 # export DEPLOY_INIT_CMD="make prod-init"
 
-# Optional cron config, consumed by the framework `cron-manifest` CLI and the
-# consumer's bin/deploy/post-nix.sh hook. Omit if the project has no cron.
+# Optional cron config, consumed by the framework `cron-manifest` CLI from the
+# consumer's deploy wrapper. Omit if the project has no cron.
 # CRON_FILE: remote crontab file the manifest is installed to.
 # export CRON_FILE=/etc/cron.d/<app>-orchestrator
 # CRON_USER: user the cron entries run as (default: root).

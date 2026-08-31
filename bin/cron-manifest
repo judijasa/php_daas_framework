@@ -6,8 +6,8 @@ set -euo pipefail
 #
 # Scans the consumer repo's src/ for functions decorated with both
 # #[CronJob] and #[Agent] and prints a crontab to stdout, ready to be
-# installed by the consumer (e.g. its bin/deploy/post-nix.sh hook redirects
-# it into the configured CRON_FILE).
+# installed by the consumer (e.g. its deploy wrapper redirects it into the
+# configured CRON_FILE).
 #
 # Configuration comes from the same two surfaces as `deploy` and `phprun`:
 #   .env            (repo-root, git-ignored)  REPO_PATH (also used to locate
