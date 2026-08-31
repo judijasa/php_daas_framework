@@ -114,7 +114,7 @@ committed config file must exist before the first deploy:
    deployment target (`PROD_USER`, `DEPLOY_TARGET_DIR`, `DEPLOY_LOG_DIR`,
    `DEPLOY_DB_BASE`, `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`), and
    commit. Optional: `DEPLOY_INIT_CMD` (consumer-specific provisioning
-   command run after the framework's generic `bin/provision.sh`) and cron
+   command run after the framework's generic `bin/pf-provision.sh`) and cron
    vars (`CRON_FILE`, `CRON_USER`). `deploy` fails loudly if this file is
    missing. The remote host must already have the `PROD_USER` account with
    SSH access — see "Before the first deploy" under "Deploying a consumer
@@ -209,8 +209,8 @@ array installs the CLIs and scripts into `vendor/bin`:
   `bin/cron-manifest` — the framework CLIs.
 - `bin/dev/pf-shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
   machinery.
-- `bin/provision.sh` — the generic production provisioning script, invoked
-  by `deploy --init` as `vendor/bin/provision.sh`.
+- `bin/pf-provision.sh` — the generic production provisioning script, invoked
+  by `deploy --init` as `vendor/bin/pf-provision.sh`.
 
 The PHP library itself (the `Utils\` PSR-4 namespace under `src/`) is
 autoloaded from `vendor/autoload.php`.
@@ -296,13 +296,13 @@ deploy --init                 # + one-time provisioning (MariaDB only on the DB 
 | `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name (e.g. `php_daas_framework` -> `daas`). Must exist with SSH access before the first deploy (see below). |
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
-| `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance (DB host only); datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `deploy --init` (generic `bin/provision.sh`) via a `mariadb@<instance>` systemd unit. |
+| `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance (DB host only); datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `deploy --init` (generic `bin/pf-provision.sh`) via a `mariadb@<instance>` systemd unit. |
 | `DEPLOY_DB_INSTANCE` | Optional: systemd unit + config-dir name (`mariadb@<instance>`, `/etc/<instance>/my.cnf`); also the prod `reuter.ini` path (`/etc/<instance>/reuter.ini`) that `gen-env` writes into `.env` as `REUTER_INI`; defaults to the basename of `DEPLOY_TARGET_DIR`. |
 | `DEPLOY_DB_PORT` | Required on the database host: TCP port the MariaDB instance listens on. Scripts on every prod server — the DB host and app-only hosts alike — connect to the database over TCP. |
 | `DEPLOY_DB_BIND` | Optional: address the daemon binds to (default `0.0.0.0`); set it to the DB host's ZeroTier IP to restrict access to the overlay network. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
-| `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/provision.sh` on `--init`. |
+| `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/pf-provision.sh` on `--init`. |
 | `CRON_FILE` | Optional: remote crontab file installed by the consumer's post-nix hook. |
 | `CRON_USER` | Optional: user the cron entries run as (default `root`). |
 
@@ -361,7 +361,7 @@ The remote host must have the app user in place before the first `deploy`
 
 Everything else (repo swap, dirs, MariaDB cluster init, `.env`, cron) is
 handled by `deploy` itself: the repo swap as `root`, and the one-time
-provisioning (`deploy --init`) via the framework's generic `bin/provision.sh`
+provisioning (`deploy --init`) via the framework's generic `bin/pf-provision.sh`
 plus the optional consumer-specific `DEPLOY_INIT_CMD`.
 
 ### Multiple MariaDB instances on one server

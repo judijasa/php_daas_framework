@@ -39,7 +39,7 @@
 # state) belong in DEPLOY_INIT_CMD, which `deploy --init` runs after this
 # script.
 #
-# Usage: provision.sh   (root; config from etc/deploy.conf)
+# Usage: pf-provision.sh   (root; config from etc/deploy.conf)
 
 set -euo pipefail
 

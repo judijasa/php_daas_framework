@@ -317,7 +317,7 @@ deploy_composer_dependencies() {
 
   # Run `composer install` on every deploy: `git archive` wipes vendor/ on
   # each deploy, so vendor/bin (the Composer-delivered framework CLIs, dev
-  # scripts, and provision.sh) would otherwise be empty on the remote. The
+  # scripts, and pf-provision.sh) would otherwise be empty on the remote. The
   # install is idempotent (composer.lock pins the exact dependency set), so
   # re-running it when nothing changed is cheap.
   echo "Running composer install on remote host..."
@@ -444,12 +444,12 @@ deploy_to_host() {
     # Generic provisioning (framework mechanism, shipped in the deployed
     # repo): assert PROD_USER, create permanent dirs, initialize the MariaDB
     # cluster — all parameterized by etc/deploy.conf.
-    echo "Running generic provisioning (vendor/bin/provision.sh) on remote..." >&2
+    echo "Running generic provisioning (vendor/bin/pf-provision.sh) on remote..." >&2
     local PROVISION_ENV=""
     if [ "$IS_DB_HOST" = "1" ]; then
       PROVISION_ENV="DEPLOY_PROVISION_DB=1 DEPLOY_DB_BIND=$REMOTE_HOST"
     fi
-    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $PROVISION_ENV vendor/bin/provision.sh"
+    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $PROVISION_ENV vendor/bin/pf-provision.sh"
     # Optional consumer-specific extras, run after the generic step.
     if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
       echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2

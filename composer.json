@@ -33,7 +33,7 @@
     "bin/cron-manifest",
     "bin/dev/pf-shell-enter.sh",
     "bin/dev/init-local-env.sh",
-    "bin/provision.sh"
+    "bin/pf-provision.sh"
   ],
   "repositories": [
     {
