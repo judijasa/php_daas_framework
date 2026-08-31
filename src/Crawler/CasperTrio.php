@@ -15,7 +15,7 @@ class CasperTrio extends Casper {
 
     /**
      *  @param string $selector
-     *  @param string $input
+     *  @param string $string
      *  @param boolean $reset
      */
     public function sendKeys($selector, $string, $reset=false)
