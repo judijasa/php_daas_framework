@@ -207,7 +207,7 @@ array installs the CLIs and scripts into `vendor/bin`:
 
 - `bin/phprun`, `bin/deploy`, `bin/gen-env`, `bin/gen-reuter`,
   `bin/cron-manifest` — the framework CLIs.
-- `bin/dev/shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
+- `bin/dev/pf-shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
   machinery.
 - `bin/provision.sh` — the generic production provisioning script, invoked
   by `deploy --init` as `vendor/bin/provision.sh`.
@@ -243,9 +243,9 @@ ema's own `composer.json` `bin` array (`vendor/bin/init-cluster.sh`) — this
 framework reuses it rather than keeping a duplicate copy. Everything is
 derived from the target directory at runtime — no consumer paths are baked
 in. Consumer-specific steps (git hooks, hosts, ...) stay in the consumer's
-Makefile, and the dev shell shellHook sources `shell-enter.sh` (loads `.env`,
+Makefile, and the dev shell shellHook sources `pf-shell-enter.sh` (loads `.env`,
 resumes the local MariaDB daemon): standalone flakes source
-`./bin/dev/shell-enter.sh`, consumers source `vendor/bin/shell-enter.sh`.
+`./bin/dev/pf-shell-enter.sh`, consumers source `vendor/bin/pf-shell-enter.sh`.
 
 ## Environment variables
 

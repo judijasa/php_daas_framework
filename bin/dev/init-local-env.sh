@@ -4,7 +4,7 @@
 #     the framework's Database class (REUTER_INI -> var/reuter.local.ini);
 #   - EMA_MODE=dev: machine-mode signal for the ema CLI only;
 #   - MYSQL_*: derived from the target dir (pure path arithmetic); consumed
-#     by the dev shell bootstrap (shell-enter.sh) and the Makefile;
+#     by the dev shell bootstrap (pf-shell-enter.sh) and the Makefile;
 #   - DBUSER: mapped for this machine in the [dev] section of
 #     etc/machines.ini (needed for remote access to prod; skipped with a
 #     warning when the mapping does not exist).

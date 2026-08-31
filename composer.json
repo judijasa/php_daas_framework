@@ -31,7 +31,7 @@
     "bin/gen-env",
     "bin/gen-reuter",
     "bin/cron-manifest",
-    "bin/dev/shell-enter.sh",
+    "bin/dev/pf-shell-enter.sh",
     "bin/dev/init-local-env.sh",
     "bin/provision.sh"
   ],

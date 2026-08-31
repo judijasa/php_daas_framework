@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Dev-shell runtime bootstrap, sourced by the shellHook of this repo's
-# flake (./bin/dev/shell-enter.sh <PROJECT_NAME>) and of consumer flakes (shipped on PATH
+# flake (./bin/dev/pf-shell-enter.sh <PROJECT_NAME>) and of consumer flakes (shipped on PATH
 # via the framework's nix package). Must be sourced (not executed): the
 # .env exports must reach the interactive shell, and the MariaDB stop trap
 # must bind to it. Must run from the repo root ($PWD).
@@ -11,12 +11,12 @@
 # no data dir, so MariaDB cannot be started anyway.
 
 if ! (return 0 2>/dev/null); then
-    echo "shell-enter.sh must be sourced, not executed" >&2
+    echo "pf-shell-enter.sh must be sourced, not executed" >&2
     exit 1
 fi
 
 if [ -z "${1:-}" ]; then
-    echo "usage: source shell-enter.sh <PROJECT_NAME>" >&2
+    echo "usage: source pf-shell-enter.sh <PROJECT_NAME>" >&2
     return 1 2>/dev/null || exit 1
 fi
 PROJECT_NAME="$1"

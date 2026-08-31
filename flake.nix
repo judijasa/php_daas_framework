@@ -49,7 +49,7 @@
             pre-commit  # pre-commit framework (hook shims installed by make dev-init)
           ];
           shellHook = ''
-            . ./bin/dev/shell-enter.sh php_daas
+            . ./bin/dev/pf-shell-enter.sh php_daas
 
             # Customize the prompt (PS1)
             # Define ANSI color codes for readability

@@ -1,6 +1,6 @@
 # php_daas_framework Makefile (dev-only; the framework CLIs phprun/deploy/
 # gen-env/cron-manifest and the dev scripts init-local-env.sh and
-# shell-enter.sh are Composer-delivered to consumers via the `bin` array;
+# pf-shell-enter.sh are Composer-delivered to consumers via the `bin` array;
 # init-cluster.sh is owned by ema and Composer-delivered via ema's package).
 
 SHELL := $(shell which bash 2>/dev/null)

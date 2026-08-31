@@ -13,7 +13,7 @@
 # Dev-only build and environment plumbing
 /Makefile export-ignore
 # NOTE: bin/dev/ is intentionally NOT export-ignored: init-local-env.sh and
-# shell-enter.sh are listed in composer.json's `bin` array, so `composer
+# pf-shell-enter.sh are listed in composer.json's `bin` array, so `composer
 # install` (run on the remote from the git archive) must find them to install
 # them into vendor/bin. flake.nix/flake.lock are dev-only now (the flake no
 # longer ships framework code or re-exports the ema CLI) but stay in the
