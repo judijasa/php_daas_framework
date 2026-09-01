@@ -303,18 +303,6 @@ deploy_composer_dependencies() {
       "
 }
 
-deploy_website() {
-  local REMOTE_HOST="$1"
-  local REMOTE_TARGET_DIR="$2"
-
-  # Apache serves directly from the deployed repo's public/ subdirectory.
-  # The repo dir is recreated on each deploy, so www-data traversal must be restored each time.
-  # One-time setup (manual): chmod o+x /srv /srv/apps (Debian/AppArmor needs no relabeling);
-  # configure Apache vhost DocumentRoot to $REMOTE_TARGET_DIR/public, and set
-  # SetEnv REUTER_INI <path-to-reuter.ini> in the vhost.
-  ssh "root@$REMOTE_HOST" "chmod o+x '$REMOTE_TARGET_DIR'"
-}
-
 INIT=false
 ARGS=()
 
@@ -415,7 +403,6 @@ deploy_to_host() {
   [ "$NIX_EXISTS" != "true" ] && install_nix_remotely "$REMOTE_HOST" "$PROD_USER" || true
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
-  deploy_website "$REMOTE_HOST" "$REMOTE_TARGET_DIR"
   if [ "$INIT" = "true" ]; then
     # Generic provisioning (framework mechanism, shipped in the deployed
     # repo): assert PROD_USER, create permanent dirs, initialize the MariaDB
