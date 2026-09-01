@@ -30,6 +30,7 @@
     "bin/pf-deploy.sh",
     "bin/gen-env",
     "bin/gen-reuter",
+    "bin/pf-roster",
     "bin/cron-manifest",
     "bin/dev/pf-shell-enter.sh",
     "bin/dev/init-local-env.sh",

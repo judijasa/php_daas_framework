@@ -7,7 +7,7 @@
 # the values, the framework owns the mechanism. Idempotent.
 #
 # Multi-server model: `deploy` sets DEPLOY_PROVISION_DB=1 only for the prod
-# server that holds the database (the non-empty [prod] entry in
+# server that holds the database (the [prod] entry carrying a `db:<name>` tag in
 # etc/machines.ini). Every host gets the system user + log/deploy dirs;
 # only the DB host gets the MariaDB instance below.
 #

@@ -28,9 +28,9 @@
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - machine registry:
 #     [dev]  hostname -> prod DB username (DBUSER)
-#     [prod] ZeroTier-IP -> comma-separated database names (a non-empty
-#            entry is a database host; empty entries are app-only servers;
-#            each database maps to exactly one server)
+#     [prod] ZeroTier-IP -> comma-separated `tag[:name]` tokens (a host with
+#            a `db:<name>` token is the database host; empty entries are
+#            code-only servers; each named token maps to exactly one server)
 #
 # Usage:
 #   pf-deploy.sh                # deploy to every [prod] host in etc/machines.ini
@@ -70,28 +70,24 @@ set -a
 set +a
 
 # Load the machine registry (git-ignored; copy from machines.ini.template).
-# [prod] lists every prod deploy target by ZeroTier IP; the single entry
-# with a non-empty database name is the database host.
+# [prod] lists every prod deploy target by ZeroTier IP; the host whose
+# `tag[:name]` list carries a `db:` token is the database host.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
   echo "pf-deploy: $PWD/etc/machines.ini not found" >&2
   echo "  Copy the framework's etc/machines.ini.template into the repo and fill in the [prod] roster." >&2
   exit 1
 fi
 
-# Print each [prod] entry as "zerotier-ip=<comma-separated database list>"
-# (empty list on app-only hosts). `main` parses this to build the deploy
-# roster.
+# Locate the shared roster parser next to this script (resolves vendor/bin
+# symlinks, same pattern as bin/phprun).
+ROSTER_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-roster"
+
+# Print each [prod] entry as "zerotier-ip=<comma-separated tag list>" (the
+# host's `tag[:name]` tokens). `main` parses this to build the deploy roster.
+# The shared pf-roster CLI owns the machines.ini parse, also used by
+# gen-reuter and the consumer deploy wrapper.
 read_prod_roster() {
-  php -r '
-    $cnf = parse_ini_file($argv[1], true, INI_SCANNER_RAW);
-    if (!$cnf || !isset($cnf["prod"])) {
-      fwrite(STDERR, "pf-deploy: no [prod] section in etc/machines.ini" . PHP_EOL);
-      exit(1);
-    }
-    foreach ($cnf["prod"] as $host => $db) {
-      echo $host . "=" . $db . PHP_EOL;
-    }
-  ' "$PWD/etc/machines.ini"
+  "$ROSTER_BIN" --list
 }
 
 require_config() {
@@ -319,14 +315,15 @@ done
 main() {
   require_config
 
-  # Build the prod roster from etc/machines.ini: hosts are ZeroTier IPs; a
-  # non-empty database list marks that host as a database host.
-  local -a hosts=() dblists=()
-  local host dblist i
-  while IFS='=' read -r host dblist; do
+  # Build the prod roster from etc/machines.ini (via the shared pf-roster
+  # CLI): hosts are ZeroTier IPs; the value is that host's `tag[:name]`
+  # token list. A host carrying a `db:` token is the database host.
+  local -a hosts=() taglists=()
+  local host taglist i
+  while IFS='=' read -r host taglist; do
     [ -n "$host" ] || continue
     hosts+=("$host")
-    dblists+=("$dblist")
+    taglists+=("$taglist")
   done < <(read_prod_roster)
 
   if [ "${#hosts[@]}" -eq 0 ]; then
@@ -334,23 +331,12 @@ main() {
     exit 1
   fi
 
-  # Enforce one-to-one database -> server: a database name may not be listed
-  # on two servers.
-  local -A seen_db=()
-  local -a _dbs
-  local _d
-  for dblist in "${dblists[@]}"; do
-    dblist="${dblist//[[:space:]]/}"
-    [ -z "$dblist" ] && continue
-    IFS=',' read -ra _dbs <<< "$dblist"
-    for _d in "${_dbs[@]}"; do
-      if [ -n "${seen_db[$_d]:-}" ]; then
-        echo "pf-deploy: database '$_d' is listed more than once in the [prod] roster (a database maps to exactly one server)." >&2
-        exit 1
-      fi
-      seen_db[$_d]=1
-    done
-  done
+  # Enforce one-to-one named-tag -> server: a named token (`tag:name`) may
+  # not be listed on two servers (bare flags carry no name, hence no
+  # constraint). The shared pf-roster CLI owns this validation.
+  if ! "$ROSTER_BIN" --validate; then
+    exit 1
+  fi
 
   # Optional explicit host: deploy to that one only (must be in [prod]).
   if [ "${#ARGS[@]}" -gt 0 ]; then
@@ -361,7 +347,7 @@ main() {
     local wanted="${ARGS[0]}"
     for i in "${!hosts[@]}"; do
       if [ "${hosts[$i]}" = "$wanted" ]; then
-        deploy_to_host "${hosts[$i]}" "${dblists[$i]}"
+        deploy_to_host "${hosts[$i]}" "${taglists[$i]}"
         return 0
       fi
     done
@@ -371,18 +357,24 @@ main() {
 
   # Default: deploy to every prod host.
   for i in "${!hosts[@]}"; do
-    deploy_to_host "${hosts[$i]}" "${dblists[$i]}"
+    deploy_to_host "${hosts[$i]}" "${taglists[$i]}"
   done
 }
 
-# Per-host deploy pipeline. A database host (non-empty database list) gets
-# the MariaDB instance on `--init`; app-only hosts skip it.
+# Per-host deploy pipeline. A database host (its tag list carries a `db:`
+# token) gets the MariaDB instance on `--init`; other hosts skip it.
 deploy_to_host() {
   local HOST="$1"
-  local DBLIST="$2"
+  local TAGLIST="$2"
   local IS_DB_HOST=0
-  if [ -n "$DBLIST" ]; then
-    IS_DB_HOST=1
+  local _tok
+  if [ -n "$TAGLIST" ]; then
+    for _tok in ${TAGLIST//,/ }; do
+      if [[ "$_tok" == db:* ]]; then
+        IS_DB_HOST=1
+        break
+      fi
+    done
   fi
 
   flight_checks "$HOST"

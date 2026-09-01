@@ -1,0 +1,143 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// pf-roster — shared [prod] roster parser for the deploy toolchain.
+//
+// Reads etc/machines.ini [prod] from the consumer repo root (the current
+// working directory) and answers generic tag queries, so pf-deploy.sh,
+// gen-reuter and the consumer deploy wrapper share one parse of the
+// `tag[:name]` token list.
+//
+// [prod] value grammar (comma-separated tokens):
+//   bare tag     `web`       -> boolean flag (a deploy step on this host)
+//   named tag    `db:simo`   -> a `db` resource named `simo`
+//   empty value              -> code-only host (no tagged step)
+//
+// `db` is the framework's built-in tag (MariaDB instance + gen-reuter
+// connectivity); every other tag is consumer-owned and carried through
+// generically.
+//
+// Usage (from the consumer repo root):
+//   pf-roster              print "host=tags" per line (default)
+//   pf-roster --list       same as default
+//   pf-roster --db-servers print "name=host" per line for every db:<name>
+//   pf-roster --validate   enforce per-tag uniqueness (named tokens); exit 1
+//                          on a violation
+
+function machines_file(): string
+{
+    return (getcwd() ?: '.') . '/etc/machines.ini';
+}
+
+/** @return array<string, string> host => raw tag value */
+function prod_roster(string $path): array
+{
+    if (!is_file($path)) {
+        return [];
+    }
+    $cnf = parse_ini_file($path, true, INI_SCANNER_RAW);
+    if ($cnf === false || !isset($cnf['prod']) || !is_array($cnf['prod'])) {
+        return [];
+    }
+    $out = [];
+    foreach ($cnf['prod'] as $host => $value) {
+        $out[(string) $host] = is_string($value) ? trim($value) : '';
+    }
+    return $out;
+}
+
+/** @return string[] trimmed tokens, empties dropped */
+function tokens(string $raw): array
+{
+    $out = [];
+    foreach (explode(',', $raw) as $rawTok) {
+        $tok = trim($rawTok);
+        if ($tok !== '') {
+            $out[] = $tok;
+        }
+    }
+    return $out;
+}
+
+function normalize(string $raw): string
+{
+    return implode(',', tokens($raw));
+}
+
+/** @return array<string, string> name => host, for every db:<name> token */
+function db_servers(array $roster): array
+{
+    $out = [];
+    foreach ($roster as $host => $raw) {
+        foreach (tokens($raw) as $tok) {
+            if (strpos($tok, 'db:') !== 0) {
+                continue;
+            }
+            $name = substr($tok, 3);
+            if ($name === '') {
+                continue;
+            }
+            if (isset($out[$name])) {
+                fwrite(STDERR, 'pf-roster: database ' . $name . ' is listed more than once in etc/machines.ini [prod] (a database maps to exactly one server).' . PHP_EOL);
+                exit(1);
+            }
+            $out[$name] = $host;
+        }
+    }
+    return $out;
+}
+
+/** @return int exit code (0 = valid) */
+function validate(array $roster): int
+{
+    $seen = [];
+    foreach ($roster as $host => $raw) {
+        foreach (tokens($raw) as $tok) {
+            $colon = strpos($tok, ':');
+            if ($colon === false) {
+                continue; // bare flag: no name, no uniqueness constraint
+            }
+            $name = substr($tok, $colon + 1);
+            if ($name === '') {
+                continue;
+            }
+            if (isset($seen[$tok])) {
+                fwrite(STDERR, 'pf-roster: tag ' . $tok . ' is listed more than once in etc/machines.ini [prod] (a named tag maps to exactly one server).' . PHP_EOL);
+                return 1;
+            }
+            $seen[$tok] = true;
+        }
+    }
+    return 0;
+}
+
+function main(array $argv): int
+{
+    $mode = $argv[1] ?? '--list';
+    $roster = prod_roster(machines_file());
+
+    if ($mode === '--list') {
+        foreach ($roster as $host => $raw) {
+            echo $host . '=' . normalize($raw) . PHP_EOL;
+        }
+        return 0;
+    }
+
+    if ($mode === '--db-servers') {
+        foreach (db_servers($roster) as $name => $host) {
+            echo $name . '=' . $host . PHP_EOL;
+        }
+        return 0;
+    }
+
+    if ($mode === '--validate') {
+        return validate($roster);
+    }
+
+    fwrite(STDERR, "pf-roster: unknown mode '" . $mode . "' (expected --list, --db-servers, or --validate)." . PHP_EOL);
+    return 2;
+}
+
+exit(main($argv));

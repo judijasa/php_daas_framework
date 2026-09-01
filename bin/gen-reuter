@@ -41,31 +41,34 @@ function load_deploy_conf(string $path): array
     return $out;
 }
 
+// db_servers() collects the `db:<name>` tokens from etc/machines.ini [prod]
+// (via the shared pf-roster CLI — the same parse pf-deploy.sh and the
+// consumer deploy wrapper use) and maps each database name to its host.
 function db_servers(string $machinesPath): array
 {
     $out = [];
     if (!is_file($machinesPath)) {
         return $out;
     }
-    $cnf = parse_ini_file($machinesPath, true, INI_SCANNER_RAW);
-    if ($cnf === false || !isset($cnf['prod'])) {
-        return $out;
+    $roster = dirname(__FILE__) . '/pf-roster';
+    $lines = [];
+    $code = 0;
+    exec(escapeshellarg($roster) . ' --db-servers', $lines, $code);
+    if ($code !== 0) {
+        // pf-roster --db-servers exits non-zero when a database is listed on
+        // two servers; it already wrote the diagnostic to stderr.
+        exit(1);
     }
-    foreach ($cnf['prod'] as $host => $list) {
-        if (!is_string($list) || trim($list) === '') {
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || strpos($line, '=') === false) {
             continue;
         }
-        foreach (explode(',', $list) as $raw) {
-            $db = trim($raw);
-            if ($db === '') {
-                continue;
-            }
-            if (isset($out[$db])) {
-                fwrite(STDERR, 'gen-reuter: database ' . $db . ' is listed more than once in etc/machines.ini [prod] (a database maps to exactly one server).' . PHP_EOL);
-                exit(1);
-            }
-            $out[$db] = array('server' => $host, 'name' => $db);
+        [$name, $server] = explode('=', $line, 2);
+        if ($name === '' || $server === '') {
+            continue;
         }
+        $out[$name] = array('server' => $server, 'name' => $name);
     }
     return $out;
 }

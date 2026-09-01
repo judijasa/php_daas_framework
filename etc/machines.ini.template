@@ -1,24 +1,31 @@
 # Machine registry: dev + prod machines.
 # Copy to etc/machines.ini (git-ignored; commit it only in a private fork) and
-# fill in your entries. `deploy` reads the [prod] roster; `init-local-env.sh`
+# fill in your entries. `pf-deploy.sh` reads the [prod] roster; `init-local-env.sh`
 # reads [dev] for the local machine's DBUSER; `gen-reuter` reads [prod] for the
 # database -> server mapping.
 #
 # [dev]  dev machine hostname -> prod DB username (DBUSER) used for remote DB
 #        access. Run `hostname` to find yours.
 # [prod] prod deploy targets. Each key is the server's ZeroTier IP (the same
-#        address `deploy` uses for SSH). The value is a comma-separated list of
-#        database names that server hosts. A server with an empty value is
-#        app-only (it deploys the codebase but no MariaDB instance).
+#        address `pf-deploy.sh` uses for SSH). The value is a comma-separated
+#        list of `tag[:name]` tokens:
+#          bare tag    `web`       -> boolean flag (a deploy step on this host)
+#          named tag   `db:mydb`   -> a `db` resource named `mydb`
+#        `db` is the framework's built-in tag (a MariaDB instance + `gen-reuter`
+#        connectivity); every other tag is consumer-owned and carried through
+#        generically. A host with a `db:<name>` token is a database host; an
+#        empty value is a code-only server (it deploys the codebase but runs
+#        no tagged step).
 #
-#        Constraint: a database name may appear on exactly ONE server
-#        (each database -> one server). A server may host no database
-#        (app-only), one database, or several databases in its MariaDB
+#        Constraint: a named token may appear on exactly ONE server
+#        (`db:mydb` and `web:mysite` are independent). Bare flags carry no
+#        name, hence no uniqueness constraint. A server may host no database
+#        (code-only), one database, or several databases in its MariaDB
 #        instance.
 
 [dev]
 # my-hostname=mydbuser
 
 [prod]
-# 10.147.x.10=mydb, analytics
+# 10.147.x.10=db:mydb, web
 # 10.147.x.11=

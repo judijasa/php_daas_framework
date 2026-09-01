@@ -4,8 +4,8 @@
 #
 # This is the common deploy config for every prod server listed in
 # etc/machines.ini: PROD_USER and the DEPLOY_* paths are identical on all
-# hosts. The DEPLOY_DB_* values apply only on the database host — the single
-# [prod] entry in etc/machines.ini that carries a non-empty database name.
+# hosts. The DEPLOY_DB_* values apply only on the database host — the [prod]
+# entry in etc/machines.ini that carries a `db:<name>` tag.
 #
 # .env (generated, git-ignored) holds machine settings; this file holds the
 # deployment target shared by every machine of the project.
