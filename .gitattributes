@@ -19,6 +19,9 @@
 # longer ships framework code or re-exports the ema CLI) but stay in the
 # archive for the standalone dev shell / template usage.
 
+# Scratch and documentation
+/doc/ export-ignore
+
 # Dev machine templates (prod reads /etc/..., not these)
 /etc/dev-machines.ini.template export-ignore
 /etc/reuter.ini.template export-ignore
