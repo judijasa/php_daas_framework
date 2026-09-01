@@ -43,7 +43,13 @@ function prod_roster(string $path): array
     }
     $out = [];
     foreach ($cnf['prod'] as $host => $value) {
-        $out[(string) $host] = is_string($value) ? trim($value) : '';
+        $host = (string) $host;
+        // PHP's parse_ini_file skips `;` comments only; `#`-prefixed lines
+        // (the templates' comment style) would parse as bogus keys - drop them.
+        if ($host === '' || $host[0] === '#') {
+            continue;
+        }
+        $out[$host] = is_string($value) ? trim($value) : '';
     }
     return $out;
 }
