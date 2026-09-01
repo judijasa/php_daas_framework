@@ -4,6 +4,9 @@
 # the remote needs at runtime (composer.json/lock, src/, pkg/, srv/, etc/,
 # bin/ CLIs, LICENSE, README.md) stays in the archive.
 
+# Note: `export-ignore` also affects Composer's prefer-dist and flake archive
+# consumers — keep composer.json (+ lock) and flake.nix/flake.lock out of here.
+
 # Linting and git tooling
 /.pre-commit-config.yaml export-ignore
 /phpstan.dist.neon export-ignore
