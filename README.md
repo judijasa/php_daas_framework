@@ -193,7 +193,7 @@ The building blocks behind steps 3–4 live in the repo:
 
 | Path | Purpose |
 |---|---|
-| `srv/test.sql` | Database + user bootstrap consumed by `ema init db test` |
+| `srv/test-*/` | database package (`default.php` + `upgrade.sql`) consumed by `ema init db test` |
 | `pkg/cursorseq-*/` | `cursorseq` table (contract of `CursorSeq`/`BatchScan`) |
 | `pkg/items-*/` | demo `items` table |
 | `pkg/demo-*/` | root schema package listing the dependencies in order |

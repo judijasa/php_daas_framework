@@ -780,12 +780,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/judijasa/ema.git",
-                "reference": "8ce8a1641fe7874502af1f7b104be1dac8a7505b"
+                "reference": "10cefc679116fb11b9dfd5ce7d41799fe7027274"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/judijasa/ema/zipball/8ce8a1641fe7874502af1f7b104be1dac8a7505b",
-                "reference": "8ce8a1641fe7874502af1f7b104be1dac8a7505b",
+                "url": "https://api.github.com/repos/judijasa/ema/zipball/10cefc679116fb11b9dfd5ce7d41799fe7027274",
+                "reference": "10cefc679116fb11b9dfd5ce7d41799fe7027274",
                 "shasum": ""
             },
             "require": {
@@ -805,7 +805,7 @@
                 "source": "https://github.com/judijasa/ema/tree/main",
                 "issues": "https://github.com/judijasa/ema/issues"
             },
-            "time": "2026-08-30T18:03:42+00:00"
+            "time": "2026-09-02T21:03:06+00:00"
         },
         {
             "name": "justinrainbow/json-schema",

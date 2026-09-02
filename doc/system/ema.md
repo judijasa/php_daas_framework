@@ -7,7 +7,8 @@ connectivity and deploy model.
 ## What ema is
 
 `ema` is a Bash CLI that manages MariaDB databases from a repo's `pkg/`
-(schema packages) and `srv/` (per-database `srv/<dbname>.sql` init scripts).
+(schema packages) and `srv/` (per-database packages `srv/<dbname>-<GUID>/`,
+each a `default.php` + `upgrade.sql` pair).
 It ships as its own Composer package (`judijasa/ema`), installed under
 `vendor/judijasa/ema` with `vendor/bin/ema` and `vendor/bin/init-cluster.sh`
 on the PATH — the same remote `composer install` that delivers the
@@ -105,8 +106,9 @@ and without them `ema init db` would fall back to `dev` mode:
 
 `ema init db` reads the `[<name>]` section, fills the `{{dbname}}`,
 `{{servername}}`, `{{admin_password}}`, `{{reader_password}}` placeholders in
-`srv/<name>.sql`, and applies it. `ema init tables <root-pkg> <db>` applies
-the `pkg/` schema packages in topological order against the same section.
+`srv/<name>-<GUID>/upgrade.sql`, and applies it. `ema init tables <root-pkg> <db>`
+applies the `pkg/` schema packages in topological order against the same
+section.
 
 `DBUSER` (env, e.g. exported into `.env` by `gen-env` from
 `etc/machines.ini [dev]`'s workstation-hostname mapping) is the CLI client
@@ -114,8 +116,8 @@ user for prod targets.
 
 ## Notes / open items
 
-- `srv/*.sql` grants are host-pinned to `{{servername}}`; per-host grants are
-  applied manually for now.
+- `srv/<name>-<GUID>/upgrade.sql` grants are host-pinned to `{{servername}}`;
+  per-host grants are applied manually for now.
 - The framework's `src/Connectivity/Database.php` must stay agnostic to ema:
   it resolves sections by dbname alone and does not read `EMA_MODE`
   (see ema doc/2026-08-22-reuter-redesign.md, issue 1).
