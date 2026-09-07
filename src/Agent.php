@@ -7,5 +7,8 @@ namespace Utils;
 #[\Attribute]
 class Agent
 {
-    public function __construct(public readonly ?string $dbTarget) {}
+    public function __construct(
+        public readonly ?string $dbTarget,
+        public readonly ?string $dbAccount = null,
+    ) {}
 }

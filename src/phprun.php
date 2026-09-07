@@ -24,7 +24,11 @@ $agent = $attrs[0]->newInstance();
 
 $conn_arg = '';
 if ($agent->dbTarget !== null) {
-    $conn     = Database::admin($agent->dbTarget);
+    if ($agent->dbAccount === null || $agent->dbAccount === '') {
+        fwrite(STDERR, "Error: '$func' declares a dbTarget but no dbAccount.\n");
+        exit(1);
+    }
+    $conn     = Database::connectAs($agent->dbTarget, $agent->dbAccount);
     $conn_arg = '$conn' . ($func_args !== '' ? ', ' : '');
 }
 

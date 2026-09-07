@@ -1,27 +1,61 @@
 # ema — integration with php_daas_framework
 
-Date: 2026-08-24
-Scope: how the `ema` CLI (MariaDB package manager) plugs into this framework's
+Date: 2026-09-07
+Scope: how the `ema` CLI (MariaDB schema manager) plugs into this framework's
 connectivity and deploy model.
 
 ## What ema is
 
 `ema` is a Bash CLI that manages MariaDB databases from a repo's `pkg/`
-(schema packages) and `srv/` (per-database packages `srv/<dbname>-<GUID>/`,
-each a `default.php` + `upgrade.sql` pair).
-It ships as its own Composer package (`judijasa/ema`), installed under
-`vendor/judijasa/ema` with `vendor/bin/ema` and `vendor/bin/init-cluster.sh`
-on the PATH — the same remote `composer install` that delivers the
-framework's own CLIs (`gen-env`, `gen-reuter`, ...) to `vendor/bin`.
+(schema packages) and `srv/` (per-database packages `srv/<name>-<GUID>/`,
+each a `default.php` + `upgrade.sql` pair). It ships as its own Composer
+package (`judijasa/ema`), installed under `vendor/judijasa/ema` with
+`vendor/bin/ema` and `vendor/bin/init-cluster.sh` on the PATH — the same
+remote `composer install` that delivers the framework's own CLIs
+(`gen-env`, `gen-reuter`, ...) to `vendor/bin`.
+
+ema provisions **schema only**: it creates the database and applies schema
+packages in dependency order. It does **not** create users or grants — the
+service accounts and their per-object grants are consumer policy, owned by
+the consumer's own provisioning.
+
+## Command surface
+
+- `ema sandbox srv/<name>-<GUID>` — build a per-instance dev sandbox under
+  `var/sandbox/<name>-<guid>/` (bootstrap SQL + schema deps, in topological
+  order), then open a shell; `-n/--no-shell` prints the connect command
+  instead.
+- `ema sandbox pkg/<pkg>-<GUID>` — synthesized default database (no bootstrap
+  SQL) plus that package's dependency graph.
+- `ema create srv/<name>-<GUID>` — prod-only (requires `EMA_TARGET=prod`):
+  create the database and apply its dependencies. It is **create-only**: it
+  refuses when the database already exists. `--dry-run` prints the SQL
+  without applying.
+- `ema mariadb <db> < file.sql` — apply raw SQL over stdin as the section's
+  client user. There is no `apply` verb (it is rejected).
+- `ema drop/start/stop/restart/status/gc` — instance lifecycle. Sandbox
+  deletion is the whole `var/sandbox/<name>-<guid>/` directory.
+
+The old `ema init db <name>` / `ema init tables <root> <db>` verbs no longer
+exist.
+
+## EMA_TARGET
+
+`EMA_TARGET` is a binary operation-mode flag, not a path selector:
+
+- unset or `sandbox` (default) — per-instance sandbox (`ema sandbox ...`);
+- `prod` — prod target via `$REUTER_INI` (fallback `etc/reuter.ini`).
+
+Any other value is an error. The connection-file path stays a separate env
+var (`REUTER_INI`); `EMA_TARGET` only picks the mode. The old `EMA_MODE` is
+gone.
+
+Prod machines run `prod` mode **only because** the deploy chain writes
+`EMA_TARGET=prod` and `REUTER_INI=/etc/<instance>/reuter.ini` into the
+deployed `.env` (gen-env). ema never reads `.env` itself, so the session that
+runs it must have those values in scope (e.g. `set -a; . .env`).
 
 ## The reuter.ini contract
-
-ema resolves connections by machine mode:
-
-- `EMA_MODE=dev` (default): `var/reuter.local.ini` — the dev sandbox,
-  generated/updated by `ema init db <name>`.
-- any other `EMA_MODE` (e.g. `prod`): `$REUTER_INI` (fallback
-  `etc/reuter.ini`) — the prod file.
 
 Sections are keyed by database name — the section header IS the dbname:
 
@@ -29,33 +63,24 @@ Sections are keyed by database name — the section header IS the dbname:
     SERVER=10.147.x.x
     PORT=3306
     DBMS=mariadb
-    ADMIN_PASSWORD=...
-    READER_PASSWORD=...
+    <ACCOUNT>_PASSWORD=...
     MYSQL_UNIX_PORT=/path/to/mysql.sock
 
-The section is authoritative: ema clears ambient connection vars before
-loading it, so a shell-exported `MYSQL_UNIX_PORT` cannot leak into a section
-that lacks the key. ema connects via `--socket=$MYSQL_UNIX_PORT` when the key
-is present, otherwise `-h $SERVER -P $PORT` (TCP).
+ema's connectivity is read from the section: it connects via
+`--socket=$MYSQL_UNIX_PORT` when the key is present, otherwise
+`-h $SERVER -P $PORT` (TCP). The `<ACCOUNT>_PASSWORD` keys are consumer-side:
+read by `Database::connectAs($dbname, $account)` and written by the consumer's
+own service-user provisioning; ema itself does not read them.
 
-## EMA_MODE: connectivity selector, and mode switch for `ema init`
+## Service accounts are consumer policy
 
-`EMA_MODE` has two jobs, which is why a plain "target" reading misleads:
-
-- **connectivity** — which file to read (above);
-- **`ema init db` / `ema init tables` behavior** — `dev` mode
-  creates/updates `var/reuter.local.ini` (dev sandbox) and refuses root;
-  `prod` mode never writes a connection file — the `[<name>]` section must
-  already exist (gen-reuter writes it at deploy) and a missing section is a
-  loud error.
-
-Prod machines run `prod` mode **by default only because** the deploy chain
-writes `EMA_MODE=prod` and `REUTER_INI=/etc/<instance>/reuter.ini` into
-the deployed `.env` (gen-env). ema never reads `.env` itself, so the session
-that runs it must have those values in scope (e.g. `set -a; . .env`).
-Without them ema falls back to `dev` and `ema init db` on a prod server
-would misfire — writing `var/reuter.local.ini` into the deploy dir (wiped on
-redeploy) and targeting the dev-sandbox socket instead of the instance.
+`upgrade.sql` carries DDL only, filled from `{{dbname}}`/`{{charset}}`/
+`{{collation}}` (no user/grants placeholders). The service accounts and their
+grants are consumer policy: the consumer provisions them separately (on the DB
+host as root over the socket) and persists one `<ACCOUNT>_PASSWORD` key per
+account into the section (an empty value means a passwordless account).
+Per-object grants live in the consumer's `pkg/<name>-<GUID>/upgrade.sql`,
+applied by ema.
 
 ## gen-reuter's job
 
@@ -63,61 +88,55 @@ In consumer repos, `etc/reuter.ini` is **git-ignored** and **generated by
 `gen-reuter`** from `etc/machines.ini` + `etc/deploy.conf`. `gen-reuter`
 writes the prod `[<dbname>]` sections:
 
-- one section per `db:<name>` token in the machines.ini roster — written before any
-  database exists (a missing section on prod is always a misconfiguration);
+- one section per `db:<name>` token in the machines.ini roster — written before
+  any database exists (a missing section on prod is always a misconfiguration);
 - `SERVER` = the hosting server's address (ZeroTier IP);
 - `PORT` = `DEPLOY_DB_PORT`;
 - `MYSQL_UNIX_PORT` = `$DEPLOY_DB_BASE/mysql.sock`, so root/unix_socket auth
   works on the DB host;
-- `ADMIN_PASSWORD`/`READER_PASSWORD` — kept stable across runs (gen-reuter
-  preserves existing credentials).
+- any existing `*_PASSWORD` keys are preserved unchanged (gen-reuter never
+  names the accounts; the consumer's service-user provisioning generates
+  them).
 
 It maintains prod sections only and does not write a `DBNAME` key (the
 section header is the dbname).
 
 ## Deploy chain
 
-- `pf-deploy.sh` ships `pkg/` and `srv/` (gitattributes keeps them in the archive),
-  then runs `composer install` on the remote so the framework CLIs
+- `pf-deploy.sh` ships `pkg/` and `srv/` (gitattributes keeps them in the
+  archive), then runs `composer install` on the remote so the framework CLIs
   (`gen-env`, `gen-reuter`, `pf-provision.sh`, ...) and `ema` land in
-  `vendor/bin`. (The nix closure ships only the PHP runtime + extensions;
-  framework code is Composer-only.)
+  `vendor/bin`.
 - The consumer's deploy wrapper (run after `vendor/bin/pf-deploy.sh`, root):
-  1. `gen-env` → `.env` with `EMA_MODE=prod`,
+  1. `gen-env` → `.env` with `EMA_TARGET=prod`,
      `REUTER_INI=/etc/<instance>/reuter.ini`;
   2. `gen-reuter "$REUTER_INI"` → the `[<dbname>]` sections exist on the DB
      host before any database is created.
-- `vendor/bin/pf-provision.sh` (`pf-deploy.sh --init`, root) provisions only the
-  instance: `$DEPLOY_DB_BASE/{data,mysql.sock,mysql.pid}`,
-  `/etc/<instance>/my.cnf`, `mariadb@<instance>` systemd unit. It never
-  creates databases or users — that is ema's job.
+- `vendor/bin/pf-provision.sh` (`pf-deploy.sh --init`, root) provisions only
+  the instance (`$DEPLOY_DB_BASE/...`, `mariadb@<instance>` unit). It never
+  creates databases or users.
 - Consumer repos git-ignore `/var/`, `/etc/reuter.ini`, `/etc/machines.ini`,
   and `.env`.
 
 ## Creating databases on prod
 
-Databases are created on the DB host as root over the local socket — root
-over TCP cannot authenticate (prod root = unix_socket auth). The deployed
-`.env` must be in scope for the session (ema does not read `.env` itself):
-it carries `EMA_MODE=prod` and `REUTER_INI=/etc/<instance>/reuter.ini`,
-and without them `ema init db` would fall back to `dev` mode:
+Databases are created on the DB host as root over the local socket. The
+deployed `.env` must be in scope for the session:
 
-    ssh root@<db-host> 'cd <deploy-dir> && set -a && . .env && ema init db <name>'
+    ssh root@<db-host> 'cd <deploy-dir> && set -a && . .env && ema create srv/<name>-<GUID>'
 
-`ema init db` reads the `[<name>]` section, fills the `{{dbname}}`,
-`{{servername}}`, `{{admin_password}}`, `{{reader_password}}` placeholders in
-`srv/<name>-<GUID>/upgrade.sql`, and applies it. `ema init tables <root-pkg> <db>`
-applies the `pkg/` schema packages in topological order against the same
-section.
-
-`DBUSER` (env, e.g. exported into `.env` by `gen-env` from
-`etc/machines.ini [dev]`'s workstation-hostname mapping) is the CLI client
-user for prod targets.
+`ema create` refuses when the database already exists. After creation,
+provision the service accounts with the consumer's own provisioning step
+(run on the DB host as root over the socket), which is not shipped by this
+framework.
 
 ## Notes / open items
 
-- `srv/<name>-<GUID>/upgrade.sql` grants are host-pinned to `{{servername}}`;
-  per-host grants are applied manually for now.
-- The framework's `src/Connectivity/Database.php` must stay agnostic to ema:
-  it resolves sections by dbname alone and does not read `EMA_MODE`
-  (see ema doc/2026-08-22-reuter-redesign.md, issue 1).
+- Dev app-layer resolution is still being wired: the dev sandbox writes its
+  own `var/sandbox/<name>-<guid>/reuter.ini` (endpoint keys only, no
+  passwords), while the framework's `Database` class reads the
+  `<ACCOUNT>_PASSWORD` key from the resolved section. Pointing dev
+  `REUTER_INI` at the sandbox file and applying the consumer's service-user
+  provisioning there is the pending piece.
+- `Database.php` resolves sections by dbname alone and does not read
+  `EMA_TARGET`.

@@ -44,7 +44,8 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 #   socket   = $DEPLOY_DB_BASE/mysql.sock
 #   pid-file = $DEPLOY_DB_BASE/mysql.pid
 # gen-reuter writes MYSQL_UNIX_PORT=$DEPLOY_DB_BASE/mysql.sock into each prod
-# reuter.ini section (for `ema init db <name>` root socket access on the DB host).
+# reuter.ini section (for `ema create srv/<name>-<GUID>` root socket access on
+# the DB host).
 # Created and initialized by `deploy --init` (the framework's generic
 # bin/pf-provision.sh) only on the database host; the daemon runs as PROD_USER
 # via a systemd template unit (mariadb@<instance>), started exactly once and

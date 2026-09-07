@@ -15,19 +15,18 @@ use Utils\Logger;
  * End-to-end smoke test for the DB layer.
  *
  * Provision first (see README "Quick test: PHP–MariaDB integration with ema"):
- *   ema init db test
- *   ema init tables demo-8C3A9E1F0D2B4C5D
+ *   ema sandbox srv/test-D0PR2OGMHXDSCAR3
  *   bin/phprun 'src/scripts/demo/db_smoke.php:main()'
  *
  * Re-running is safe: rows accumulate in `items` and BatchScan resumes
  * from its persisted cursor.
  */
-#[Agent(dbTarget: 'test')]
+#[Agent(dbTarget: 'test', dbAccount: 'demo')]
 function main($conn): void
 {
     // 1) Connectivity — $conn is a live PDO connection created by
-    //    Utils\Connectivity\Database::admin('test') from the [local]
-    //    section of etc/reuter.ini (injected by the runner).
+    //    Utils\Connectivity\Database::connectAs('test', 'demo') from the [test]
+    //    section of the resolved reuter.ini (injected by the runner).
 
     // 2) BatchInsert — persist 10 rows into `items` in chunks of 5.
     $rows = [];

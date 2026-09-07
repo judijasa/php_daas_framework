@@ -61,32 +61,26 @@ class Database extends PDO
         ];
     }
 
-    public static function admin(string $dbname): self {
+    // Open a connection for a service account. The account name is consumer
+    // policy — this framework does not know any specific account. Its password
+    // is read from the <ACCOUNT>_PASSWORD key of the [<dbname>] section
+    // (uppercased account name + `_PASSWORD`); an empty value means a
+    // passwordless account.
+    public static function connectAs(string $dbname, string $account): self {
+        if ($account === '') {
+            throw new \RuntimeException("Database account name must not be empty.");
+        }
         $cnf = self::loadConfig($dbname);
+        $key = strtoupper($account) . '_PASSWORD';
+        if (!array_key_exists($key, $cnf)) {
+            throw new \RuntimeException(
+                "Account '$account' has no '$key' key in section [$dbname]."
+            );
+        }
         return new self(
             self::buildDsn($dbname, $cnf),
-            'admin',
-            $cnf['ADMIN_PASSWORD'],
-            self::baseOptions()
-        );
-    }
-
-    public static function reader(string $dbname): self {
-        $cnf = self::loadConfig($dbname);
-        return new self(
-            self::buildDsn($dbname, $cnf),
-            'reader',
-            $cnf['READER_PASSWORD'],
-            self::baseOptions()
-        );
-    }
-
-    public static function public(string $dbname): self {
-        $cnf = self::loadConfig($dbname);
-        return new self(
-            self::buildDsn($dbname, $cnf),
-            'public',
-            '',
+            $account,
+            (string) $cnf[$key],
             self::baseOptions()
         );
     }
