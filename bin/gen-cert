@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# gen-cert — member-side client-certificate helper for the team-DB-user flow.
+# The framework owns the mechanism; the consumer owns etc/team.ini (the
+# subject per member). The CA private key is OFFLINE and never touched here:
+# the only signing step is an openssl command run by the operator on the
+# offline machine (see doc/system/team-db-users.md).
+#
+# Usage:
+#   gen-cert new <member>              Generate a private key + CSR for
+#                                      <member> (subject from etc/team.ini).
+#   gen-cert install <member> <cert>   Install the operator-returned cert +
+#                                      the local key at ~/.mariadb/ (key mode
+#                                      0600) and point ~/.my.cnf [client] at
+#                                      them.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  gen-cert new <member>              Generate a private key + CSR (subject
+                                     from etc/team.ini).
+  gen-cert install <member> <cert>   Install the returned cert + local key at
+                                     ~/.mariadb/ (key mode 0600) and point
+                                     ~/.my.cnf [client] at them.
+The CA private key is offline and never touched by this helper.
+EOF
+}
+
+# Read the `subject` for <member> from etc/team.ini (the [member] section).
+subject_for() {
+    local member="$1"
+    local ini="${TEAM_INI:-$PWD/etc/team.ini}"
+    if [[ ! -f "$ini" ]]; then
+        echo "gen-cert: $ini not found (copy etc/team.ini.template and fill it in)" >&2
+        exit 1
+    fi
+    awk -F= -v m="$member" '
+        /^[[:space:]]*[;#]/ { next }
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*\[/ { gsub(/^[[:space:]]*\[|\][[:space:]]*$/, "", $0); sec = $0; next }
+        {
+            key = $1
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+            if (sec == m && key == "subject") {
+                v = substr($0, index($0, "=") + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+                print v
+                exit
+            }
+        }
+    ' "$ini"
+}
+
+cmd_new() {
+    local member="$1" subject
+    subject="$(subject_for "$member")"
+    if [[ -z "$subject" ]]; then
+        echo "gen-cert: member '$member' has no 'subject' in etc/team.ini" >&2
+        exit 1
+    fi
+    openssl req -new -newkey rsa:2048 -nodes \
+        -keyout "$member.key" -out "$member.csr" -subj "$subject"
+    echo "Created $member.key (private — keep it on this machine) and $member.csr."
+    echo "Send $member.csr to the operator for signing. Never send $member.key."
+}
+
+# Upsert ssl-cert / ssl-key into the [client] section of ~/.my.cnf.
+my_cnf_upsert() {
+    local mycnf="$1" crt="$2" key="$3"
+    if [[ ! -f "$mycnf" ]]; then
+        printf '[client]\nssl-cert=%s\nssl-key=%s\n' "$crt" "$key" > "$mycnf"
+        return 0
+    fi
+    awk -v crt="$crt" -v key="$key" '
+        /^[[:space:]]*\[/ {
+            if ($0 ~ /^[[:space:]]*\[[[:space:]]*client[[:space:]]*\]/) {
+                in_client = 1
+                seen_client = 1
+                print $0
+                print "ssl-cert=" crt
+                print "ssl-key=" key
+            } else {
+                in_client = 0
+                print $0
+            }
+            next
+        }
+        in_client && /^[[:space:]]*ssl-cert[[:space:]]*=/ { next }
+        in_client && /^[[:space:]]*ssl-key[[:space:]]*=/ { next }
+        { print }
+        END {
+            if (!seen_client) {
+                print ""
+                print "[client]"
+                print "ssl-cert=" crt
+                print "ssl-key=" key
+            }
+        }
+    ' "$mycnf" > "$mycnf.tmp"
+    mv "$mycnf.tmp" "$mycnf"
+}
+
+cmd_install() {
+    local member="$1" cert="$2"
+    [[ -n "$member" && -n "$cert" ]] || { usage; exit 1; }
+    [[ -f "$member.key" ]] || {
+        echo "gen-cert: $member.key not found here (run 'gen-cert new $member' first)" >&2
+        exit 1
+    }
+    [[ -f "$cert" ]] || {
+        echo "gen-cert: certificate file $cert not found" >&2
+        exit 1
+    }
+    local dir="$HOME/.mariadb"
+    mkdir -p "$dir"
+    install -m 644 "$cert" "$dir/$member.crt"
+    install -m 600 "$member.key" "$dir/$member.key"
+    my_cnf_upsert "$HOME/.my.cnf" "$dir/$member.crt" "$dir/$member.key"
+    echo "Installed $dir/$member.crt and $dir/$member.key (key mode 0600)."
+    echo "Pointed ~/.my.cnf [client] ssl-cert/ssl-key at them."
+    echo "Verify with: ema mariadb <db>"
+}
+
+main() {
+    local cmd="${1:-}"
+    case "$cmd" in
+        new)      [[ -n "${2:-}" ]] || { usage; exit 1; }; cmd_new "$2" ;;
+        install)  [[ -n "${2:-}" && -n "${3:-}" ]] || { usage; exit 1; }; cmd_install "$2" "$3" ;;
+        -h|--help|help) usage; exit 0 ;;
+        *) usage; exit 1 ;;
+    esac
+}
+
+main "$@"

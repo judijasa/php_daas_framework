@@ -1,0 +1,13 @@
+# Placeholder — replace with the real team CA certificate (PEM).
+#
+# The team CA private key is held OFFLINE (air-gapped machine or hardware
+# token) and never enters a networked host or this repo. Generate the CA
+# offline, commit only the certificate here, and keep the key on the offline
+# medium:
+#
+#   openssl req -x509 -newkey rsa:4096 -keyout team-ca.key -out team-ca.crt \
+#     -days 3650 -nodes -subj "/CN=team-ca/O=team"
+#
+# Steps: 1) commit this file; 2) install it as the MariaDB server `ssl-ca`
+# (see doc/system/team-db-users.md); 3) keep team-ca.key offline — it is the
+# only thing that signs member certificates.

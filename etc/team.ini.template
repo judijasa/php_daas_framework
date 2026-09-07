@@ -1,0 +1,28 @@
+; Team member registry — one DB account per team member, host-pinned to the
+; member's machine(s). Copy to etc/team.ini (git-ignored) and fill it in.
+;
+; Each section is one member and the section name IS that member's DB
+; username. `subject` is the member's client-certificate subject DN, passed
+; verbatim to the account's REQUIRE SUBJECT clause (the CN is
+; `<username>-<guid>`, a short random token: same-named members stay distinct
+; and a leaked cert is rotated by issuing a new cert with a new guid). The
+; remaining keys are hostname -> ZeroTier IP entries pinning the source
+; host(s) the member may connect from.
+;
+;   `init-local-env.sh` finds the section whose entries include the local
+;   `hostname` and exports its name as DBUSER.
+;   `gen-grants <db>` turns each member@ip into a cert-pinned, passwordless
+;   DB account (REQUIRE SUBJECT).
+;   `gen-cert new <member>` reads the `subject` below for the CSR.
+;
+; Generate the CN token with `gen-cert new` (it does not commit it); the
+; resulting certificate's subject must match the account's REQUIRE SUBJECT.
+
+[john]
+subject          = /CN=john-a1b2c3d4/O=team
+john-workstation = 10.147.x.20
+john-laptop      = 10.147.x.21
+
+[jane]
+subject          = /CN=jane-9f8e7d6c/O=team
+jane-workstation = 10.147.x.30

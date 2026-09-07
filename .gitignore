@@ -2,6 +2,7 @@
 
 /etc/reuter.ini
 /etc/machines.ini
+/etc/team.ini
 /var/
 .env
 /result/

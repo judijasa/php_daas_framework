@@ -26,8 +26,7 @@
 #     DEPLOY_NIX_GCROOT      remote nix gcroot (e.g. /nix/var/nix/gcroots/<app>)
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
 #                            run after the generic provision; skipped if unset.
-#   etc/machines.ini  (git-ignored; template committed) - machine registry:
-#     [dev]  hostname -> prod DB username (DBUSER)
+#   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
 #     [prod] ZeroTier-IP -> comma-separated `tag[:name]` tokens (a host with
 #            a `db:<name>` token is the database host; empty entries are
 #            code-only servers; each named token maps to exactly one server)

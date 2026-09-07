@@ -65,9 +65,10 @@ and build on directly.
 
 ### Standalone dev init
 
-1. Clone, enter the dev shell, and build the sandbox (creates `var/`,
-   initializes/starts an isolated MariaDB, runs `composer install`, and
-   writes the git-ignored `.env`):
+1. Clone, enter the dev shell, and prepare the sandbox (creates `var/log/`,
+   runs `composer install`, and writes the git-ignored `.env`). The MariaDB
+   instance is not started here — `ema sandbox` builds + starts it in the
+   next step:
 
    ```bash
    git clone <repo> php_daas_framework
@@ -77,18 +78,20 @@ and build on directly.
    ```
 
 2. Create the `test` database + dev sandbox (git-ignored, under
-   `var/sandbox/`):
+   `var/sandbox/`); `ema sandbox` builds and starts the isolated MariaDB
+   instance:
 
    ```bash
    ema sandbox srv/test-D0PR2OGMHXDSCAR3
    ```
 
-   Optional: `cp etc/machines.ini.template etc/machines.ini` and fill in the
-  [dev] hostname-to-dbuser mapping and the [prod] ZeroTier deploy roster
-   this machine's hostname to a DB user — only needed for remote DB access.
+   Optional: `cp etc/team.ini.template etc/team.ini` and add this machine's
+   hostname to your member section (maps `$(hostname)` to your team DB
+   username for remote DB access); and `cp etc/machines.ini.template
+   etc/machines.ini` to fill in the `[prod]` ZeroTier deploy roster.
 
-3. Re-enter the shell (or `source .env`) so the shell sees the `MYSQL_*`
-   paths. Write your agents under `src/scripts/` (see
+3. Re-enter the shell (or `source .env`) so the shell sees the repo paths.
+   Write your agents under `src/scripts/` (see
    `src/scripts/demo/hello.php`) and run them from the repo root:
 
    ```bash
@@ -97,8 +100,12 @@ and build on directly.
 
 `phprun` loads `.env` from the current working directory (the repo root)
 before doing anything else — no manual exports needed. `make dev-init`
-writes `.env` with the repo paths, `REUTER_INI`, `EMA_TARGET=sandbox` and, when
-`etc/machines.ini` `[dev]` maps the machine hostname to the prod DB username (`DBUSER`); `[prod]` lists the prod deploy targets (ZeroTier IP = comma-separated `tag[:name]` tokens; `db` is the built-in tag, other tags are consumer-owned; each named token maps to exactly one server).
+writes `.env` with the repo paths, `REUTER_INI`, `EMA_TARGET=sandbox` and,
+when `etc/team.ini` includes the local hostname, `DBUSER` (the member's team
+DB username). `etc/machines.ini` is a prod-server-only roster (`[prod]` only):
+each ZeroTier IP maps to comma-separated `tag[:name]` tokens (`db` is the
+built-in tag, other tags are consumer-owned; each named token maps to exactly
+one server).
 
 In template mode the classes are autoloaded from the framework's **own**
 `vendor/autoload.php`, and `etc/reuter.ini` is resolved from the repo root.
@@ -149,13 +156,15 @@ below).
 The dev shell bundles PHP (with `pdo_mysql`), MariaDB and composer.
 [`ema`](https://github.com/judijasa/ema) — a MariaDB package manager — is
 Composer-delivered (`vendor/bin/ema`).
-`make dev-init` initializes and starts an isolated MariaDB on a
-unix socket under `var/`, so there is no system DB to install.
+`ema sandbox` builds and starts an isolated MariaDB instance under
+`var/sandbox/<name>-<guid>/` (its own datadir/socket/pid), so there is no
+system DB to install. `nix develop` and `make dev-init` do not start any
+daemon — the instance lifecycle is owned by ema (`ema start` / `ema stop`).
 
 ```bash
 nix develop
-make dev-init    # dirs, MariaDB init+start, composer install, .env
-source .env      # (or re-enter the shell) so the shell sees the MYSQL_* paths
+make dev-init    # dirs, composer install, .env
+source .env      # (or re-enter the shell) so the shell sees the repo paths
 
 # 1. Create the `test` database + dev sandbox (bootstrap + schema deps)
 ema sandbox srv/test-D0PR2OGMHXDSCAR3
@@ -166,9 +175,9 @@ bin/phprun 'src/scripts/demo/db_smoke.php:main()'
 
 What the agent exercises, end to end:
 
-- **`Utils\Connectivity\Database`** — the runner injects `$conn`, a real PDO
+- **`Utils\\Connectivity\\Database`** — the runner injects `$conn`, a real PDO
   connection created by `Database::connectAs('test', 'demo')` using the `[test]`
-  section of `var/sandbox/test-d0pr2ogmhxdscar3/reuter.ini` and the `MYSQL_UNIX_PORT` socket.
+  section of `var/sandbox/test-d0pr2ogmhxdscar3/reuter.ini`.
 - **`Utils\DatabaseOps\BatchInsert`** — persists 10 demo rows into the `items`
   table in chunks of 5.
 - **`Utils\DatabaseOps\CursorSeq`** — reads/initializes and advances a cursor
@@ -205,11 +214,16 @@ The framework code is delivered by Composer only. The `composer.json` `bin`
 array installs the CLIs and scripts into `vendor/bin`:
 
 - `bin/phprun`, `bin/pf-deploy.sh`, `bin/pf-roster`, `bin/gen-env`,
-  `bin/gen-reuter`, `bin/cron-manifest` — the framework CLIs.
+  `bin/gen-reuter`, `bin/gen-grants`, `bin/gen-cert`, `bin/cron-manifest` — the
+  framework CLIs.
 - `bin/dev/pf-shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
   machinery.
 - `bin/pf-provision.sh` — the generic production provisioning script, invoked
   by `pf-deploy.sh --init` as `vendor/bin/pf-provision.sh`.
+
+`gen-grants` (team-member DB accounts + roles) and `gen-cert` (member client
+certificates) implement the team-DB-user flow; see
+`doc/system/team-db-users.md`.
 
 The PHP library itself (the `Utils\` PSR-4 namespace under `src/`) is
 autoloaded from `vendor/autoload.php`.
@@ -226,25 +240,20 @@ The dev scripts are Composer-delivered (`vendor/bin`), so a consumer's own
 `make dev-init` can delegate the generic steps to them:
 
 ```make
-_dev-init-cluster:
-        @vendor/bin/init-cluster.sh "$(MYSQL_DATA_DIR)" "$(MYSQL_PID_FILE)" "$(MYSQL_UNIX_PORT)"
-
 _dev-init-local-env:
         @vendor/bin/init-local-env.sh
 ```
 
 `init-local-env.sh [target-dir]` (default `$PWD`) writes the repo-root `.env`
-(`REPO_PATH`, `REPO_LOG`, `MYSQL_*`, `REUTER_INI`, `EMA_TARGET=sandbox`, and
-`DBUSER` when `etc/machines.ini` maps the hostname). `init-cluster.sh`
-(the MariaDB cluster init: `mariadb-install-db` + start `mysqld`, taking
-the data-dir/pid-file/socket as arguments) is **owned by ema** and shipped in
-ema's own `composer.json` `bin` array (`vendor/bin/init-cluster.sh`) — this
-framework reuses it rather than keeping a duplicate copy. Everything is
-derived from the target directory at runtime — no consumer paths are baked
-in. Consumer-specific steps (git hooks, hosts, ...) stay in the consumer's
-Makefile, and the dev shell shellHook sources `pf-shell-enter.sh` (loads `.env`,
-resumes the local MariaDB daemon): standalone flakes source
-`./bin/dev/pf-shell-enter.sh`, consumers source `vendor/bin/pf-shell-enter.sh`.
+(`REPO_PATH`, `REPO_LOG`, `REUTER_INI`, `EMA_TARGET=sandbox`, and `DBUSER` when
+`etc/team.ini` includes the local hostname). It does not initialize or start a
+MariaDB daemon: the dev instance lifecycle is owned by ema (`ema sandbox` /
+`ema start` / `ema stop`). Everything is derived from the target directory at
+runtime — no consumer paths are baked in. Consumer-specific steps (git hooks,
+hosts, ...) stay in the consumer's Makefile, and the dev shell shellHook
+sources `pf-shell-enter.sh` (loads `.env` and sets the tmux alias; it does not
+start a daemon): standalone flakes source `./bin/dev/pf-shell-enter.sh`,
+consumers source `vendor/bin/pf-shell-enter.sh`.
 
 ## Environment variables
 
@@ -265,7 +274,6 @@ every deploy by `gen-env` as a deterministic projection of the committed
 | `REPO_LOG` | Directory where per-script logs are appended. |
 | `REUTER_INI` | Path to the DB config ini consumed by `Utils\\Connectivity\\Database`; falls back to `$PWD/etc/reuter.ini`. |
 | `EMA_TARGET` | Operation-mode flag for the `ema` CLI only (`sandbox` = local per-instance, `prod` = server). The app layer ignores it; a database is always resolved to its `[<dbname>]` section. |
-| `MYSQL_UNIX_PORT` | Dev-only: unix socket appended to the DSN (set by `init-local-env.sh`). Prod `.env` stays `MYSQL_*`-free; the prod socket lives in the `reuter.ini` section (`gen-reuter`). |
 
 ## Deploying a consumer project
 
@@ -305,9 +313,9 @@ pf-deploy.sh --init        # + one-time provisioning (MariaDB only on the DB hos
 | `CRON_FILE` | Optional: remote crontab file the consumer's deploy wrapper installs the `cron-manifest` output into. |
 | `CRON_USER` | Optional: user the cron entries run as (default `root`). |
 
-- **`etc/machines.ini`** (git-ignored; template committed) - the machine
-  registry: `[dev]` hostname→prod DB username, `[prod]` ZeroTier-IP→`tag[:name]`
-  tokens (comma-separated per server; `db` is the built-in tag, other tags are
+- **`etc/machines.ini`** (git-ignored; template committed) - the prod-server
+  registry: `[prod]` ZeroTier-IP→`tag[:name]` tokens (comma-separated per
+  server; `db` is the built-in tag, other tags are
   consumer-owned). `pf-deploy.sh` (default mode) targets every `[prod]` host; a
   host carrying a `db:<name>` token is a database host and gets a MariaDB
   instance on `--init` (one instance serves all its `db:` names). Each named

@@ -31,6 +31,8 @@
     "bin/pf-deploy.sh",
     "bin/gen-env",
     "bin/gen-reuter",
+    "bin/gen-grants",
+    "bin/gen-cert",
     "bin/pf-roster",
     "bin/cron-manifest",
     "bin/dev/pf-shell-enter.sh",

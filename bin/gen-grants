@@ -1,0 +1,217 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// gen-grants — reconcile team-member DB accounts + roles from etc/team.ini
+// and the srv/<db>.roles-<GUID> package(s). The framework owns the mechanism
+// (format + reconcile); the consumer owns the data (etc/team.ini) and the
+// role policy (the srv/ roles packages).
+//
+// It emits transient SQL (never persisted) and, unless -n/--dry-run, applies
+// it as root through `ema mariadb <db> < file.sql`. ema owns the connection:
+// it connects as root for sandboxes and as DBUSER for prod, so gen-grants
+// runs `ema mariadb` with DBUSER=root to make the reconcile provision as
+// root. Run it as root on the DB host (root/unix_socket auth over the socket
+// written by gen-reuter).
+//
+// Reconcile shape, per member, per hostname->ZeroTier IP:
+//   CREATE USER IF NOT EXISTS 'member'@'ip' REQUIRE SUBJECT '<subject>';
+//   ALTER USER 'member'@'ip' REQUIRE SUBJECT '<subject>';
+//   GRANT <role> TO 'member'@'ip';
+//   SET DEFAULT ROLE <role> FOR 'member'@'ip';
+// preceded by the role definitions (shared roles package first, then the
+// per-database grant package), with {{dbname}} filled from <db>.
+//
+// Usage: gen-grants <db> [-n|--dry-run] [--help]
+
+const HELP = <<<'TXT'
+Usage: gen-grants <db> [flags]
+
+Reconcile team-member DB accounts (certificate-pinned, no password) and
+roles for one database, from etc/team.ini + srv/<db>.roles-<GUID>.
+
+  <db>              database name (resolves srv/<db>.roles-<GUID>).
+  -n, --dry-run     print the reconcile SQL without applying it.
+  -h, --help        show this help.
+
+Role definitions come from the shared srv/roles-<GUID> package (dependency of
+the per-database grant package); member accounts come from etc/team.ini.
+TXT;
+
+function srv_package_dir(string $root, string $name): ?string
+{
+    $dir = $root . '/srv/' . $name;
+    return is_dir($dir) ? $dir : null;
+}
+
+function find_grants_package(string $root, string $db): ?string
+{
+    $matches = glob($root . '/srv/' . $db . '.roles-*') ?: [];
+    $matches = array_values(array_filter($matches, 'is_dir'));
+    if (count($matches) === 1) {
+        return $matches[0];
+    }
+    if (count($matches) === 0) {
+        fwrite(STDERR, "gen-grants: no srv/{$db}.roles-<GUID> package found\n");
+    } else {
+        fwrite(STDERR, "gen-grants: multiple srv/{$db}.roles-<GUID> packages found; keep one\n");
+    }
+    return null;
+}
+
+// Load a package's default.php and return its $dependencies (array of package
+// directory names). The file assigns a local $dependencies; including it
+// inside this function keeps that assignment scoped here.
+function package_dependencies(string $dir): array
+{
+    $dependencies = null;
+    $default = $dir . '/default.php';
+    if (is_file($default)) {
+        include $default;
+    }
+    return is_array($dependencies) ? array_values($dependencies) : [];
+}
+
+function read_upgrade_sql(string $dir): string
+{
+    $sql = is_file($dir . '/upgrade.sql') ? file_get_contents($dir . '/upgrade.sql') : '';
+    return $sql === false ? '' : $sql;
+}
+
+// Extract role names from CREATE ROLE [IF NOT EXISTS] <name> statements.
+function extract_roles(string $sql): array
+{
+    if (preg_match_all('/\bCREATE\s+ROLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z0-9_]+)/i', $sql, $m) === false) {
+        return [];
+    }
+    return array_values(array_unique($m[1]));
+}
+
+function sql_quote(string $value): string
+{
+    return str_replace("'", "''", $value);
+}
+
+function build_reconcile_sql(string $root, string $db, array $team, string $grantsDir): string
+{
+    $sql = '-- gen-grants reconcile for `' . $db . '` (transient; never persisted)' . PHP_EOL;
+    $sql .= PHP_EOL . '-- Role definitions (shared roles package, then per-database grants)' . PHP_EOL;
+
+    $roleNames = [];
+    foreach (package_dependencies($grantsDir) as $dep) {
+        $dir = srv_package_dir($root, $dep);
+        if ($dir === null) {
+            fwrite(STDERR, "gen-grants: dependency package srv/{$dep} not found\n");
+            exit(1);
+        }
+        $depSql = read_upgrade_sql($dir);
+        $roleNames = array_merge($roleNames, extract_roles($depSql));
+        $sql .= $depSql . PHP_EOL;
+    }
+    $sql .= read_upgrade_sql($grantsDir) . PHP_EOL;
+
+    // Fill the database placeholder in the role/grant SQL.
+    $sql = str_replace('{{dbname}}', $db, $sql);
+    $roleNames = array_values(array_unique($roleNames));
+    if (count($roleNames) === 0) {
+        fwrite(STDERR, "gen-grants: no CREATE ROLE statement found in the roles packages\n");
+        exit(1);
+    }
+
+    $sql .= PHP_EOL . '-- Member accounts (certificate-pinned, no password)' . PHP_EOL;
+    foreach ($team as $member => $entries) {
+        $subject = $entries['subject'] ?? null;
+        if (!is_string($subject) || $subject === '') {
+            fwrite(STDERR, "gen-grants: member '{$member}' has no 'subject' in etc/team.ini\n");
+            exit(1);
+        }
+        foreach ($entries as $hostname => $ip) {
+            if ($hostname === 'subject' || !is_string($ip) || $ip === '') {
+                continue;
+            }
+            $m = sql_quote((string) $member);
+            $i = sql_quote($ip);
+            $s = sql_quote($subject);
+            $sql .= "CREATE USER IF NOT EXISTS '{$m}'@'{$i}' REQUIRE SUBJECT '{$s}';" . PHP_EOL;
+            $sql .= "ALTER USER '{$m}'@'{$i}' REQUIRE SUBJECT '{$s}';" . PHP_EOL;
+            foreach ($roleNames as $role) {
+                $sql .= 'GRANT ' . $role . " TO '{$m}'@'{$i}';" . PHP_EOL;
+                $sql .= 'SET DEFAULT ROLE ' . $role . " FOR '{$m}'@'{$i}';" . PHP_EOL;
+            }
+        }
+    }
+
+    return $sql;
+}
+
+function apply_sql(string $root, string $db, string $sql): int
+{
+    $tmp = tempnam(sys_get_temp_dir(), 'gen_grants_');
+    if ($tmp === false || file_put_contents($tmp, $sql) === false) {
+        fwrite(STDERR, "gen-grants: could not write the temporary SQL file\n");
+        return 1;
+    }
+    $ema = is_executable($root . '/vendor/bin/ema') ? $root . '/vendor/bin/ema' : 'ema';
+    $cmd = 'DBUSER=root ' . escapeshellarg($ema) . ' mariadb ' . escapeshellarg($db) . ' < ' . escapeshellarg($tmp);
+    passthru($cmd, $code);
+    @unlink($tmp);
+    return $code;
+}
+
+function main(array $argv): int
+{
+    $root = getcwd();
+    if ($root === false) {
+        $root = '.';
+    }
+
+    $db = null;
+    $dryRun = false;
+    foreach (array_slice($argv, 1) as $arg) {
+        if ($arg === '-n' || $arg === '--dry-run') {
+            $dryRun = true;
+        } elseif ($arg === '-h' || $arg === '--help') {
+            fwrite(STDOUT, HELP);
+            return 0;
+        } elseif ($db === null) {
+            $db = $arg;
+        } else {
+            fwrite(STDERR, "gen-grants: unexpected argument: {$arg}\n");
+            return 1;
+        }
+    }
+    if ($db === null) {
+        fwrite(STDERR, "gen-grants: missing <db> argument\n");
+        fwrite(STDERR, HELP);
+        return 1;
+    }
+
+    $teamIni = $root . '/etc/team.ini';
+    if (!is_file($teamIni)) {
+        fwrite(STDERR, "gen-grants: {$teamIni} not found (copy etc/team.ini.template and fill it in)\n");
+        return 1;
+    }
+    $team = parse_ini_file($teamIni, true, INI_SCANNER_RAW);
+    if (!is_array($team) || count($team) === 0) {
+        fwrite(STDERR, "gen-grants: no members in {$teamIni}\n");
+        return 1;
+    }
+
+    $grantsDir = find_grants_package($root, $db);
+    if ($grantsDir === null) {
+        return 1;
+    }
+
+    $sql = build_reconcile_sql($root, $db, $team, $grantsDir);
+    fwrite(STDOUT, $sql);
+
+    if ($dryRun) {
+        fwrite(STDERR, "gen-grants: dry-run; SQL printed, not applied\n");
+        return 0;
+    }
+
+    return apply_sql($root, $db, $sql);
+}
+
+exit(main($argv));

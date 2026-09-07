@@ -46,14 +46,14 @@ each per-database package (`srv/<name>.roles-<guid>`) depends on it and adds
 only that database's grants. Initially one default role (`developer`) for
 every member; per-member role divergence is deferred.
 
-Policy (not enforced): `ema init db`, the DB bootstrap step, emits no team
-grants. Team grants are applied separately, at will, targeting one database
-via `gen-grants <db>`.
+Policy (not enforced): the ema bootstrap (`ema sandbox` / `ema create`),
+the DB creation step, emits no team grants. Team grants are applied
+separately, at will, targeting one database via `gen-grants <db>`.
 
 The mechanism is a reconcile: a framework CLI (`gen-grants`) reads
 `etc/team.ini` + the `srv/<name>.roles-<guid>` package (resolving its
 `$dependencies` to the shared roles package), emits transient SQL, and
-applies it through a new generic `ema apply <db> <sql>`. ema stays
+applies it as root through `ema mariadb <db> < file.sql`. ema stays
 mechanism-only; the framework owns the team.ini format + reconcile + the team
 CA and cert issuance; the consumer owns the data and the role policy.
 
@@ -115,9 +115,9 @@ srv/test.roles-D0W3P8HL6TQK2B9R/
 
 ## Mechanism & data ownership
 
-- **ema** owns the mechanism only: `ema apply <db> <sql>` runs arbitrary SQL
-  against a resolved section, reusing the existing root/socket + sudo logic
-  (same as `_apply_schema`). No knowledge of team.ini, roles, or certs.
+- **ema** owns the mechanism only: `ema mariadb <db> < file.sql>` runs
+  arbitrary SQL against a resolved section, reusing the existing root/socket
+  + sudo logic. No knowledge of team.ini, roles, or certs.
 - **framework** owns the format + reconcile: `bin/gen-grants [db]` reads
   `etc/team.ini` + the `srv/<db>.roles-<guid>` package (resolving its
   `$dependencies` to the shared `srv/roles-<guid>` package) and, per
@@ -187,34 +187,39 @@ a leaked cert otherwise means changing `REQUIRE SUBJECT` or rotating the CA.
 
 ### php_daas_framework (this repo)
 
-- [ ] `etc/team.ini.template` (new): the member-section schema above (section
+- [x] `etc/team.ini.template` (new): the member-section schema above (section
       = username, `subject` key with `<username>-<guid>` CN, hostname → IP
       entries) + usage comments.
-- [ ] `.gitignore`: add `/etc/team.ini`.
-- [ ] `etc/team-ca.crt` (new, committed): the public team CA cert, installed
+- [x] `.gitignore`: add `/etc/team.ini`.
+- [x] `etc/team-ca.crt` (new, committed): the public team CA cert, installed
       as the server `ssl-ca`.
-- [ ] `etc/machines.ini.template`: drop `[dev]`; document it as a
+- [x] `etc/machines.ini.template`: drop `[dev]`; document it as a
       prod-server-only registry.
-- [ ] `bin/dev/init-local-env.sh`: resolve `DBUSER` from `etc/team.ini` (find
+- [x] `bin/dev/init-local-env.sh`: resolve `DBUSER` from `etc/team.ini` (find
       the section whose entries include `$(hostname)`; `DBUSER` = section
       name) instead of `machines.ini [dev]`.
-- [ ] `bin/gen-grants` (new): the reconcile CLI above (`REQUIRE SUBJECT`, no
+- [x] `bin/gen-grants` (new): the reconcile CLI above (`REQUIRE SUBJECT`, no
       password), resolving the `srv/` roles-package `$dependencies`.
-- [ ] `bin/gen-cert` (new): member-side helper — `gen-cert new <member>`
+- [x] `bin/gen-cert` (new): member-side helper — `gen-cert new <member>`
       generates the private key + CSR (subject from `etc/team.ini`), and
       `gen-cert install <member> <cert>` installs the operator-returned cert
       at `~/.mariadb/` (key mode `0600`). It never touches the CA key
       (offline, operator-held).
-- [ ] `srv/roles-<guid>/` + `srv/test.roles-<guid>/` (new example packages):
+- [x] `srv/roles-<guid>/` + `srv/test.roles-<guid>/` (new example packages):
       the shared `developer` role definition + the `test`-database grant, with
       the grant package depending on the roles package.
-- [ ] `composer.json`: add `bin/gen-grants` and `bin/gen-cert` to the `bin`
+- [x] `composer.json`: add `bin/gen-grants` and `bin/gen-cert` to the `bin`
       array.
-- [ ] `doc/system/team-db-users.md` (new): the offline signing workflow
+- [x] `doc/system/team-db-users.md` (new): the offline signing workflow
       (`~/.mariadb/` + `chmod 600`), the subject-vs-revocation caveat, the
       `team.ini` → account reconcile, and the `[dev]` → `team.ini` move.
-- [ ] `README.md`: quick setup + overview only — add a short pointer to
+- [x] `README.md`: quick setup + overview only — add a short pointer to
       `doc/system/team-db-users.md`; update `[dev]`/DBUSER references.
+- [x] `Makefile`, `bin/dev/pf-shell-enter.sh`, `bin/dev/init-local-env.sh`:
+      stop starting/resuming the dev MariaDB daemon — `nix develop` and
+      `make dev-init` no longer launch a shared instance; the per-instance
+      sandbox lifecycle is owned by ema (`ema sandbox` / `ema start` /
+      `ema stop`).
 
 ### ema (../ema)
 
@@ -222,18 +227,20 @@ a leaked cert otherwise means changing `REQUIRE SUBJECT` or rotating the CA.
       + `upgrade.sql`) and `ema schema` GUIDs are `S0`-prefixed; `ema init
       db` reads `srv/<name>-<GUID>/upgrade.sql`; flat `srv/<name>.sql` is
       removed (committed in ../ema).
-- [ ] `ema apply <db> <sql-file|->` (new subcommand): `_load_target` +
-      `_mariadb_args`, then run the SQL as root over socket/TCP with the
-      existing root/sudo fallback. No team.ini/roles/cert knowledge.
+- [x] `ema mariadb <db> < file.sql` — raw SQL over stdin as the section's
+      client user (supersedes the removed `ema apply` verb; committed in
+      ../ema). No team.ini/roles/cert knowledge.
 - [ ] Server TLS: provision `ssl-ca` (from `etc/team-ca.crt`), `ssl-cert`,
-      and `ssl-key` in the MariaDB config (extend `ema init db`).
-      (`require_secure_transport=ON` is a separate follow-up — see Open items.)
-      Policy (not enforced): `ema init db` emits no *team* grants — those
-      come only from `gen-grants <db>`, run at will against one database.
+      and `ssl-key` in the MariaDB config. (`require_secure_transport=ON` is a
+      separate follow-up — see Open items.)
+      Policy (not enforced): the ema bootstrap (`ema sandbox` / `ema create`)
+      emits no *team* grants — those come only from `gen-grants <db>`, run at
+      will against one database.
 - [ ] `ema mariadb` client: pass `--ssl-cert`/`--ssl-key` (or rely on the
       member's `~/.my.cnf [client]`), so the client presents the cert instead
       of a password.
-- [ ] `README.md`: document `ema apply` and the cert-based client flags.
+- [ ] `README.md`: document `ema mariadb <db> < file.sql` and the cert-based
+      client flags.
 
 ## Open items
 
@@ -261,5 +268,6 @@ a leaked cert otherwise means changing `REQUIRE SUBJECT` or rotating the CA.
   revocation is part of the same flow.
 - Per-member role divergence: move role assignment into `etc/team.ini` —
   **no** for now (single `developer` for everyone).
-- `ema apply` interface: file vs. stdin, and whether it mirrors the
-  `-n`/`--no-shell` flag parity of the other ema subcommands.
+- `ema mariadb <db> < file.sql` interface: whether it mirrors the
+  `-n`/`--no-shell` flag parity of the other ema subcommands (the old
+  `ema apply` verb is gone).
