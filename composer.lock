@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "2f0532727da3f779a893aee35943748a",
+    "content-hash": "1e4bc982173050a3c54dd666634464eb",
     "packages": [
         {
             "name": "jakoch/phantomjs-installer",
@@ -107,6 +107,39 @@
                 "source": "https://github.com/jerome-breton/casperjs-installer/tree/master"
             },
             "time": "2022-01-27T14:10:21+00:00"
+        },
+        {
+            "name": "judijasa/ema",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/judijasa/ema.git",
+                "reference": "bd034bc384f4b83fa948a94c0a5cf7e46f0388e5"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/judijasa/ema/zipball/bd034bc384f4b83fa948a94c0a5cf7e46f0388e5",
+                "reference": "bd034bc384f4b83fa948a94c0a5cf7e46f0388e5",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.1"
+            },
+            "default-branch": true,
+            "bin": [
+                "ema",
+                "bin/dev/init-cluster.sh"
+            ],
+            "type": "library",
+            "license": [
+                "MIT"
+            ],
+            "description": "Package manager for MariaDB — schema packages + CLI distributed as a Composer library",
+            "support": {
+                "source": "https://github.com/judijasa/ema/tree/main",
+                "issues": "https://github.com/judijasa/ema/issues"
+            },
+            "time": "2026-09-07T20:39:57+00:00"
         },
         {
             "name": "phpcasperjs/phpcasperjs",
@@ -773,39 +806,6 @@
                 }
             ],
             "time": "2024-05-06T16:37:16+00:00"
-        },
-        {
-            "name": "judijasa/ema",
-            "version": "dev-main",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/judijasa/ema.git",
-                "reference": "10cefc679116fb11b9dfd5ce7d41799fe7027274"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/judijasa/ema/zipball/10cefc679116fb11b9dfd5ce7d41799fe7027274",
-                "reference": "10cefc679116fb11b9dfd5ce7d41799fe7027274",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=8.1"
-            },
-            "default-branch": true,
-            "bin": [
-                "ema",
-                "bin/dev/init-cluster.sh"
-            ],
-            "type": "library",
-            "license": [
-                "MIT"
-            ],
-            "description": "Package manager for MariaDB — schema packages + CLI distributed as a Composer library",
-            "support": {
-                "source": "https://github.com/judijasa/ema/tree/main",
-                "issues": "https://github.com/judijasa/ema/issues"
-            },
-            "time": "2026-09-02T21:03:06+00:00"
         },
         {
             "name": "justinrainbow/json-schema",

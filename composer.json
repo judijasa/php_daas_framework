@@ -11,7 +11,8 @@
     "composer-plugin-api": "^2.0",
     "phpcasperjs/phpcasperjs": "^1.3",
     "jerome-breton/casperjs-installer": "dev-master",
-    "jakoch/phantomjs-installer": "3.0.3"
+    "jakoch/phantomjs-installer": "3.0.3",
+    "judijasa/ema": "dev-main"
   },
   "scripts": {
     "post-install-cmd": ["Utils\\Plugin::installCrawlerToolchain"],
@@ -43,7 +44,6 @@
     }
   ],
   "require-dev": {
-    "composer/composer": "^2",
-    "judijasa/ema": "dev-main"
+    "composer/composer": "^2"
   }
 }
