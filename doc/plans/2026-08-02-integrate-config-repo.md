@@ -1,276 +1,85 @@
-# Public Repository with Private Configuration Repository
-
-## Overview
-
-This architecture separates publicly shareable source code from private operational data by using two independent Git repositories:
-
-1. A **public repository** containing the application, scripts, templates, and documentation.
-2. A **private repository** containing sensitive operational data and production-specific configuration.
-
-The public repository does not contain information identifying the private repository. Instead, each deployment environment uses a locally configured, untracked file that specifies how or where the private data should be obtained.
-
----
-
-## Repository Structure
-
-### Public repository
-
-The public repository contains all information that can safely be shared publicly.
-
-Example:
-
-```text
-project/
-├── application/
-├── scripts/
-├── config/
-│   ├── defaults.yml
-│   └── private-data.example.yml
-├── fetch-private-data.example.sh
-├── README.md
-└── .gitignore
-```
-
-The public repository may include templates and documentation describing the expected structure of private data, without including the private data itself.
-
-For example:
-
-```text
-config/private-data.example.yml
-```
-
-might document:
-
-```yaml
-machines:
-  # Production machines are configured privately.
-
-team:
-  # Team-specific configuration is configured privately.
-```
-
----
-
-## Private Repository
-
-The private repository contains production-specific and operational data that should be version-controlled but not publicly disclosed.
-
-Example:
-
-```text
-private-data/
-├── production/
-│   ├── machines.yml
-│   ├── team.yml
-│   └── configuration.yml
-└── README.md
-```
-
-Possible contents include:
-
-* Production machine inventories.
-* IP addresses and network information.
-* Infrastructure configuration.
-* Team operational information.
-* Production-specific configuration.
-
-Sensitive credentials and passwords should not be stored directly in Git merely because this repository is private. Credentials should use an appropriate secrets-management mechanism.
-
----
-
-## Local Private Source Configuration
-
-The public repository uses a local, untracked configuration file to specify where private data can be found or how it can be obtained.
-
-For example:
-
-```text
-.private-source
-```
-
-This file is ignored by Git:
-
-```gitignore
-.private-source
-```
-
-An example template may be committed to the public repository:
-
-```text
-.private-source.example
-```
-
-For example:
-
-```ini
-PRIVATE_DATA_SOURCE=/path/to/private-data
-```
-
-The actual `.private-source` file may contain a local path or another private retrieval mechanism.
-
-For example:
-
-```ini
-PRIVATE_DATA_SOURCE=/srv/private-data
-```
-
-Alternatively, a deployment-specific mechanism may use the configuration to retrieve or update the private repository.
-
-The actual configuration file must remain untracked.
-
----
-
-## Injection of Private Data
-
-The public repository should define a stable mechanism for consuming private configuration.
-
-For example:
-
-```text
-Public repository:
-
-config/
-├── defaults.yml
-└── private-data.example.yml
-```
-
-Private repository:
-
-```text
-production/
-└── production.yml
-```
-
-The application or deployment process can load configuration in layers:
-
-```text
-defaults.yml
-    ↓
-production.yml
-```
-
-Private configuration therefore supplements or overrides public defaults without requiring private data to be copied into the public Git history.
-
----
-
-## Example Workflow
-
-A production environment contains:
-
-```text
-/srv/application/
-    ├── public repository checkout
-    └── .private-source
-
-/srv/private-data/
-    └── private repository checkout
-```
-
-The local configuration might contain:
-
-```ini
-PRIVATE_DATA_SOURCE=/srv/private-data
-```
-
-A deployment script can then:
-
-1. Read `.private-source`.
-2. Locate or obtain the private data.
-3. Validate the expected structure.
-4. Inject, load, or reference the private configuration.
-5. Run the application or deployment process.
-
-The public repository remains fully functional without access to the private repository when operating in environments that do not require production-specific data.
-
----
-
-## Visibility of the Private Repository
-
-Public users can know that private configuration exists and that it is expected to follow a documented interface.
-
-However, the public repository does not need to disclose:
-
-* The name of the private repository.
-* Its hosting provider.
-* Its URL.
-* Its filesystem location.
-* The production environment where it is used.
-
-This information can remain inside the untracked local configuration.
-
-The privacy of the repository should not depend on hiding its identity. Access control to the private repository remains the primary security boundary.
-
----
-
-## Design Principles
-
-### Separate public code from private operational data
-
-The public repository should contain source code and configuration interfaces that are safe to disclose.
-
-The private repository should contain operational information that requires restricted access.
-
-### Version-control private operational data
-
-Information that is not appropriate for a public repository may still benefit from version control when stored in an appropriately access-controlled private repository.
-
-This provides:
-
-* Change history.
-* Auditability.
-* Collaboration.
-* Rollback capability.
-* Reproducible production configuration.
-
-### Keep credentials separate
-
-Passwords, private keys, tokens, and similar credentials should not automatically be committed to the private repository.
-
-Private repository access control does not eliminate the risks associated with credentials being copied through Git history, clones, backups, CI systems, or developer machines.
-
-A dedicated secrets-management mechanism should be used where appropriate.
-
-### Use a stable interface
-
-The public repository should define how private configuration is expected to integrate with the application.
-
-For example:
-
-```text
-public defaults
-    +
-private environment configuration
-```
-
-This interface should remain relatively stable so that changes to the public application do not unnecessarily require restructuring the private repository.
-
----
-
-## Advantages
-
-This architecture provides several benefits:
-
-* Public source code remains genuinely public.
-* Private operational data can still be version-controlled.
-* Public Git history never contains private operational data.
-* The private repository can evolve independently.
-* The public repository does not need to synchronize with private configuration commits.
-* Production-specific configuration has its own history.
-* Access to source code and access to operational information can be controlled independently.
-* Public users can understand the expected private configuration interface without gaining access to production information.
-
----
-
-## Security Considerations
-
-The untracked local pointer to the private data source provides information separation, but it should not be treated as the primary security mechanism.
-
-Security should primarily depend on:
-
-* Proper access control for the private repository.
-* Restricted access to production systems.
-* Appropriate secrets management.
-* Secure deployment mechanisms.
-* Careful handling of backups and repository clones.
-
-The fact that the public repository does not identify the private repository is useful for reducing unnecessary disclosure of infrastructure information, but repository privacy must ultimately be enforced by authentication and authorization.
+# Public repo with private config repo — Plan & Progress
+
+Date: 2026-08-02 (adapted to the current repo 2026-09-08)
+Repos: php_daas_framework (this repo)
+
+## Decision
+
+Separate publicly shareable framework code from private operational data: the
+public repo ships only the mechanism, the committed templates, and a
+`.private-source` pointer contract; the actual operational data
+(`etc/machines.ini` prod roster, `etc/team.ini` member identities) lives in a
+separate, access-controlled private repository. The public repo never names or
+points at that private repo — each deploy/dev machine holds an untracked,
+git-ignored `.private-source` file that locates it locally.
+
+Adaptation vs. the original 2026-08-02 sketch: the repo uses `.ini`
+(`etc/*.ini`, not `.yml`), and the private data is precisely the two
+git-ignored operational files. `etc/deploy.conf` stays committed — it is
+project-static (paths, the app-user name, port numbers — no secrets, identical
+on every prod host), so it is public interface, not private data. Credentials
+(`<ACCOUNT>_PASSWORD` keys) never live in either repo: they are written by the
+consumer's service-user provisioning into the git-ignored, generated
+`etc/reuter.ini`.
+
+## Config model
+
+| File | Committed | Source |
+|---|---|---|
+| `etc/machines.ini` | no (template yes) | private repo, injected by `fetch-private-data` |
+| `etc/team.ini` | no (template yes) | private repo, injected by `fetch-private-data` |
+| `etc/deploy.conf` | yes | public (project-static, no secrets) |
+| `etc/reuter.ini` | no (generated) | `gen-reuter`; credentials from consumer provisioning |
+| `.private-source` | no (`.private-source.example` yes) | machine-specific pointer |
+| `.env` | no (generated) | `init-local-env.sh` (dev) / `gen-env` (prod) |
+
+## Mechanism & data ownership
+
+- **public repo** owns the mechanism + committed templates
+  (`etc/machines.ini.template`, `etc/team.ini.template`,
+  `.private-source.example`, `bin/fetch-private-data`).
+- **private repo** is a small access-controlled git repo whose tracked files
+  mirror the consumer's `etc/` operational data: `machines.ini` and
+  `team.ini`.
+- **`bin/fetch-private-data [target-dir]`** reads `.private-source`, resolves
+  the private repo (a local `PRIVATE_DATA_SOURCE` path, or an on-demand
+  `PRIVATE_DATA_GIT` clone/fetch into `var/private-data`), validates the
+  expected structure (a missing `machines.ini` aborts; a missing `team.ini`
+  warns), then symlinks each private file into `etc/` — leaving any local file
+  untouched. It is a no-op when `.private-source` is absent, so the repo stays
+  fully functional without private data.
+- `bin/pf-deploy.sh` and `bin/dev/init-local-env.sh` call
+  `fetch-private-data` before reading `machines.ini`/`team.ini`, so the
+  private data is present for deploy and dev-init whenever a `.private-source`
+  is configured.
+
+## Changes
+
+### php_daas_framework (this repo)
+
+- [x] `.private-source.example` (new): the pointer contract (local path or
+      git URL); the real `.private-source` is untracked and machine-specific.
+- [x] `.gitignore`: ignore `.private-source`.
+- [x] `bin/fetch-private-data` (new): validate + inject CLI above.
+- [x] `bin/pf-deploy.sh`: call `fetch-private-data` before the
+      `etc/machines.ini` existence check.
+- [x] `bin/dev/init-local-env.sh`: call `fetch-private-data` before `DBUSER`
+      resolution and `gen-reuter`.
+- [x] `composer.json`: ship `bin/fetch-private-data` in the `bin` array.
+- [x] `etc/machines.ini.template`, `etc/team.ini.template`: point at the
+      private-repo injection path.
+- [x] `doc/system/private-config.md` (new): the workflow and security
+      boundary.
+- [x] `README.md`: point at `doc/system/private-config.md`.
+
+## Open items
+
+- Remote-side injection is out of scope: `fetch-private-data` materializes the
+  private files on the deploy/dev machine only; the consumer's deploy wrapper
+  remains responsible for making `machines.ini`/`team.ini` available on the
+  prod hosts (e.g. copying them alongside the deploy, or running `gen-reuter`
+  locally). `git archive` never ships them — they are git-ignored.
+- `etc/deploy.conf` still carries `DEPLOY_DB_BIND` (the DB host's ZeroTier IP)
+  when set — the one remaining operational value in the committed config.
+  Leaving it committed for now (non-secret, project-static); move it into the
+  private repo only if the deploy config grows further operational values.

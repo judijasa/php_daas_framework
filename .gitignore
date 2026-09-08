@@ -5,5 +5,6 @@
 /etc/team.ini
 /var/
 .env
+.private-source
 /result/
 .phpstan-result-cache.php

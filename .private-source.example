@@ -1,0 +1,27 @@
+# Private config source pointer (git-ignored).
+#
+# The public repo ships only committed templates for the operational data
+# (etc/machines.ini, etc/team.ini). The real values live in a separate,
+# access-controlled private repository — a small git repo whose tracked files
+# are `machines.ini` and `team.ini` (mirroring the consumer's etc/). This
+# file tells `fetch-private-data` where to find a checkout of that repo.
+#
+# Copy this file to `.private-source` (untracked, machine-specific) and set
+# exactly one retrieval mechanism:
+#
+#   1. A local checkout of the private repo:
+PRIVATE_DATA_SOURCE=/srv/private-config
+#
+#   2. A git URL (+ optional ref); fetched on demand into var/private-data
+#      (git-ignored, like the rest of /var/):
+# PRIVATE_DATA_GIT=git@example.com:team/app-private-config.git
+# PRIVATE_DATA_REF=main
+#
+#   When neither mechanism is set, the private files are expected to already
+#   be present directly in etc/ (regular files, e.g. shipped by the private
+#   repo's git-archive deploy); fetch-private-data then only validates them
+#   (warn-only, never aborts).
+#
+# This file never discloses the private repo's identity in the public history
+# (it is git-ignored). Access control on the private repo is the real security
+# boundary — see doc/system/private-config.md.

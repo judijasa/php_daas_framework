@@ -68,6 +68,13 @@ set -a
 . "$PWD/etc/deploy.conf"
 set +a
 
+# Inject git-ignored private config (etc/machines.ini, etc/team.ini) from the
+# private repository referenced by .private-source, when configured. A no-op
+# when .private-source is absent — the repo stays functional without private
+# data (see bin/fetch-private-data + doc/system/private-config.md).
+FETCH_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/fetch-private-data"
+"$FETCH_BIN" "$PWD"
+
 # Load the machine registry (git-ignored; copy from machines.ini.template).
 # [prod] lists every prod deploy target by ZeroTier IP; the host whose
 # `tag[:name]` list carries a `db:` token is the database host.

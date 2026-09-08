@@ -26,6 +26,15 @@ REPO_PATH="$(cd "$TARGET_DIR" && pwd)"
 REPO_VAR="$REPO_PATH/var"
 REPO_LOG="$REPO_VAR/log"
 
+# Inject git-ignored private config (etc/machines.ini, etc/team.ini) from the
+# private repository referenced by .private-source, when configured (no-op
+# otherwise), so DBUSER resolution and gen-reuter see the private data.
+if command -v fetch-private-data >/dev/null 2>&1; then
+    ( cd "$REPO_PATH" && fetch-private-data )
+elif [ -x "$REPO_PATH/bin/fetch-private-data" ]; then
+    ( cd "$REPO_PATH" && "$REPO_PATH/bin/fetch-private-data" )
+fi
+
 {
     printf 'export REPO_PATH=%s\n' "$REPO_PATH"
     printf 'export REPO_LOG=%s\n' "$REPO_LOG"

@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# fetch-private-data — inject git-ignored private operational config from a
+# private repository into the consumer repo root.
+#
+# Reads `.private-source` (git-ignored) from the repo root. That file points
+# at the private config repo — a local checkout (PRIVATE_DATA_SOURCE) or a
+# git URL (PRIVATE_DATA_GIT + PRIVATE_DATA_REF, fetched into var/private-data).
+# The private repo's tracked files mirror the consumer's etc/ operational
+# data: `machines.ini` (prod ZeroTier roster) and `team.ini` (member
+# identities). For each, fetch-private-data validates the expected structure
+# and symlinks the private copy into etc/ — leaving any local file untouched.
+#
+# When `.private-source` is absent, this is a no-op, so the public repo stays
+# fully functional without private data (dev/sandbox and environments that do
+# not need production data proceed without it).
+#
+# When `.private-source` is present but sets neither PRIVATE_DATA_SOURCE nor
+# PRIVATE_DATA_GIT (or the machine has no git, e.g. prod), the private files
+# are expected to already be present directly in etc/ — typically shipped
+# there by the private repo's own `git archive`-based deploy. In that case
+# fetch-private-data only validates them (warn-only) and never aborts; deploy
+# remains the abort gate for a missing machines.ini.
+#
+# Access control on the private repo is the real security boundary; the
+# untracked pointer only keeps the private repo's identity out of the public
+# history.
+#
+# Usage: fetch-private-data [target-dir]   (default: $PWD)
+
+set -euo pipefail
+
+ROOT="$(cd "${1:-$PWD}" && pwd)"
+SOURCE_FILE="$ROOT/.private-source"
+
+# No private source configured: nothing to inject (a no-op by design).
+if [[ ! -f "$SOURCE_FILE" ]]; then
+    exit 0
+fi
+
+set -a
+# shellcheck disable=SC1090
+. "$SOURCE_FILE"
+set +a
+
+# Resolve the private repo into a local directory: a configured local path,
+# or an on-demand clone/fetch of a configured git URL.
+SOURCE_DIR="${PRIVATE_DATA_SOURCE:-}"
+if [[ -z "$SOURCE_DIR" && -n "${PRIVATE_DATA_GIT:-}" ]]; then
+    SOURCE_DIR="$ROOT/var/private-data"
+    REF="${PRIVATE_DATA_REF:-main}"
+    if [[ -d "$SOURCE_DIR/.git" ]]; then
+        git -C "$SOURCE_DIR" fetch --quiet origin "$REF"
+        git -C "$SOURCE_DIR" checkout --quiet --detach FETCH_HEAD
+    else
+        mkdir -p "$ROOT/var"
+        git clone --quiet "$PRIVATE_DATA_GIT" "$SOURCE_DIR"
+        git -C "$SOURCE_DIR" checkout --quiet --detach "$REF"
+    fi
+fi
+
+if [[ -z "$SOURCE_DIR" ]]; then
+    # No private repo configured: the private files must already be present
+    # directly in etc/ (e.g. shipped by the private repo's git-archive
+    # deploy). Validate warn-only; deploy is the abort gate for a missing
+    # machines.ini.
+    echo "fetch-private-data: .private-source sets no PRIVATE_DATA_SOURCE/PRIVATE_DATA_GIT; expecting private files already in etc/." >&2
+    if [[ ! -f "$ROOT/etc/machines.ini" ]]; then
+        echo "fetch-private-data: warning: etc/machines.ini not found." >&2
+    fi
+    if [[ ! -f "$ROOT/etc/team.ini" ]]; then
+        echo "fetch-private-data: warning: etc/team.ini not found (team DB users disabled)." >&2
+    fi
+    exit 0
+fi
+
+if [[ ! -d "$SOURCE_DIR" ]]; then
+    echo "fetch-private-data: PRIVATE_DATA_SOURCE $SOURCE_DIR is not a directory." >&2
+    exit 1
+fi
+
+# Resolve to an absolute path so the symlinks below stay valid regardless of
+# the invocation directory.
+SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd)"
+
+# Validate the expected structure before injecting anything. machines.ini is
+# required (deploy cannot run without the prod roster); team.ini is optional
+# (only needed for team DB users / dev DBUSER).
+for f in machines.ini team.ini; do
+    if [[ ! -f "$SOURCE_DIR/$f" ]]; then
+        if [[ "$f" == "machines.ini" ]]; then
+            echo "fetch-private-data: private repo $SOURCE_DIR has no machines.ini (required)." >&2
+            exit 1
+        fi
+        echo "fetch-private-data: warning: private repo $SOURCE_DIR has no team.ini (team DB users disabled)." >&2
+    fi
+done
+
+# Inject each private file as a symlink into etc/, leaving local files (or a
+# prior link) untouched.
+mkdir -p "$ROOT/etc"
+for f in machines.ini team.ini; do
+    src="$SOURCE_DIR/$f"
+    dst="$ROOT/etc/$f"
+    [[ -f "$src" ]] || continue
+    if [[ -e "$dst" || -L "$dst" ]]; then
+        continue
+    fi
+    ln -s "$src" "$dst"
+    echo "    Linked $dst -> $src"
+done

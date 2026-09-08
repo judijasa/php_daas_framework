@@ -35,6 +35,7 @@
     "bin/gen-cert",
     "bin/pf-roster",
     "bin/cron-manifest",
+    "bin/fetch-private-data",
     "bin/dev/pf-shell-enter.sh",
     "bin/dev/init-local-env.sh",
     "bin/pf-provision.sh"

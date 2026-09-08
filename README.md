@@ -88,7 +88,10 @@ and build on directly.
    Optional: `cp etc/team.ini.template etc/team.ini` and add this machine's
    hostname to your member section (maps `$(hostname)` to your team DB
    username for remote DB access); and `cp etc/machines.ini.template
-   etc/machines.ini` to fill in the `[prod]` ZeroTier deploy roster.
+   etc/machines.ini` to fill in the `[prod]` ZeroTier deploy roster. Or keep
+   `etc/team.ini` and `etc/machines.ini` in a private config repo and inject
+   them via a git-ignored `.private-source` (see
+   `doc/system/private-config.md`).
 
 3. Re-enter the shell (or `source .env`) so the shell sees the repo paths.
    Write your agents under `src/scripts/` (see
@@ -322,7 +325,9 @@ pf-deploy.sh --init        # + one-time provisioning (MariaDB only on the DB hos
   token maps to exactly one server; a server may host several databases. The
   shared `pf-roster` CLI parses this roster for `pf-deploy.sh`, `gen-reuter`
   and the consumer's deploy wrapper.
-  Commit this file only in a private fork.
+  Commit this file only in a private fork, or keep it in a separate private
+  config repo and inject it via `.private-source`
+  (`doc/system/private-config.md`).
 
 - **`.env`** (git-ignored, machine-specific) - same contract as `phprun`;
   pf-deploy.sh needs `REPO_PATH` (set by the consumer's dev-init).

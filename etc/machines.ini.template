@@ -1,8 +1,10 @@
 # Machine registry: prod machines only.
 # Copy to etc/machines.ini (git-ignored; commit it only in a private fork) and
-# fill in your entries. `pf-deploy.sh` and `gen-reuter` read the [prod] roster;
-# the dev-machine `DBUSER` mapping now lives in etc/team.ini (see
-# etc/team.ini.template + doc/system/team-db-users.md), not here.
+# fill in your entries — or keep it in a private config repo and inject it via
+# .private-source (see doc/system/private-config.md). `pf-deploy.sh` and
+# `gen-reuter` read the [prod] roster; the dev-machine `DBUSER` mapping now
+# lives in etc/team.ini (see etc/team.ini.template +
+# doc/system/team-db-users.md), not here.
 #
 # [prod] prod deploy targets. Each key is the server's ZeroTier IP (the same
 #        address `pf-deploy.sh` uses for SSH). The value is a comma-separated
