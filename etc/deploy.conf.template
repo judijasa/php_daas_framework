@@ -10,8 +10,8 @@
 # .env (generated, git-ignored) holds machine settings; this file holds the
 # deployment target shared by every machine of the project.
 #
-# `gen-env` (run on the remote by the consumer's deploy wrapper on every
-# deploy) projects the git-ignored .env from THIS file — there is
+# `gen-env` (run on the remote by pf-deploy on every deploy) projects the
+# git-ignored .env from THIS file — there is
 # no separate etc/env.prod anymore. The projection:
 #   REPO_PATH      := DEPLOY_TARGET_DIR
 #   REPO_LOG       := DEPLOY_LOG_DIR
@@ -82,9 +82,17 @@ export DEPLOY_NIX_GCROOT=/nix/var/nix/gcroots/<app>
 # skipped if unset.
 # export DEPLOY_INIT_CMD="make prod-init"
 
-# Optional cron config, consumed by the framework `cron-manifest` CLI from the
-# consumer's deploy wrapper. Omit if the project has no cron.
+# Optional cron config, consumed by the framework's built-in server steps: on
+# every host whose etc/machines.ini [prod] entry carries the `worker` tag,
+# pf-deploy installs the `cron-manifest` output into CRON_FILE and restarts
+# cron (after gen-env, so the manifest is never written against a stale or
+# missing .env). Omit if the project has no cron; REQUIRED on `worker` hosts
+# — pf-deploy fails loudly when unset there.
 # CRON_FILE: remote crontab file the manifest is installed to.
 # export CRON_FILE=/etc/cron.d/<app>-orchestrator
 # CRON_USER: user the cron entries run as (default: root).
 # export CRON_USER=root
+# CRON_NIX_BIN: optional PATH override for the cron entries (default:
+# $DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin, so both
+# `phprun` from vendor/bin and `php` from the nix result resolve).
+# export CRON_NIX_BIN=/srv/apps/<app>/vendor/bin:/usr/local/<app>/result/bin

@@ -3,8 +3,9 @@
 # pf-deploy.sh — project-agnostic deployment CLI (php_daas_framework).
 #
 # Ships a consumer repo to a remote production server with a near-atomic
-# swap, then copies the nix closure, installs composer dependencies, and
-# runs idempotent provisioning.
+# swap, then copies the nix closure, installs composer dependencies, runs
+# idempotent provisioning, regenerates the per-host runtime env (.env +
+# /etc/<instance>/reuter.ini), and installs cron on `worker`-tagged hosts.
 #
 # Configuration is loaded from the consumer repo root: `.env` (machine
 # settings, same contract as `phprun`) for REPO_PATH, a committed
@@ -28,8 +29,10 @@
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
 #     [prod] ZeroTier-IP -> comma-separated `tag[:name]` tokens (a host with
-#            a `db:<name>` token is the database host; empty entries are
-#            code-only servers; each named token maps to exactly one server)
+#            a `db:<name>` token is the database host; a host carrying the
+#            bare `worker` token gets the cron manifest installed; empty
+#            entries are code-only servers; each named token maps to exactly
+#            one server)
 #
 # Usage:
 #   pf-deploy.sh                # deploy to every [prod] host in etc/machines.ini
@@ -75,7 +78,8 @@ FETCH_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/fetch-private-data"
 
 # Load the machine registry (git-ignored; copy from machines.ini.template).
 # [prod] lists every prod deploy target by ZeroTier IP; the host whose
-# `tag[:name]` list carries a `db:` token is the database host.
+# `tag[:name]` list carries a `db:` token is the database host, and one that
+# carries the bare `worker` token gets the cron manifest installed.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
   echo "pf-deploy: $PWD/etc/machines.ini not found" >&2
   echo "  Copy the framework's etc/machines.ini.template into the repo and fill in the [prod] roster." >&2
@@ -364,19 +368,32 @@ main() {
 }
 
 # Per-host deploy pipeline. A database host (its tag list carries a `db:`
-# token) gets the MariaDB instance during provisioning; other hosts skip it.
+# token) gets the MariaDB instance during provisioning; a host carrying the
+# bare `worker` token gets the cron manifest installed after the server
+# steps. Other hosts skip both.
 deploy_to_host() {
   local HOST="$1"
   local TAGLIST="$2"
   local IS_DB_HOST=0
+  local IS_WORKER_HOST=0
   local _tok
   if [ -n "$TAGLIST" ]; then
     for _tok in ${TAGLIST//,/ }; do
       if [[ "$_tok" == db:* ]]; then
         IS_DB_HOST=1
-        break
+      elif [[ "$_tok" == worker ]]; then
+        IS_WORKER_HOST=1
       fi
     done
+  fi
+
+  # Fail fast (before shipping): a `worker` host must declare CRON_FILE in
+  # etc/deploy.conf. The same file is deployed to every host, so this also
+  # mirrors the remote guard in the server steps below.
+  if [ "$IS_WORKER_HOST" = "1" ] && [ -z "${CRON_FILE:-}" ]; then
+    echo "pf-deploy: host $HOST carries the 'worker' tag but etc/deploy.conf sets no CRON_FILE." >&2
+    echo "  Add CRON_FILE (and optionally CRON_USER) to etc/deploy.conf — see deploy.conf.template." >&2
+    exit 1
   fi
 
   flight_checks "$HOST"
@@ -412,6 +429,42 @@ deploy_to_host() {
     echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2
     ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $DEPLOY_INIT_CMD"
   fi
+
+  # Framework server steps (run on every host): the repo dir is replaced on
+  # every deploy, so the git-ignored .env must be regenerated before anything
+  # reads it — and, on `worker` hosts, before the cron manifest is installed.
+  # gen-env + gen-reuter run on every host; the cron install is gated on the
+  # bare `worker` token (detected above). The remote script runs from the
+  # deployed repo root and sources the DEPLOYED etc/deploy.conf, so the
+  # CRON_*/DEPLOY_* values used here are the shipped ones.
+  echo "Running framework server steps (gen-env, gen-reuter, cron install) on remote..." >&2
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST bash -s" <<'PF_DEPLOY_SERVER_STEPS'
+set -euo pipefail
+# CWD is the deployed repo root (the ssh command above cds first).
+. ./etc/deploy.conf
+export PATH="$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin:$PATH"
+instance="${DEPLOY_DB_INSTANCE:-$(basename "$DEPLOY_TARGET_DIR")}"
+mkdir -p "/etc/$instance"
+echo "    Regenerating production .env..." >&2
+gen-env
+echo "    Refreshing /etc reuter.ini [prod] connectivity..." >&2
+gen-reuter "/etc/$instance/reuter.ini"
+if [ "$IS_WORKER_HOST" = "1" ]; then
+    if [ -z "${CRON_FILE-}" ]; then
+        echo "pf-deploy: this host carries the 'worker' tag but etc/deploy.conf sets no CRON_FILE." >&2
+        exit 1
+    fi
+    # Cron entries need both phprun (vendor/bin) and php (nix result bin) on
+    # PATH; CRON_NIX_BIN becomes the crontab `NIX_BIN=` assignment prepended
+    # to every entry. Consumers may override it in etc/deploy.conf.
+    export CRON_NIX_BIN="${CRON_NIX_BIN:-$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin}"
+    echo "    Updating cron jobs from #[CronJob]/#[Agent] attributes..." >&2
+    cron-manifest > "$CRON_FILE"
+    chmod 644 "$CRON_FILE"
+    systemctl restart cron 2>/dev/null || systemctl restart crond
+    echo "    Cron jobs installed to $CRON_FILE." >&2
+fi
+PF_DEPLOY_SERVER_STEPS
 
   # Here, you can also clear any caches or perform other post-deployment tasks
   # Perhaps better to clear caches in src/scripts/maintenance cron jobs.

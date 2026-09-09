@@ -3,17 +3,18 @@
 
 // Scans all PHP files under the consumer repo's src/ for functions decorated
 // with both #[CronJob] and #[Agent] and prints a crontab to stdout, ready to
-// be installed (e.g. /etc/cron.d/<app>-orchestrator by the consumer's deploy
-// wrapper).
+// be installed (e.g. /etc/cron.d/<app>-orchestrator by pf-deploy on every
+// deploy to a `worker`-tagged host).
 //
 // Config-driven, same config surfaces as `deploy`/`phprun`:
 //   - REPO_PATH    from the repo-root .env (phprun contract); src/ is scanned
 //                  relative to it and cron lines cd there.
 //   - CRON_USER    from etc/deploy.conf; user the entries run as (default:
 //                  root).
-//   - CRON_NIX_BIN from etc/deploy.conf; nix result bin dir prepended to
-//                  PATH by the entries (default:
-//                  $DEPLOY_NIX_RESULT_DIR/result/bin).
+//   - CRON_NIX_BIN from etc/deploy.conf; dirs prepended to PATH by the
+//                  entries (pf-deploy defaults it to
+//                  $DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/
+//                  result/bin so both `phprun` and `php` resolve).
 //
 // Uses token_get_all() — no PHP code is executed, safe to scan any file.
 // Both attributes must immediately precede the function with no blank lines

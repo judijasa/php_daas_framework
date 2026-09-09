@@ -10,9 +10,13 @@
 #        address `pf-deploy.sh` uses for SSH). The value is a comma-separated
 #        list of `tag[:name]` tokens:
 #          bare tag    `web`       -> boolean flag (a deploy step on this host)
+#          bare tag    `worker`    -> boolean flag (framework built-in: installs
+#                                     the cron manifest on every deploy)
 #          named tag   `db:mydb`   -> a `db` resource named `mydb`
-#        `db` is the framework's built-in tag (a MariaDB instance + `gen-reuter`
-#        connectivity); every other tag is consumer-owned and carried through
+#        `db` and `worker` are the framework's built-in tags: `db:<name>` is a
+#        MariaDB instance + `gen-reuter` connectivity, and bare `worker`
+#        installs the `cron-manifest` output into CRON_FILE (etc/deploy.conf)
+#        on every deploy. Every other tag is consumer-owned and carried through
 #        generically. A host with a `db:<name>` token is a database host; an
 #        empty value is a code-only server (it deploys the codebase but runs
 #        no tagged step).
@@ -24,5 +28,5 @@
 #        instance.
 
 [prod]
-# 10.147.x.10=db:mydb, web
-# 10.147.x.11=
+# 10.147.x.10=db:mydb, web, worker
+# 10.147.x.11=worker

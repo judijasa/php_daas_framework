@@ -107,11 +107,13 @@ section header is the dbname).
   archive), then runs `composer install` on the remote so the framework CLIs
   (`gen-env`, `gen-reuter`, `pf-provision.sh`, ...) and `ema` land in
   `vendor/bin`.
-- The consumer's deploy wrapper (run after `vendor/bin/pf-deploy.sh`, root):
+- `pf-deploy.sh`'s built-in server steps (run after provisioning and
+  `DEPLOY_INIT_CMD`, as root, on every host):
   1. `gen-env` → `.env` with `EMA_TARGET=prod`,
      `REUTER_INI=/etc/<instance>/reuter.ini`;
-  2. `gen-reuter "$REUTER_INI"` → the `[<dbname>]` sections exist on the DB
-     host before any database is created.
+  2. `gen-reuter "/etc/<instance>/reuter.ini"` → the `[<dbname>]` sections
+     exist on the DB host before any database is created;
+  3. on `worker`-tagged hosts: `cron-manifest` → `CRON_FILE`, restart cron.
 - `vendor/bin/pf-provision.sh` (`pf-deploy.sh`, root) provisions only
   the instance (`$DEPLOY_DB_BASE/...`, `mariadb@<instance>` unit). It never
   creates databases or users.
