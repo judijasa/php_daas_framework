@@ -4,7 +4,7 @@
 #
 # Ships a consumer repo to a remote production server with a near-atomic
 # swap, then copies the nix closure, installs composer dependencies, and
-# optionally runs one-time provisioning (--init).
+# runs idempotent provisioning.
 #
 # Configuration is loaded from the consumer repo root: `.env` (machine
 # settings, same contract as `phprun`) for REPO_PATH, a committed
@@ -21,7 +21,7 @@
 #     DEPLOY_LOG_DIR         remote log dir (deploy_version.log lives here)
 #     DEPLOY_DB_BASE        remote MariaDB instance base dir (datadir/socket/
 #                            pid-file derived by convention); used only on the
-#                            database host, created/started by --init
+#                            database host, created/started by provisioning
 #     DEPLOY_NIX_RESULT_DIR  remote nix result parent (e.g. /usr/local/<app>)
 #     DEPLOY_NIX_GCROOT      remote nix gcroot (e.g. /nix/var/nix/gcroots/<app>)
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
@@ -34,8 +34,6 @@
 # Usage:
 #   pf-deploy.sh                # deploy to every [prod] host in etc/machines.ini
 #   pf-deploy.sh <target_host>  # deploy to a single prod host (must be in [prod])
-#   pf-deploy.sh --init ...     # + one-time system provisioning (MariaDB only on
-#                               #   the database host)
 #   .env  (git-ignored, machine-specific) - same contract as `phprun`:
 #     REPO_PATH              consumer repo root (set by the consumer's dev-init)
 #
@@ -305,12 +303,10 @@ deploy_composer_dependencies() {
       "
 }
 
-INIT=false
 ARGS=()
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
-    --init) INIT=true ;;
     --) shift; ARGS+=("$@"); break ;; # Stop parsing flags
     -*) echo "Unknown option: $1"; exit 1 ;;
     *) ARGS+=("$1") ;;
@@ -368,7 +364,7 @@ main() {
 }
 
 # Per-host deploy pipeline. A database host (its tag list carries a `db:`
-# token) gets the MariaDB instance on `--init`; other hosts skip it.
+# token) gets the MariaDB instance during provisioning; other hosts skip it.
 deploy_to_host() {
   local HOST="$1"
   local TAGLIST="$2"
@@ -401,21 +397,20 @@ deploy_to_host() {
   [ "$NIX_EXISTS" != "true" ] && install_nix_remotely "$REMOTE_HOST" "$PROD_USER" || true
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
-  if [ "$INIT" = "true" ]; then
-    # Generic provisioning (framework mechanism, shipped in the deployed
-    # repo): assert PROD_USER, create permanent dirs, initialize the MariaDB
-    # cluster — all parameterized by etc/deploy.conf.
-    echo "Running generic provisioning (vendor/bin/pf-provision.sh) on remote..." >&2
-    local PROVISION_ENV=""
-    if [ "$IS_DB_HOST" = "1" ]; then
-      PROVISION_ENV="DEPLOY_PROVISION_DB=1 DEPLOY_DB_BIND=$REMOTE_HOST"
-    fi
-    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $PROVISION_ENV vendor/bin/pf-provision.sh"
-    # Optional consumer-specific extras, run after the generic step.
-    if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
-      echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2
-      ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $DEPLOY_INIT_CMD"
-    fi
+  # Generic provisioning (framework mechanism, shipped in the deployed repo):
+  # assert PROD_USER, create permanent dirs, initialize the MariaDB cluster —
+  # all parameterized by etc/deploy.conf. Idempotent, so it runs on every
+  # deploy.
+  echo "Running generic provisioning (vendor/bin/pf-provision.sh) on remote..." >&2
+  local PROVISION_ENV=""
+  if [ "$IS_DB_HOST" = "1" ]; then
+    PROVISION_ENV="DEPLOY_PROVISION_DB=1 DEPLOY_DB_BIND=$REMOTE_HOST"
+  fi
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $PROVISION_ENV vendor/bin/pf-provision.sh"
+  # Optional consumer-specific extras, run after the generic step.
+  if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
+    echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2
+    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $DEPLOY_INIT_CMD"
   fi
 
   # Here, you can also clear any caches or perform other post-deployment tasks

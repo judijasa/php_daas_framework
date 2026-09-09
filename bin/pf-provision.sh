@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generic production provisioning (framework mechanism).
 #
-# Runs as root on the remote via `deploy --init`, from the deployed repo
+# Runs as root on the remote via `deploy`, from the deployed repo
 # root (the repo directory already exists — created by the deploy swap).
 # Parameterized entirely by the committed etc/deploy.conf; the consumer owns
 # the values, the framework owns the mechanism. Idempotent.
@@ -36,7 +36,7 @@
 # provisioning logs may be read beyond the operator.
 #
 # Consumer-specific extras (e.g. Apache/www-data traversal, app-specific
-# state) belong in DEPLOY_INIT_CMD, which `deploy --init` runs after this
+# state) belong in DEPLOY_INIT_CMD, which `deploy` runs after this
 # script.
 #
 # Usage: pf-provision.sh   (root; config from etc/deploy.conf)

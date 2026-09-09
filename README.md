@@ -147,7 +147,6 @@ on `main`, with a clean tree:
 ```bash
 bin/pf-deploy.sh                 # continuous deployment to every [prod] host in etc/machines.ini
 bin/pf-deploy.sh <target_host>   # deploy to a single prod host (must be in [prod])
-bin/pf-deploy.sh --init          # + one-time provisioning (MariaDB only on the DB host)
 ```
 
 `pf-deploy.sh` invokes no consumer hooks; consumer-specific post-deploy steps are
@@ -222,7 +221,7 @@ array installs the CLIs and scripts into `vendor/bin`:
 - `bin/dev/pf-shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
   machinery.
 - `bin/pf-provision.sh` — the generic production provisioning script, invoked
-  by `pf-deploy.sh --init` as `vendor/bin/pf-provision.sh`.
+  by `pf-deploy.sh` on every deploy as `vendor/bin/pf-provision.sh`.
 
 `gen-grants` (team-member DB accounts + roles) and `gen-cert` (member client
 certificates) implement the team-DB-user flow; see
@@ -282,8 +281,8 @@ every deploy by `gen-env` as a deterministic projection of the committed
 
 The repo also ships a `pf-deploy.sh` CLI (next to `phprun`) that pushes a consumer
 repo to a remote production server: near-atomic swap of the repo dir, local
-`nix build` + closure copy, `composer install` on every deploy (`git archive` wipes `vendor/` each time), and optional
-one-time provisioning (`--init`).
+`nix build` + closure copy, `composer install` on every deploy (`git archive` wipes `vendor/` each time), and idempotent
+provisioning on every deploy.
 
 Standalone, the same CLI deploys this repo itself — the required committed
 config (`etc/deploy.conf`) and the exact steps are in "Standalone prod init"
@@ -293,7 +292,6 @@ only the config data differs.
 ```bash
 pf-deploy.sh               # continuous deployment to every [prod] host in etc/machines.ini
 pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
-pf-deploy.sh --init        # + one-time provisioning (MariaDB only on the DB host)
 ```
 
 `pf-deploy.sh` reads three config surfaces from the consumer repo root:
@@ -306,13 +304,13 @@ pf-deploy.sh --init        # + one-time provisioning (MariaDB only on the DB hos
 | `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name (e.g. `php_daas_framework` -> `daas`). Must exist with SSH access before the first deploy (see below). |
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
-| `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance (DB host only); datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `pf-deploy.sh --init` (generic `bin/pf-provision.sh`) via a `mariadb@<instance>` systemd unit. |
+| `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance (DB host only); datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `pf-deploy.sh` (generic `bin/pf-provision.sh`) via a `mariadb@<instance>` systemd unit. |
 | `DEPLOY_DB_INSTANCE` | Optional: systemd unit + config-dir name (`mariadb@<instance>`, `/etc/<instance>/my.cnf`); also the prod `reuter.ini` path (`/etc/<instance>/reuter.ini`) that `gen-env` writes into `.env` as `REUTER_INI`; defaults to the basename of `DEPLOY_TARGET_DIR`. |
 | `DEPLOY_DB_PORT` | Required on the database host: TCP port the MariaDB instance listens on. Scripts on every prod server — the DB host and app-only hosts alike — connect to the database over TCP. |
 | `DEPLOY_DB_BIND` | Optional: address the daemon binds to (default `0.0.0.0`); set it to the DB host's ZeroTier IP to restrict access to the overlay network. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
-| `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/pf-provision.sh` on `--init`. |
+| `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/pf-provision.sh`. |
 | `CRON_FILE` | Optional: remote crontab file the consumer's deploy wrapper installs the `cron-manifest` output into. |
 | `CRON_USER` | Optional: user the cron entries run as (default `root`). |
 
@@ -321,7 +319,7 @@ pf-deploy.sh --init        # + one-time provisioning (MariaDB only on the DB hos
   server; `db` is the built-in tag, other tags are
   consumer-owned). `pf-deploy.sh` (default mode) targets every `[prod]` host; a
   host carrying a `db:<name>` token is a database host and gets a MariaDB
-  instance on `--init` (one instance serves all its `db:` names). Each named
+  instance during provisioning (one instance serves all its `db:` names). Each named
   token maps to exactly one server; a server may host several databases. The
   shared `pf-roster` CLI parses this roster for `pf-deploy.sh`, `gen-reuter`
   and the consumer's deploy wrapper.
@@ -346,7 +344,7 @@ automatically; prod: the consumer's deploy wrapper calls it with the
 ### Before the first deploy
 
 The remote host must have the app user in place before the first `pf-deploy.sh`
-(or `pf-deploy.sh --init`) — the CLI does not create it (assert-only):
+— the CLI does not create it (assert-only):
 
 1. **Create the app user** (`PROD_USER` from `etc/deploy.conf`) as root:
 
@@ -376,7 +374,7 @@ The remote host must have the app user in place before the first `pf-deploy.sh`
    installed.
 
 Everything else (repo swap, dirs, MariaDB cluster init) is handled by `pf-deploy.sh`
-itself: the repo swap as `root`, and the one-time provisioning (`pf-deploy.sh --init`)
+itself: the repo swap as `root`, and the idempotent provisioning
 via the framework's generic `bin/pf-provision.sh` plus the optional
 consumer-specific `DEPLOY_INIT_CMD`. `.env` regeneration and cron installation
 are consumer responsibilities, done from the consumer's deploy wrapper (see
@@ -384,7 +382,7 @@ are consumer responsibilities, done from the consumer's deploy wrapper (see
 
 ### Multiple MariaDB instances on one server
 
-`pf-deploy.sh --init` *initializes* the project's datadir and starts its daemon via
+`pf-deploy.sh` *initializes* the project's datadir and starts its daemon via
 a systemd template unit (`mariadb@<instance>`, enabled exactly once). To host
 several consumers on one server, each instance must own its full runtime
 identity — the Debian defaults (TCP 3306, `/run/mysqld/*`, the `/etc/mysql/`
@@ -405,7 +403,7 @@ be read beyond the operator) — and cleans up stale pid-files/sockets left by
 crashes.
 
 The framework's `pf-deploy.sh` is a closed operation: it swaps the repo, copies the
-nix closure, installs composer deps, and (with `--init`) runs provisioning — it
+nix closure, installs composer deps, and runs idempotent provisioning — it
 invokes no consumer hooks. Consumer-specific post-deploy steps (regenerate
 `.env`, install cron, restart services) are added by wrapping `vendor/bin/pf-deploy.sh`
 in the consumer's own deploy entrypoint (its `bin/deploy.sh` or a `make deploy`
@@ -416,7 +414,7 @@ target). `pf-deploy.sh` targets every `[prod]` host by default or a single host 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-vendor/bin/pf-deploy.sh "$@"            # framework: swap, nix, composer, (--init)
+vendor/bin/pf-deploy.sh "$@"            # framework: swap, nix, composer, provisioning
 # ... then, per prod host, regenerate .env and install cron:
 #   ssh root@<host> 'cd /srv/apps/<app> && gen-env && cron-manifest > /etc/cron.d/<app>-orchestrator'
 ```

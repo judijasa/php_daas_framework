@@ -112,7 +112,7 @@ section header is the dbname).
      `REUTER_INI=/etc/<instance>/reuter.ini`;
   2. `gen-reuter "$REUTER_INI"` → the `[<dbname>]` sections exist on the DB
      host before any database is created.
-- `vendor/bin/pf-provision.sh` (`pf-deploy.sh --init`, root) provisions only
+- `vendor/bin/pf-provision.sh` (`pf-deploy.sh`, root) provisions only
   the instance (`$DEPLOY_DB_BASE/...`, `mariadb@<instance>` unit). It never
   creates databases or users.
 - Consumer repos git-ignore `/var/`, `/etc/reuter.ini`, `/etc/machines.ini`,

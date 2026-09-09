@@ -46,7 +46,7 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 # gen-reuter writes MYSQL_UNIX_PORT=$DEPLOY_DB_BASE/mysql.sock into each prod
 # reuter.ini section (for `ema create srv/<name>-<GUID>` root socket access on
 # the DB host).
-# Created and initialized by `deploy --init` (the framework's generic
+# Created and initialized by `deploy` (the framework's generic
 # bin/pf-provision.sh) only on the database host; the daemon runs as PROD_USER
 # via a systemd template unit (mariadb@<instance>), started exactly once and
 # durable across reboots.
@@ -78,7 +78,7 @@ export DEPLOY_NIX_RESULT_DIR=/usr/local/<app>
 export DEPLOY_NIX_GCROOT=/nix/var/nix/gcroots/<app>
 
 # Optional: consumer-specific provisioning command run on the remote AFTER
-# the framework's generic provisioning (bin/pf-provision.sh) on `deploy --init`;
+# the framework's generic provisioning (bin/pf-provision.sh) on `deploy`;
 # skipped if unset.
 # export DEPLOY_INIT_CMD="make prod-init"
 
