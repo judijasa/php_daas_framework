@@ -4,8 +4,10 @@
 #
 # This is the common deploy config for every prod server listed in
 # etc/machines.ini: PROD_USER and the DEPLOY_* paths are identical on all
-# hosts. The DEPLOY_DB_* values apply only on the database host — the [prod]
-# entry in etc/machines.ini that carries a `db:<name>` tag.
+# hosts. Database instances are no longer provisioned at deploy time — they
+# are created by `ema create` (one instance per database) and the operator
+# records the emitted connectivity in the consumer's manual reuter.ini (see
+# doc/system/ema.md). DEPLOY_REUTER_INI points at that file.
 #
 # .env (generated, git-ignored) holds machine settings; this file holds the
 # deployment target shared by every machine of the project.
@@ -15,13 +17,12 @@
 # no separate etc/env.prod anymore. The projection:
 #   REPO_PATH      := DEPLOY_TARGET_DIR
 #   REPO_LOG       := DEPLOY_LOG_DIR
-#   REUTER_INI     := /etc/<DEPLOY_DB_INSTANCE>/reuter.ini
+#   REUTER_INI     := DEPLOY_REUTER_INI
 #   EMA_TARGET     := prod (constant)
 #
 # .env stays MYSQL_*-free: the socket lives in
-# the prod reuter.ini section — gen-reuter writes
-# MYSQL_UNIX_PORT=$DEPLOY_DB_BASE/mysql.sock into each [<dbname>] section for
-# the `ema` CLI (root/unix_socket auth). The app layer stays TCP-only.
+# the prod reuter.ini section (MYSQL_UNIX_PORT, recorded from `ema create`
+# output). The app layer stays TCP-only.
 #
 # PROD_USER: unprivileged app user on the remote host. Choose a short,
 # deliberate name — NOT the repo name (e.g. php_daas_framework -> daas). The
@@ -33,43 +34,16 @@ export PROD_USER=<app-user>
 # DEPLOY_TARGET_DIR: remote repo location (identical on every prod host).
 export DEPLOY_TARGET_DIR=/srv/apps/<app>
 
-# DEPLOY_LOG_DIR: remote log dir (deploy_version.log and the MariaDB error
-# log live here).
+# DEPLOY_LOG_DIR: remote log dir (deploy_version.log lives here).
 export DEPLOY_LOG_DIR=/var/log/<app>
 
-# DEPLOY_DB_BASE: remote root of the per-project MariaDB instance (used only
-# on the database host). The instance identity is derived from it by
-# convention (same shape as the dev sandbox's var/mariadb):
-#   datadir  = $DEPLOY_DB_BASE/data
-#   socket   = $DEPLOY_DB_BASE/mysql.sock
-#   pid-file = $DEPLOY_DB_BASE/mysql.pid
-# gen-reuter writes MYSQL_UNIX_PORT=$DEPLOY_DB_BASE/mysql.sock into each prod
-# reuter.ini section (for `ema create srv/<name>-<GUID>` root socket access on
-# the DB host).
-# Created and initialized by `deploy` (the framework's generic
-# bin/pf-provision.sh) only on the database host; the daemon runs as PROD_USER
-# via a systemd template unit (mariadb@<instance>), started exactly once and
-# durable across reboots.
-export DEPLOY_DB_BASE=/var/lib/<app>/mariadb
-
-# DEPLOY_DB_INSTANCE: optional systemd unit instance name and config dir
-# name (/etc/<instance>/my.cnf). Also names the production reuter.ini path
-# (/etc/<instance>/reuter.ini) that `gen-env` writes into `.env` as
-# REUTER_INI. Defaults to the basename of DEPLOY_TARGET_DIR; set it
-# explicitly if that is not a good unit name.
-# export DEPLOY_DB_INSTANCE=<app>
-
-# DEPLOY_DB_PORT: REQUIRED on the database host — the TCP port the MariaDB
-# instance listens on. Every prod script connects to the database over TCP
-# (gen-reuter writes SERVER/PORT into the prod reuter.ini sections), on the
-# DB host and on app-only hosts alike. Bind it to the ZeroTier IP via
-# DEPLOY_DB_BIND.
-# export DEPLOY_DB_PORT=3307
-
-# DEPLOY_DB_BIND: address the daemon binds to. Defaults to 0.0.0.0 (all
-# interfaces); set it to the DB host's ZeroTier IP to restrict access to
-# the overlay network.
-# export DEPLOY_DB_BIND=<zerotier-ip>
+# DEPLOY_REUTER_INI: path to the consumer's manual reuter.ini — one
+# [<dbname>] section per database (SERVER/PORT/DBMS/MYSQL_UNIX_PORT plus the
+# consumer's <ACCOUNT>_PASSWORD keys), recorded from `ema create`'s output.
+# gen-env writes it into .env as REUTER_INI; pf-deploy's db-check reads it to
+# verify reachability. The file itself is private data, injected into etc/ by
+# fetch-private-data (see doc/system/private-config.md).
+export DEPLOY_REUTER_INI=/srv/apps/<app>/etc/reuter.ini
 
 # DEPLOY_NIX_RESULT_DIR: remote nix result parent.
 export DEPLOY_NIX_RESULT_DIR=/usr/local/<app>

@@ -30,7 +30,7 @@
     "bin/phprun",
     "bin/pf-deploy.sh",
     "bin/gen-env",
-    "bin/gen-reuter",
+    "bin/db-check",
     "bin/gen-grants",
     "bin/gen-cert",
     "bin/pf-roster",

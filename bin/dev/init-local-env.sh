@@ -6,8 +6,6 @@
 #   - DBUSER: this machine's team member name, resolved from etc/team.ini
 #     (the section whose entries include the local hostname; skipped with a
 #     warning when no mapping exists). Needed for remote access to prod only.
-# Also refreshes etc/reuter.ini [prod] connectivity from etc/machines.ini via
-# gen-reuter (when available).
 #
 # The dev MariaDB instance is NOT initialized or started here: ema owns the
 # per-instance sandbox lifecycle (`ema sandbox` / `ema start` / `ema stop`),
@@ -26,9 +24,10 @@ REPO_PATH="$(cd "$TARGET_DIR" && pwd)"
 REPO_VAR="$REPO_PATH/var"
 REPO_LOG="$REPO_VAR/log"
 
-# Inject git-ignored private config (etc/machines.ini, etc/team.ini) from the
-# private repository referenced by .private-source, when configured (no-op
-# otherwise), so DBUSER resolution and gen-reuter see the private data.
+# Inject git-ignored private config (etc/machines.ini, etc/reuter.ini,
+# etc/team.ini) from the private repository referenced by .private-source,
+# when configured (no-op otherwise), so DBUSER resolution sees the private
+# data.
 if command -v fetch-private-data >/dev/null 2>&1; then
     ( cd "$REPO_PATH" && fetch-private-data )
 elif [ -x "$REPO_PATH/bin/fetch-private-data" ]; then
@@ -61,14 +60,5 @@ fi
         fi
     fi
 } > "$REPO_PATH/.env"
-
-# Refresh the prod connectivity section of etc/reuter.ini from
-# etc/machines.ini. gen-reuter exits 0 (with a warning) when there is no
-# [prod] database host, so a fresh repo without a prod mapping is safe.
-if command -v gen-reuter >/dev/null 2>&1; then
-    ( cd "$REPO_PATH" && gen-reuter )
-elif [ -x "$REPO_PATH/bin/gen-reuter" ]; then
-    ( cd "$REPO_PATH" && "$REPO_PATH/bin/gen-reuter" )
-fi
 
 echo "    Created $REPO_PATH/.env (dev: REPO_PATH=$REPO_PATH, EMA_TARGET=sandbox)"

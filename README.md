@@ -123,7 +123,7 @@ committed config file must exist before the first deploy:
 
 1. **`etc/deploy.conf`** — copy from `etc/deploy.conf.template`, fill in the
    deployment target (`PROD_USER`, `DEPLOY_TARGET_DIR`, `DEPLOY_LOG_DIR`,
-   `DEPLOY_DB_BASE`, `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`), and
+   `DEPLOY_REUTER_INI`, `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`), and
    commit. Optional: `DEPLOY_INIT_CMD` (consumer-specific provisioning
    command run after the framework's generic `bin/pf-provision.sh`) and cron
    vars (`CRON_FILE`, `CRON_USER`). `pf-deploy.sh` fails loudly if this file is
@@ -135,9 +135,10 @@ The git-ignored `.env` is generated on the remote by `pf-deploy.sh` on every
 deploy — there is no committed `etc/env.prod` anymore: `gen-env` (a built-in
 server step, run after the repo swap) projects it deterministically
 from `etc/deploy.conf` (`REPO_PATH` = `DEPLOY_TARGET_DIR`, `REPO_LOG` =
-`DEPLOY_LOG_DIR`, `REUTER_INI` = `/etc/<DEPLOY_DB_INSTANCE>/reuter.ini`,
+`DEPLOY_LOG_DIR`, `REUTER_INI` = `DEPLOY_REUTER_INI`,
 `EMA_TARGET = prod`; the `.env` stays `MYSQL_*`-free — the DB host's socket
-lives in the prod `reuter.ini` sections (`gen-reuter`), not in `.env`).
+lives in the prod `reuter.ini` section (`MYSQL_UNIX_PORT`, recorded from
+`ema create`), not in `.env`).
 `gen-env` fails loudly if a required `deploy.conf` key is missing or a
 projected key is lost in the output.
 
@@ -217,7 +218,7 @@ The framework code is delivered by Composer only. The `composer.json` `bin`
 array installs the CLIs and scripts into `vendor/bin`:
 
 - `bin/phprun`, `bin/pf-deploy.sh`, `bin/pf-roster`, `bin/gen-env`,
-  `bin/gen-reuter`, `bin/gen-grants`, `bin/gen-cert`, `bin/cron-manifest` — the
+  `bin/db-check`, `bin/gen-grants`, `bin/gen-cert`, `bin/cron-manifest` — the
   framework CLIs.
 - `bin/dev/pf-shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
   machinery.
@@ -305,10 +306,7 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
 | `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name (e.g. `php_daas_framework` -> `daas`). Must exist with SSH access before the first deploy (see below). |
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
-| `DEPLOY_DB_BASE` | Remote root of the per-project MariaDB instance (DB host only); datadir/socket/pid-file are derived from it by convention (`data`, `mysql.sock`, `mysql.pid`), created and started by `pf-deploy.sh` (generic `bin/pf-provision.sh`) via a `mariadb@<instance>` systemd unit. |
-| `DEPLOY_DB_INSTANCE` | Optional: systemd unit + config-dir name (`mariadb@<instance>`, `/etc/<instance>/my.cnf`); also the prod `reuter.ini` path (`/etc/<instance>/reuter.ini`) that `gen-env` writes into `.env` as `REUTER_INI`; defaults to the basename of `DEPLOY_TARGET_DIR`. |
-| `DEPLOY_DB_PORT` | Required on the database host: TCP port the MariaDB instance listens on. Scripts on every prod server — the DB host and app-only hosts alike — connect to the database over TCP. |
-| `DEPLOY_DB_BIND` | Optional: address the daemon binds to (default `0.0.0.0`); set it to the DB host's ZeroTier IP to restrict access to the overlay network. |
+| `DEPLOY_REUTER_INI` | Path to the consumer's manual reuter.ini — one `[<dbname>]` section per database (SERVER/PORT/DBMS/MYSQL_UNIX_PORT plus the consumer's `<ACCOUNT>_PASSWORD` keys), recorded from `ema create`'s output (or `ema values <db>` to recover). `gen-env` writes it into `.env` as `REUTER_INI`; `db-check` reads it to verify reachability. The file itself is private data, injected into `etc/` by `fetch-private-data`. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/pf-provision.sh`. |
@@ -317,15 +315,15 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
 
 - **`etc/machines.ini`** (git-ignored; template committed) - the prod-server
   registry: `[prod]` ZeroTier-IP→`tag[:name]` tokens (comma-separated per
-  server; `db` and `worker` are the built-in tags — `db:<name>` names a
-  MariaDB resource, bare `worker` marks a cron host — and other tags are
-  consumer-owned). `pf-deploy.sh` (default mode) targets every `[prod]` host; a
-  host carrying a `db:<name>` token is a database host and gets a MariaDB
-  instance during provisioning (one instance serves all its `db:` names), and
-  a host carrying bare `worker` gets the cron manifest installed. Each named
-  token maps to exactly one server; a server may host several databases. The
-  shared `pf-roster` CLI parses this roster for `pf-deploy.sh`, `gen-reuter`
-  and the consumer's deploy wrapper.
+  server; `db` and `worker` are the built-in tags — `db:<name>` is the
+  advisory anchor for `db-check`, bare `worker` marks a cron host — and other
+  tags are consumer-owned). `pf-deploy.sh` (default mode) targets every
+  `[prod]` host; a host carrying a `db:<name>` token is a database host (its
+  per-database MariaDB instance is provisioned by `ema create`, not by
+  deploy), and a host carrying bare `worker` gets the cron manifest
+  installed. Each named token maps to exactly one server; a server may host
+  several databases. The shared `pf-roster` CLI parses this roster for
+  `pf-deploy.sh`, `db-check` and the consumer's deploy wrapper.
   Commit this file only in a private fork, or keep it in a separate private
   config repo and inject it via `.private-source`
   (`doc/system/private-config.md`).
@@ -335,14 +333,15 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
 
 `pf-deploy.sh` fails loudly if `etc/deploy.conf` or `etc/machines.ini` is missing.
 
-`gen-reuter` (shipped alongside `pf-deploy.sh`) writes one reuter.ini section per
-`db:<name>` token (`[<dbname>]` with SERVER/PORT/DBMS/MYSQL_UNIX_PORT) from
-`etc/machines.ini` + `etc/deploy.conf`, preserving the credentials and dropping
-any `[local]`/`[local:<dbname>]` dev sections (the dev sandbox lives in
-`var/sandbox/<name>-<guid>/reuter.ini`, generated by `ema sandbox srv/<name>-<GUID>`)
-— run it after changing the mapping (dev: `init-local-env.sh` runs it
-automatically; prod: pf-deploy's server steps call it with the
-`REUTER_INI` path on every host).
+The prod `reuter.ini` is **manual, consumer-owned** private data (there is no
+generator anymore): `ema create srv/<name>-<GUID>` provisions the database's
+own MariaDB instance and prints the `[<dbname>]` section
+(SERVER/PORT/DBMS/MYSQL_UNIX_PORT) for the operator to record (or
+`ema values <db>` recovers a lost record). The file is injected into `etc/`
+by `fetch-private-data` (see `doc/system/private-config.md`); `gen-env`
+projects its path into `.env` as `REUTER_INI` from `DEPLOY_REUTER_INI`, and
+`db-check` (a warn-only pf-deploy server step) verifies each section's
+`SERVER:PORT` reachability on every host.
 
 ### Before the first deploy
 
@@ -380,69 +379,74 @@ Everything else is handled by `pf-deploy.sh` itself: the repo swap as `root`,
 the idempotent provisioning via the framework's generic
 `bin/pf-provision.sh` plus the optional consumer-specific `DEPLOY_INIT_CMD`,
 and — on every host — the built-in server steps that regenerate `.env`
-(`gen-env`) and the prod `reuter.ini` sections (`gen-reuter`), then install
+(`gen-env`) and verify DB connectivity (`db-check`, warn-only), then install
 the cron manifest on `worker`-tagged hosts. A consumer wrapper is only needed
 for its own consumer-owned tag steps (see "Deploying a consumer project").
 
-### Multiple MariaDB instances on one server
+### Database instances are owned by ema
 
-`pf-deploy.sh` *initializes* the project's datadir and starts its daemon via
-a systemd template unit (`mariadb@<instance>`, enabled exactly once). To host
-several consumers on one server, each instance must own its full runtime
-identity — the Debian defaults (TCP 3306, `/run/mysqld/*`, the `/etc/mysql/`
-includes) belong to the distro instance and will collide:
+`pf-deploy.sh` no longer initializes or starts any MariaDB daemon. Each
+database's own instance is provisioned at **database-creation time** by
+`ema create srv/<name>-<GUID>` — one instance per database (datadir,
+`/etc/<instance>/my.cnf`, `mariadb@<instance>` systemd unit, auto-picked TCP
+port) — and `ema create` prints the connectivity values
+(`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) for the operator to record in the
+consumer's manual `reuter.ini` (or `ema values <db>` recovers a lost record).
+Hosting several consumers on one server is therefore ema's concern, not the
+deploy chain's: each `ema create` allocates a distinct port and config dir,
+and the distro `mariadb.service` (TCP 3306, `/run/mysqld/*`) is left
+untouched.
 
-| Conflict | Avoid |
-|---|---|
-| TCP port 3306 taken by the distro `mariadb.service` or another instance | a per-project `DEPLOY_DB_PORT` (mandatory on DB hosts) |
-| Default socket/pid under `/run/mysqld/` | per-project socket + pid-file under `DEPLOY_DB_BASE` (derived automatically) |
-| Global `/etc/mysql/` includes inject distro paths into any started daemon | per-project defaults file `/etc/<instance>/my.cnf`, selected via `--defaults-file=/etc/%i/my.cnf` in the unit |
-| Shared error log | per-project `log-error` under `DEPLOY_LOG_DIR` |
-| AppArmor (Debian/Ubuntu) denies datadirs outside `/var/lib/mysql/` | per-project AppArmor profile, or disable the distro `usr.sbin.mariadbd` profile when no distro instance runs |
-| Two daemons at boot | keep the distro `mariadb.service` disabled on hosts running per-project instances |
-
-Provisioning refuses to start an instance whose socket or port is already
-taken — with deliberately generic messages (no pid/owner disclosure, logs may
-be read beyond the operator) — and cleans up stale pid-files/sockets left by
-crashes.
+Deploy-time DB verification is **warn-only**: `db-check` (a built-in
+pf-deploy server step) checks, on a `db:`-tagged host, that each declared
+database's instance is up and its schema exists, and — on every host — that
+each `reuter.ini` section's `SERVER:PORT` is TCP-reachable. It never repairs:
+a miss is reported as a warning and the deploy proceeds.
 
 The framework's `pf-deploy.sh` is a closed operation: it swaps the repo, copies the
 nix closure, installs composer deps, runs idempotent provisioning, then runs
-the built-in server steps (regenerate `.env`/`reuter.ini` on every host,
-install cron on `worker`-tagged hosts) — it invokes no consumer hooks beyond
-the optional `DEPLOY_INIT_CMD`. Consumer-owned tag steps (restart services,
-restore website traversal, ...) are added by wrapping `vendor/bin/pf-deploy.sh`
-in the consumer's own deploy entrypoint (its `bin/deploy.sh` or a `make deploy`
-target). `pf-deploy.sh` targets every `[prod]` host by default or a single host via
-`pf-deploy.sh <host>`; a wrapper that needs per-host post steps reads the
-`[prod]` roster (host → tags) via the shared `pf-roster` CLI and loops over it:
+the built-in server steps (regenerate `.env`, verify DB connectivity via
+`db-check`, install cron on `worker`-tagged hosts) — it invokes no consumer
+hooks beyond the optional `DEPLOY_INIT_CMD`. Consumer-owned tag steps (restart
+services, restore website traversal, ...) are added by wrapping
+`vendor/bin/pf-deploy.sh` in the consumer's own deploy entrypoint (its
+`bin/deploy.sh` or a `make deploy` target). `pf-deploy.sh` targets every
+`[prod]` host by default or a single host via `pf-deploy.sh <host>`; a wrapper
+that needs per-host post steps reads the `[prod]` roster (host → tags) via the
+shared `pf-roster` CLI and loops over it:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-vendor/bin/pf-deploy.sh "$@"   # framework: swap, nix, composer, provisioning, .env/reuter.ini, cron (worker hosts)
+vendor/bin/pf-deploy.sh "$@"   # framework: swap, nix, composer, provisioning, .env/db-check, cron (worker hosts)
 # ... then, per prod host, the consumer-owned tag steps:
 #   ssh root@<host> 'cd /srv/apps/<app> && DEPLOY_TAGS="<tags>" bin/deploy/server-side-step.sh'
 ```
 
-The framework CLIs `gen-env`, `gen-reuter` and `cron-manifest` (on PATH after
+The framework CLIs `gen-env`, `db-check` and `cron-manifest` (on PATH after
 `composer install`) are the intended tools for those built-in steps; a
 consumer wrapper needs them only for its own consumer-owned tags.
 
-The framework ships two more CLIs run by pf-deploy as built-in server steps
+The framework ships three more CLIs run by pf-deploy as built-in server steps
 (also on PATH in the consumer's dev shell and production artifact):
 
 - **`gen-env [target-dir]`** — regenerates `.env` as a deterministic
   projection of the consumer's committed `etc/deploy.conf`
   (`REPO_PATH`/`REPO_LOG`/`REUTER_INI`/`EMA_TARGET=prod`; the `.env` stays
   `MYSQL_*`-free — the DB host's socket lives in the prod `reuter.ini`
-  sections written by `gen-reuter`), with a fail-fast guard: a required
+  section recorded from `ema create`), with a fail-fast guard: a required
   `deploy.conf` key missing, or a
   projected key lost from the output, aborts. pf-deploy runs it right after
   the repo swap (the deployed directory is replaced on every deploy, so the
   git-ignored `.env` must be recreated before cron is installed — a missing
   key would silently fall back to the framework defaults, e.g.
   `EMA_TARGET=sandbox` -> wrong DB section in production).
+- **`db-check [--host <zerotier-ip>] [--reuter-ini <path>]`** — warn-only
+  connectivity verification, run on every host right after `gen-env`: on a
+  `db:`-tagged host it checks each declared database's instance is up (unit
+  active, socket pings, schema exists), and on every host it TCP-connects
+  each `reuter.ini` section's `SERVER:PORT`. It never repairs — misses are
+  warnings, and the deploy proceeds.
 - **`cron-manifest`** — scans the consumer's `src/` for functions decorated
   with both `#[CronJob]` and `#[Agent]` and prints a crontab to stdout
   (`CRON_USER`, and `CRON_NIX_BIN` — pf-deploy defaults it to

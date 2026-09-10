@@ -13,13 +13,15 @@ public Git history:
 | File | Public template | Private data |
 |---|---|---|
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster |
+| `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs |
 
 `etc/deploy.conf` stays committed: it is project-static (paths, the app-user
-name, port numbers — no secrets, identical on every prod host), so it is a
-public interface, not private data. Credentials (`<ACCOUNT>_PASSWORD` keys)
-never live in either repo — they are written by the consumer's service-user
-provisioning into the git-ignored, generated `etc/reuter.ini`.
+name — no secrets, identical on every prod host), so it is a public interface,
+not private data. The `reuter.ini` connectivity sections (and any
+`<ACCOUNT>_PASSWORD` keys the consumer's service-user provisioning writes into
+them) are private data and live only in the private repo, never in the public
+history.
 
 ## The private repo
 
@@ -29,13 +31,16 @@ files mirror the consumer's `etc/` operational data:
 ```text
 <private-config>/
 ├── machines.ini
+├── reuter.ini
 ├── team.ini
 └── README.md
 ```
 
-Keep credentials out of it: private-repo access control does not eliminate the
-risks of credentials copied through clones, backups, CI, or developer
-machines.
+Keep credentials out of it where possible: private-repo access control does
+not eliminate the risks of credentials copied through clones, backups, CI, or
+developer machines (the service-account auth policy — passwords vs.
+certificates — is a deferred decision; see
+`doc/plans/2026-09-09-ema-prod-instance-at-create-manual-reuter.md`).
 
 ## .private-source
 
@@ -65,7 +70,7 @@ fetch-private-data [target-dir]   # default: $PWD
 into `etc/`. It resolves the source in order:
 
 1. `PRIVATE_DATA_SOURCE` — a local checkout of the private repo (no git
-   needed); symlinks `machines.ini`/`team.ini` into `etc/`.
+   needed); symlinks `machines.ini`/`reuter.ini`/`team.ini` into `etc/`.
 2. `PRIVATE_DATA_GIT` + `PRIVATE_DATA_REF` — an on-demand clone/fetch into the
    git-ignored `var/private-data` (requires git; dev-only); then symlinks into
    `etc/`.
@@ -74,16 +79,17 @@ into `etc/`. It resolves the source in order:
    deploy). Validated warn-only; never aborts (deploy is the abort gate for a
    missing `machines.ini`).
 
-For the private-repo modes (1 and 2), a missing `machines.ini` aborts; a
-missing `team.ini` only warns (team DB users disabled). It is a silent no-op
-when `.private-source` is absent, so the repo stays fully functional without
-private data (dev/sandbox work and environments that do not need production
-data proceed without it).
+For the private-repo modes (1 and 2), a missing `machines.ini` or
+`reuter.ini` aborts (deploy cannot run without the prod roster, and the app
+cannot resolve a database without `reuter.ini`); a missing `team.ini` only
+warns (team DB users disabled). It is a silent no-op when `.private-source` is
+absent, so the repo stays fully functional without private data (dev/sandbox
+work and environments that do not need production data proceed without it).
 
 `bin/pf-deploy.sh`, the `make dev-init` target, and `bin/dev/init-local-env.sh`
-call `fetch-private-data` before they read `machines.ini`/`team.ini`, so the
-private data is present for deploy and dev-init whenever a `.private-source`
-is configured.
+call `fetch-private-data` before they read `machines.ini`/`reuter.ini`/
+`team.ini`, so the private data is present for deploy and dev-init whenever a
+`.private-source` is configured.
 
 ## Production (no git)
 
@@ -91,7 +97,7 @@ Prod hosts have no git, so the on-demand clone path is dev-only. The private
 repo is deployed to prod with `git archive`, run from a machine that has git:
 
 ```bash
-git -C <private-config> archive HEAD machines.ini team.ini \
+git -C <private-config> archive HEAD machines.ini reuter.ini team.ini \
   | ssh root@$HOST "mkdir -p /srv/apps/<app>/etc && tar -x -C /srv/apps/<app>/etc"
 ```
 

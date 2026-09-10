@@ -20,16 +20,17 @@
 #                            (must exist with SSH access before first deploy)
 #     DEPLOY_TARGET_DIR      remote repo location (e.g. /srv/apps/<app>)
 #     DEPLOY_LOG_DIR         remote log dir (deploy_version.log lives here)
-#     DEPLOY_DB_BASE        remote MariaDB instance base dir (datadir/socket/
-#                            pid-file derived by convention); used only on the
-#                            database host, created/started by provisioning
+#     DEPLOY_REUTER_INI     remote path of the consumer's manual reuter.ini
+#                            (the [<dbname>] connectivity recorded from
+#                            `ema create`); gen-env projects it as REUTER_INI
 #     DEPLOY_NIX_RESULT_DIR  remote nix result parent (e.g. /usr/local/<app>)
 #     DEPLOY_NIX_GCROOT      remote nix gcroot (e.g. /nix/var/nix/gcroots/<app>)
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
-#     [prod] ZeroTier-IP -> comma-separated `tag[:name]` tokens (a host with
-#            a `db:<name>` token is the database host; a host carrying the
+#     [prod] ZeroTier-IP -> comma-separated `tag[:name]` tokens (a `db:<name>`
+#            token is the advisory db-check anchor — the instance itself is
+#            provisioned by `ema create`, not by deploy; a host carrying the
 #            bare `worker` token gets the cron manifest installed; empty
 #            entries are code-only servers; each named token maps to exactly
 #            one server)
@@ -69,10 +70,11 @@ set -a
 . "$PWD/etc/deploy.conf"
 set +a
 
-# Inject git-ignored private config (etc/machines.ini, etc/team.ini) from the
-# private repository referenced by .private-source, when configured. A no-op
-# when .private-source is absent — the repo stays functional without private
-# data (see bin/fetch-private-data + doc/system/private-config.md).
+# Inject git-ignored private config (etc/machines.ini, etc/reuter.ini,
+# etc/team.ini) from the private repository referenced by .private-source,
+# when configured. A no-op when .private-source is absent — the repo stays
+# functional without private data (see bin/fetch-private-data +
+# doc/system/private-config.md).
 FETCH_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/fetch-private-data"
 "$FETCH_BIN" "$PWD"
 
@@ -93,14 +95,14 @@ ROSTER_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-roster"
 # Print each [prod] entry as "zerotier-ip=<comma-separated tag list>" (the
 # host's `tag[:name]` tokens). `main` parses this to build the deploy roster.
 # The shared pf-roster CLI owns the machines.ini parse, also used by
-# gen-reuter and the consumer deploy wrapper.
+# db-check and the consumer deploy wrapper.
 read_prod_roster() {
   "$ROSTER_BIN" --list
 }
 
 require_config() {
   local missing="" _v
-  for _v in REPO_PATH PROD_USER DEPLOY_TARGET_DIR DEPLOY_LOG_DIR DEPLOY_DB_BASE DEPLOY_NIX_RESULT_DIR DEPLOY_NIX_GCROOT; do
+  for _v in REPO_PATH PROD_USER DEPLOY_TARGET_DIR DEPLOY_LOG_DIR DEPLOY_NIX_RESULT_DIR DEPLOY_NIX_GCROOT; do
     if [ -z "${!_v:-}" ]; then
       missing="$missing $_v"
     fi
@@ -368,20 +370,17 @@ main() {
 }
 
 # Per-host deploy pipeline. A database host (its tag list carries a `db:`
-# token) gets the MariaDB instance during provisioning; a host carrying the
-# bare `worker` token gets the cron manifest installed after the server
-# steps. Other hosts skip both.
+# token) is the advisory db-check anchor — the instance itself is provisioned
+# by `ema create`, not here; a host carrying the bare `worker` token gets the
+# cron manifest installed after the server steps. Other hosts skip both.
 deploy_to_host() {
   local HOST="$1"
   local TAGLIST="$2"
-  local IS_DB_HOST=0
   local IS_WORKER_HOST=0
   local _tok
   if [ -n "$TAGLIST" ]; then
     for _tok in ${TAGLIST//,/ }; do
-      if [[ "$_tok" == db:* ]]; then
-        IS_DB_HOST=1
-      elif [[ "$_tok" == worker ]]; then
+      if [[ "$_tok" == worker ]]; then
         IS_WORKER_HOST=1
       fi
     done
@@ -415,15 +414,12 @@ deploy_to_host() {
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
   # Generic provisioning (framework mechanism, shipped in the deployed repo):
-  # assert PROD_USER, create permanent dirs, initialize the MariaDB cluster —
-  # all parameterized by etc/deploy.conf. Idempotent, so it runs on every
-  # deploy.
+  # assert PROD_USER, create permanent dirs — parameterized by
+  # etc/deploy.conf. Idempotent, so it runs on every deploy. (Database
+  # instances are provisioned by `ema create` at database-creation time, not
+  # here.)
   echo "Running generic provisioning (vendor/bin/pf-provision.sh) on remote..." >&2
-  local PROVISION_ENV=""
-  if [ "$IS_DB_HOST" = "1" ]; then
-    PROVISION_ENV="DEPLOY_PROVISION_DB=1 DEPLOY_DB_BIND=$REMOTE_HOST"
-  fi
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $PROVISION_ENV vendor/bin/pf-provision.sh"
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && vendor/bin/pf-provision.sh"
   # Optional consumer-specific extras, run after the generic step.
   if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
     echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2
@@ -433,22 +429,21 @@ deploy_to_host() {
   # Framework server steps (run on every host): the repo dir is replaced on
   # every deploy, so the git-ignored .env must be regenerated before anything
   # reads it — and, on `worker` hosts, before the cron manifest is installed.
-  # gen-env + gen-reuter run on every host; the cron install is gated on the
-  # bare `worker` token (detected above). The remote script runs from the
-  # deployed repo root and sources the DEPLOYED etc/deploy.conf, so the
-  # CRON_*/DEPLOY_* values used here are the shipped ones.
-  echo "Running framework server steps (gen-env, gen-reuter, cron install) on remote..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST bash -s" <<'PF_DEPLOY_SERVER_STEPS'
+  # gen-env runs on every host; db-check verifies DB connectivity (warn-only,
+  # never repairs); the cron install is gated on the bare `worker` token
+  # (detected above). The remote script runs from the deployed repo root and
+  # sources the DEPLOYED etc/deploy.conf, so the CRON_*/DEPLOY_* values used
+  # here are the shipped ones.
+  echo "Running framework server steps (gen-env, db-check, cron install) on remote..." >&2
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST DB_CHECK_HOST=$REMOTE_HOST bash -s" <<'PF_DEPLOY_SERVER_STEPS'
 set -euo pipefail
 # CWD is the deployed repo root (the ssh command above cds first).
 . ./etc/deploy.conf
 export PATH="$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin:$PATH"
-instance="${DEPLOY_DB_INSTANCE:-$(basename "$DEPLOY_TARGET_DIR")}"
-mkdir -p "/etc/$instance"
 echo "    Regenerating production .env..." >&2
 gen-env
-echo "    Refreshing /etc reuter.ini [prod] connectivity..." >&2
-gen-reuter "/etc/$instance/reuter.ini"
+echo "    Verifying database connectivity (warn-only)..." >&2
+db-check --host "$DB_CHECK_HOST" --reuter-ini "$DEPLOY_REUTER_INI"
 if [ "$IS_WORKER_HOST" = "1" ]; then
     if [ -z "${CRON_FILE-}" ]; then
         echo "pf-deploy: this host carries the 'worker' tag but etc/deploy.conf sets no CRON_FILE." >&2

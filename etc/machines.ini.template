@@ -2,7 +2,7 @@
 # Copy to etc/machines.ini (git-ignored; commit it only in a private fork) and
 # fill in your entries — or keep it in a private config repo and inject it via
 # .private-source (see doc/system/private-config.md). `pf-deploy.sh` and
-# `gen-reuter` read the [prod] roster; the dev-machine `DBUSER` mapping now
+# `db-check` read the [prod] roster; the dev-machine `DBUSER` mapping now
 # lives in etc/team.ini (see etc/team.ini.template +
 # doc/system/team-db-users.md), not here.
 #
@@ -13,10 +13,12 @@
 #          bare tag    `worker`    -> boolean flag (framework built-in: installs
 #                                     the cron manifest on every deploy)
 #          named tag   `db:mydb`   -> a `db` resource named `mydb`
-#        `db` and `worker` are the framework's built-in tags: `db:<name>` is a
-#        MariaDB instance + `gen-reuter` connectivity, and bare `worker`
-#        installs the `cron-manifest` output into CRON_FILE (etc/deploy.conf)
-#        on every deploy. Every other tag is consumer-owned and carried through
+#        `db` and `worker` are the framework's built-in tags: `db:<name>` is
+#        the advisory anchor for `db-check` (it verifies that database exists
+#        and is reachable on its host — the instance itself is provisioned by
+#        `ema create`, not by deploy), and bare `worker` installs the
+#        `cron-manifest` output into CRON_FILE (etc/deploy.conf) on every
+#        deploy. Every other tag is consumer-owned and carried through
 #        generically. A host with a `db:<name>` token is a database host; an
 #        empty value is a code-only server (it deploys the codebase but runs
 #        no tagged step).
@@ -24,8 +26,8 @@
 #        Constraint: a named token may appear on exactly ONE server
 #        (`db:mydb` and `web:mysite` are independent). Bare flags carry no
 #        name, hence no uniqueness constraint. A server may host no database
-#        (code-only), one database, or several databases in its MariaDB
-#        instance.
+#        (code-only), one database, or several databases (one MariaDB
+#        instance each, created by `ema create`).
 
 [prod]
 # 10.147.x.10=db:mydb, web, worker

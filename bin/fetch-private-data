@@ -6,9 +6,11 @@
 # at the private config repo — a local checkout (PRIVATE_DATA_SOURCE) or a
 # git URL (PRIVATE_DATA_GIT + PRIVATE_DATA_REF, fetched into var/private-data).
 # The private repo's tracked files mirror the consumer's etc/ operational
-# data: `machines.ini` (prod ZeroTier roster) and `team.ini` (member
-# identities). For each, fetch-private-data validates the expected structure
-# and symlinks the private copy into etc/ — leaving any local file untouched.
+# data: `machines.ini` (prod ZeroTier roster), `reuter.ini` (the manually-
+# maintained per-database connectivity, recorded from `ema create` output),
+# and `team.ini` (member identities). For each, fetch-private-data validates
+# the expected structure and symlinks the private copy into etc/ — leaving any
+# local file untouched.
 #
 # When `.private-source` is absent, this is a no-op, so the public repo stays
 # fully functional without private data (dev/sandbox and environments that do
@@ -67,6 +69,9 @@ if [[ -z "$SOURCE_DIR" ]]; then
     if [[ ! -f "$ROOT/etc/machines.ini" ]]; then
         echo "fetch-private-data: warning: etc/machines.ini not found." >&2
     fi
+    if [[ ! -f "$ROOT/etc/reuter.ini" ]]; then
+        echo "fetch-private-data: warning: etc/reuter.ini not found." >&2
+    fi
     if [[ ! -f "$ROOT/etc/team.ini" ]]; then
         echo "fetch-private-data: warning: etc/team.ini not found (team DB users disabled)." >&2
     fi
@@ -82,13 +87,14 @@ fi
 # the invocation directory.
 SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd)"
 
-# Validate the expected structure before injecting anything. machines.ini is
-# required (deploy cannot run without the prod roster); team.ini is optional
+# Validate the expected structure before injecting anything. machines.ini and
+# reuter.ini are required (deploy cannot run without the prod roster, and the
+# app cannot resolve a database without reuter.ini); team.ini is optional
 # (only needed for team DB users / dev DBUSER).
-for f in machines.ini team.ini; do
+for f in machines.ini reuter.ini team.ini; do
     if [[ ! -f "$SOURCE_DIR/$f" ]]; then
-        if [[ "$f" == "machines.ini" ]]; then
-            echo "fetch-private-data: private repo $SOURCE_DIR has no machines.ini (required)." >&2
+        if [[ "$f" == "machines.ini" || "$f" == "reuter.ini" ]]; then
+            echo "fetch-private-data: private repo $SOURCE_DIR has no $f (required)." >&2
             exit 1
         fi
         echo "fetch-private-data: warning: private repo $SOURCE_DIR has no team.ini (team DB users disabled)." >&2
@@ -98,7 +104,7 @@ done
 # Inject each private file as a symlink into etc/, leaving local files (or a
 # prior link) untouched.
 mkdir -p "$ROOT/etc"
-for f in machines.ini team.ini; do
+for f in machines.ini reuter.ini team.ini; do
     src="$SOURCE_DIR/$f"
     dst="$ROOT/etc/$f"
     [[ -f "$src" ]] || continue

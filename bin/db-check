@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# db-check — warn-only database connectivity verification for prod hosts.
+#
+# Runs as root on the remote, as a pf-deploy built-in server step (after
+# gen-env). It NEVER repairs: it only verifies and warns, so a deploy can
+# proceed while an operator investigates. Two checks:
+#
+#   1. Instance check (only on a db:-tagged host): for each database declared
+#      in etc/machines.ini that maps to this host, verify its per-database
+#      MariaDB instance is up — the mariadb@<db> systemd unit is active, the
+#      socket in /etc/<db>/my.cnf answers `mysqladmin ping`, and the schema
+#      exists in information_schema.SCHEMATA. Orphan mariadb@* instances (not
+#      declared) are flagged too.
+#   2. Reachability check (every host): TCP-connect each reuter.ini section's
+#      SERVER:PORT, so an app-only host verifies it can reach every database
+#      it is configured to use.
+#
+# Database instances are provisioned by `ema create` (one instance per
+# database) and the operator records the emitted connectivity in the
+# consumer's manual reuter.ini — see doc/system/ema.md. This script only
+# checks the result.
+#
+# Usage: db-check [--host <zerotier-ip>] [--reuter-ini <path>]
+#   --host        this host's ZeroTier IP (the machines.ini [prod] key);
+#                 scopes the instance check to the databases that map here.
+#                 Without it, only the reachability check runs.
+#   --reuter-ini  reuter.ini to check (default: $REUTER_INI or etc/reuter.ini)
+#
+# Exit code is always 0 (warn-only): pf-deploy must not abort on a DB miss.
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+ROSTER_BIN="$SCRIPT_DIR/pf-roster"
+
+warn() {
+    echo "db-check: WARNING: $*" >&2
+}
+
+_mysqladmin_ping() {
+    local ping_bin socket="$1"
+    ping_bin="$(command -v mariadb-admin || command -v mysqladmin || true)"
+    [[ -n "$ping_bin" ]] && "$ping_bin" --socket="$socket" --connect-timeout=3 ping >/dev/null 2>&1
+}
+
+_schema_exists() {
+    local client_bin socket="$1" db="$2"
+    client_bin="$(command -v mariadb || command -v mysql || true)"
+    [[ -z "$client_bin" ]] && return 1
+    [[ -n "$("$client_bin" --socket="$socket" -u root -N -e "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$db'" 2>/dev/null)" ]]
+}
+
+# --- argument parsing ------------------------------------------------------
+HOST=""
+REUTER_INI_PATH="${REUTER_INI:-$PWD/etc/reuter.ini}"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --host)
+            HOST="${2:-}"; shift 2 ;;
+        --reuter-ini)
+            REUTER_INI_PATH="${2:-}"; shift 2 ;;
+        *)
+            shift ;;
+    esac
+done
+
+if ! command -v php >/dev/null 2>&1; then
+    warn "php not found; cannot run reachability checks"
+fi
+
+# --- reachability check (every host): TCP-connect each reuter.ini section --
+if [[ ! -f "$REUTER_INI_PATH" ]]; then
+    warn "reuter.ini not found at $REUTER_INI_PATH (no reachability check)"
+elif ! command -v php >/dev/null 2>&1; then
+    :
+else
+    while IFS=$'\t' read -r db server port; do
+        if ! php -r '
+            $errno = 0; $errstr = "";
+            $sock = @stream_socket_client("tcp://" . $argv[1] . ":" . (int) $argv[2], $errno, $errstr, 3);
+            if ($sock === false) { exit(1); }
+            fclose($sock);
+        ' "$server" "$port" 2>/dev/null; then
+            warn "cannot reach database '$db' at $server:$port (reuter.ini section [$db])"
+        fi
+    done < <(php -r '
+        $ini = parse_ini_file($argv[1], true, INI_SCANNER_RAW);
+        if (!is_array($ini)) { exit; }
+        foreach ($ini as $sec => $keys) {
+            if (!isset($keys["SERVER"]) || !isset($keys["PORT"])) { continue; }
+            echo $sec . "\t" . $keys["SERVER"] . "\t" . $keys["PORT"] . "\n";
+        }
+    ' "$REUTER_INI_PATH")
+fi
+
+# --- instance check (db:-tagged host only) ---------------------------------
+if [[ -n "$HOST" ]]; then
+    # Resolve the databases declared on this host from the shared roster.
+    local_declared=""
+    while IFS='=' read -r name host; do
+        if [[ "$host" == "$HOST" ]]; then
+            local_declared="$local_declared $name"
+        fi
+    done < <("$ROSTER_BIN" --db-servers 2>/dev/null)
+
+    # Enumerate the mariadb@* instances present on this host.
+    units="$(systemctl list-units --all --type=service --no-legend --no-pager 'mariadb@*' 2>/dev/null | awk '{print $1}')"
+
+    # For each declared database: verify its instance is up and the schema exists.
+    for db in $local_declared; do
+        unit="mariadb@$db"
+        conffile="/etc/$db/my.cnf"
+        if ! systemctl is-active --quiet "$unit" 2>/dev/null; then
+            warn "instance $unit is not active (declared database '$db' on this host)"
+            continue
+        fi
+        if [[ ! -f "$conffile" ]]; then
+            warn "$conffile not found for instance $unit"
+            continue
+        fi
+        socket="$(awk -F= '/^[[:space:]]*socket[[:space:]]*=/ { gsub(/[[:space:]]/,"",$2); print $2; exit }' "$conffile")"
+        if [[ -z "$socket" ]]; then
+            warn "no socket= in $conffile"
+            continue
+        fi
+        if ! _mysqladmin_ping "$socket"; then
+            warn "instance $unit does not answer ping on socket $socket"
+            continue
+        fi
+        if ! _schema_exists "$socket" "$db"; then
+            warn "schema '$db' missing from instance $unit"
+        fi
+    done
+
+    # Flag orphan instances (present, but not declared on this host).
+    for unit in $units; do
+        name="${unit#mariadb@}"
+        name="${name%.service}"
+        case " $local_declared " in
+            *" $name "*) : ;;  # declared — already checked above
+            *) warn "orphan instance $unit (no db:<name> declaration for '$name' on this host)" ;;
+        esac
+    done
+fi
+
+exit 0

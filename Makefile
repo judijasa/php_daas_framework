@@ -1,5 +1,5 @@
 # php_daas_framework Makefile (dev-only; the framework CLIs phprun/pf-deploy.sh/
-# gen-env/gen-reuter/gen-grants/gen-cert/cron-manifest and the dev scripts
+# gen-env/db-check/gen-grants/gen-cert/cron-manifest and the dev scripts
 # init-local-env.sh and pf-shell-enter.sh are Composer-delivered to consumers
 # via the `bin` array. The dev MariaDB daemon is owned by ema's per-instance
 # sandbox lifecycle (`ema sandbox` / `ema start` / `ema stop`) — this Makefile

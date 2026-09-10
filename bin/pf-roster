@@ -7,7 +7,7 @@ declare(strict_types=1);
 //
 // Reads etc/machines.ini [prod] from the consumer repo root (the current
 // working directory) and answers generic tag queries, so pf-deploy.sh,
-// gen-reuter and the consumer deploy wrapper share one parse of the
+// db-check and the consumer deploy wrapper share one parse of the
 // `tag[:name]` token list.
 //
 // [prod] value grammar (comma-separated tokens):
@@ -16,10 +16,11 @@ declare(strict_types=1);
 //   named tag    `db:simo`   -> a `db` resource named `simo`
 //   empty value              -> code-only host (no tagged step)
 //
-// `db` and `worker` are the framework's built-in tags: `db:<name>` is a
-// MariaDB instance + gen-reuter connectivity, and bare `worker` installs the
-// cron-manifest output (pf-deploy's server steps). Every other tag is
-// consumer-owned and carried through generically.
+// `db` and `worker` are the framework's built-in tags: `db:<name>` is the
+// advisory db-check anchor (the instance itself is provisioned by
+// `ema create`), and bare `worker` installs the cron-manifest output
+// (pf-deploy's server steps). Every other tag is consumer-owned and carried
+// through generically.
 //
 // Usage (from the consumer repo root):
 //   pf-roster              print "host=tags" per line (default)

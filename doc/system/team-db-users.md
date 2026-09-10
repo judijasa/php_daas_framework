@@ -56,7 +56,7 @@ emits transient SQL (never persisted):
 `-n/--dry-run` prints the SQL without applying it. Otherwise it applies the
 SQL as root through `ema mariadb <db> < file.sql` (run with `DBUSER=root` so
 the reconcile provisions as root; run it as root on the DB host — root/
-unix_socket auth over the socket written by `gen-reuter`). The SQL is
+unix_socket auth over the `MYSQL_UNIX_PORT` socket from the manual reuter.ini section). The SQL is
 discarded after apply.
 
 Role definitions live in `srv/` packages (mirroring the `pkg/` convention):

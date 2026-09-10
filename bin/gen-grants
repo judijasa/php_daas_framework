@@ -12,8 +12,8 @@ declare(strict_types=1);
 // it as root through `ema mariadb <db> < file.sql`. ema owns the connection:
 // it connects as root for sandboxes and as DBUSER for prod, so gen-grants
 // runs `ema mariadb` with DBUSER=root to make the reconcile provision as
-// root. Run it as root on the DB host (root/unix_socket auth over the socket
-// written by gen-reuter).
+// root. Run it as root on the DB host (root/unix_socket auth over the
+// MYSQL_UNIX_PORT socket from the manual reuter.ini section).
 //
 // Reconcile shape, per member, per hostname->ZeroTier IP:
 //   CREATE USER IF NOT EXISTS 'member'@'ip' REQUIRE SUBJECT '<subject>';
