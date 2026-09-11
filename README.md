@@ -224,6 +224,9 @@ array installs the CLIs and scripts into `vendor/bin`:
   machinery.
 - `bin/pf-provision.sh` — the generic production provisioning script, invoked
   by `pf-deploy.sh` on every deploy as `vendor/bin/pf-provision.sh`.
+- `bin/replica-bootstrap` — one-time transport bootstrap for a read-only
+  replica (creates the `replication` account and ships a consistent snapshot);
+  see `doc/system/replica-bootstrap.md`.
 
 `gen-grants` (team-member DB accounts + roles) and `gen-cert` (member client
 certificates) implement the team-DB-user flow; see

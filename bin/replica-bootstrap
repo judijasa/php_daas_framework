@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# replica-bootstrap — one-time transport bootstrap for a read-only replica.
+#
+# Before `ema create` provisions a replica instance, this helper performs the
+# one-time steps the replica build depends on but must NOT do itself (the
+# replica host never holds root on the primary):
+#
+#   1. creates a passwordless, host-pinned `replication` transport account on
+#      the primary — `CREATE USER 'replication'@'<replica-ip>' IDENTIFIED BY
+#      ''` + `GRANT REPLICATION SLAVE ON *.*` (an instance-level/global
+#      transport grant, not a per-database grant);
+#   2. takes a consistent snapshot of the primary (mariabackup, prepared) and
+#      ships it to the replica host, where the consumer's replica build can
+#      restore it and start replication.
+#
+# The helper is generic: it knows no consumer names or accounts beyond the
+# fixed `replication` transport account, and no database names beyond the
+# primary section it is told to read. It runs from a dev machine with root
+# SSH to both the primary and replica hosts (ZeroTier), orchestrating each
+# step over SSH.
+#
+# Config:
+#   etc/reuter.ini   [<primary-db>] section — SERVER (the primary host, the
+#                    SSH target) and MYSQL_UNIX_PORT (the primary instance's
+#                    root/unix_socket). The replica's own section is not
+#                    needed yet: its instance is created later by
+#                    `ema create`.
+#
+# Snapshot provenance: mariabackup's `xtrabackup_binlog_info` records the
+# binlog/GTID coordinate, and the copied datadir retains the source's
+# `server_uuid` (auto.cnf) — the contract the consumer's replica build checks
+# at restore so a foreign/stale snapshot fails loudly there, not here.
+#
+# Usage:
+#   replica-bootstrap --primary <db> --replica-host <zerotier-ip> \
+#       [--dest <remote-dir>] [--reuter-ini <path>] [--dry-run]
+#
+#   --primary <db>       primary database name (the [<db>] reuter.ini section).
+#   --replica-host <ip>  replica host ZeroTier IP (the `replication`@<ip> host
+#                        pin and the snapshot destination host).
+#   --dest <dir>         remote directory on the replica host the snapshot
+#                        extracts into (default: /root/replica-snapshot-<db>).
+#   --reuter-ini <path>  reuter.ini to read (default: $REUTER_INI or
+#                        etc/reuter.ini).
+#   --dry-run            print the commands without executing them.
+
+set -euo pipefail
+
+LOCAL_TMP=""
+cleanup() { [[ -n "$LOCAL_TMP" ]] && rm -rf "$LOCAL_TMP"; }
+trap cleanup EXIT
+
+die()  { echo "replica-bootstrap: ERROR: $*" >&2; exit 1; }
+
+# run — execute a command, or print it in --dry-run mode.
+run() {
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf '  $ %s\n' "$*"
+        return 0
+    fi
+    "$@"
+}
+
+# run_remote — run a bash script on a host via `ssh root@<host> bash -s -- <args>`.
+run_remote() {
+    local host="$1"; shift
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf '  $ ssh root@%s bash -s -- %s\n' "$host" "$*"
+        return 0
+    fi
+    ssh "root@$host" "bash -s" -- "$@"
+}
+
+# reuter_value <ini> <section> <key> — read KEY=VALUE from an ini [section].
+reuter_value() {
+    local ini="$1" section="$2" key="$3"
+    awk -F= -v sec="$section" -v key="$key" '
+        /^[[:space:]]*[;#]/ { next }
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*\[/ { gsub(/^[[:space:]]*\[|\][[:space:]]*$/, "", $0); s = $0; next }
+        {
+            k = $1
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+            if (s == sec && k == key) {
+                v = substr($0, index($0, "=") + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+                print v
+                exit
+            }
+        }
+    ' "$ini"
+}
+
+usage() {
+    cat <<'EOF'
+Usage: replica-bootstrap --primary <db> --replica-host <zerotier-ip> [flags]
+
+One-time transport bootstrap for a read-only replica: create the
+passwordless `replication` account on the primary and ship a consistent
+snapshot to the replica host (before `ema create` provisions the replica).
+
+  --primary <db>       primary database name (the [<db>] etc/reuter.ini section).
+  --replica-host <ip>  replica host ZeroTier IP (the `replication`@<ip> pin
+                       and the snapshot destination host).
+  --dest <dir>         remote directory on the replica host the snapshot
+                       extracts into (default: /root/replica-snapshot-<db>).
+  --reuter-ini <path>  reuter.ini to read (default: $REUTER_INI or etc/reuter.ini).
+  --dry-run            print the commands without executing them.
+EOF
+}
+
+main() {
+    local PRIMARY="" REPLICA_HOST="" DEST=""
+    local REUTER_INI_PATH="${REUTER_INI:-$PWD/etc/reuter.ini}"
+    DRY_RUN=0
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --primary)      PRIMARY="${2:-}"; shift 2 ;;
+            --replica-host) REPLICA_HOST="${2:-}"; shift 2 ;;
+            --dest)         DEST="${2:-}"; shift 2 ;;
+            --reuter-ini)   REUTER_INI_PATH="${2:-}"; shift 2 ;;
+            --dry-run)      DRY_RUN=1; shift ;;
+            -h|--help)      usage; return 0 ;;
+            *)              usage >&2; return 1 ;;
+        esac
+    done
+
+    [[ -n "$PRIMARY" ]] || { usage >&2; return 1; }
+    [[ -n "$REPLICA_HOST" ]] || { usage >&2; return 1; }
+    [[ -f "$REUTER_INI_PATH" ]] || die "reuter.ini not found at $REUTER_INI_PATH (copy etc/reuter.ini.template and fill it in)"
+
+    local primary_host socket
+    primary_host="$(reuter_value "$REUTER_INI_PATH" "$PRIMARY" "SERVER")"
+    socket="$(reuter_value "$REUTER_INI_PATH" "$PRIMARY" "MYSQL_UNIX_PORT")"
+
+    [[ -n "$primary_host" ]] || die "[$PRIMARY] has no SERVER in $REUTER_INI_PATH"
+    [[ -n "$socket" ]] || die "[$PRIMARY] has no MYSQL_UNIX_PORT in $REUTER_INI_PATH (root/unix_socket auth is required)"
+
+    local dest="${DEST:-/root/replica-snapshot-$PRIMARY}"
+    local snapshot_tmp="/root/replica-bootstrap-$PRIMARY"
+    local tarball="$snapshot_tmp.tar.gz"
+
+    # 1. Create the `replication` account, then take + prepare the snapshot on
+    #    the primary (single SSH session; the values are passed as positional
+    #    args to the remote `bash -s`).
+    run_remote "$primary_host" "$PRIMARY" "$REPLICA_HOST" "$socket" "$snapshot_tmp" "$tarball" <<'REMOTE'
+set -euo pipefail
+primary=$1 replica_host=$2 socket=$3 snapshot_tmp=$4 tarball=$5
+
+client="$(command -v mariadb || command -v mysql || true)"
+[ -n "$client" ] || { echo "replica-bootstrap: no mariadb/mysql client on the primary" >&2; exit 1; }
+backup="$(command -v mariabackup || command -v mariadb-backup || true)"
+[ -n "$backup" ] || { echo "replica-bootstrap: no mariabackup/mariadb-backup on the primary" >&2; exit 1; }
+
+"$client" --socket="$socket" -u root -e \
+    "CREATE USER IF NOT EXISTS 'replication'@'$replica_host' IDENTIFIED BY ''; \
+     ALTER USER 'replication'@'$replica_host' IDENTIFIED BY ''; \
+     GRANT REPLICATION SLAVE ON *.* TO 'replication'@'$replica_host';"
+
+rm -rf "$snapshot_tmp" "$tarball"
+"$backup" --backup --target-dir="$snapshot_tmp" --socket="$socket" --user=root
+"$backup" --prepare --target-dir="$snapshot_tmp"
+tar czf "$tarball" -C "$snapshot_tmp" .
+echo "snapshot ready: $tarball"
+REMOTE
+
+    # 2. Ship the snapshot to the replica host (relayed through the dev
+    #    machine, which holds root SSH to both hosts).
+    LOCAL_TMP="$(mktemp -d)"
+    run scp "root@$primary_host:$tarball" "$LOCAL_TMP/snapshot.tar.gz"
+    run ssh "root@$REPLICA_HOST" "rm -rf '$dest' && mkdir -p '$dest'"
+    run scp "$LOCAL_TMP/snapshot.tar.gz" "root@$REPLICA_HOST:$dest/snapshot.tar.gz"
+    run ssh "root@$REPLICA_HOST" "tar xzf '$dest/snapshot.tar.gz' -C '$dest' && rm -f '$dest/snapshot.tar.gz'"
+
+    # 3. Clean the primary-side scratch snapshot.
+    run ssh "root@$primary_host" "rm -rf '$snapshot_tmp' '$tarball'"
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        echo "replica-bootstrap: dry-run complete (nothing executed)." >&2
+    else
+        echo "replica-bootstrap: done — snapshot shipped to root@$REPLICA_HOST:$dest." >&2
+        echo "  Next: provision the replica with 'ema create --from-snapshot $dest'." >&2
+    fi
+}
+
+main "$@"
