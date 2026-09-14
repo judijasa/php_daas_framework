@@ -32,6 +32,7 @@
     "bin/gen-env",
     "bin/db-check",
     "bin/gen-grants",
+    "bin/gen-service-accounts",
     "bin/gen-cert",
     "bin/pf-roster",
     "bin/cron-manifest",

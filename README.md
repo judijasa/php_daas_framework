@@ -218,8 +218,8 @@ The framework code is delivered by Composer only. The `composer.json` `bin`
 array installs the CLIs and scripts into `vendor/bin`:
 
 - `bin/phprun`, `bin/pf-deploy.sh`, `bin/pf-roster`, `bin/gen-env`,
-  `bin/db-check`, `bin/gen-grants`, `bin/gen-cert`, `bin/cron-manifest` — the
-  framework CLIs.
+  `bin/db-check`, `bin/gen-grants`, `bin/gen-service-accounts`, `bin/gen-cert`,
+  `bin/cron-manifest` — the framework CLIs.
 - `bin/dev/pf-shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
   machinery.
 - `bin/pf-provision.sh` — the generic production provisioning script, invoked
@@ -231,6 +231,10 @@ array installs the CLIs and scripts into `vendor/bin`:
 `gen-grants` (team-member DB accounts + roles) and `gen-cert` (member client
 certificates) implement the team-DB-user flow; see
 `doc/system/team-db-users.md`.
+
+`gen-service-accounts` (passwordless, host-pinned service accounts + roles,
+closed-world) implements the service-account flow; see
+`doc/system/service-accounts.md`.
 
 The PHP library itself (the `Utils\` PSR-4 namespace under `src/`) is
 autoloaded from `vendor/autoload.php`.
