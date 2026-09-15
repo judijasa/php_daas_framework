@@ -2,8 +2,9 @@
 # Copy to etc/machines.ini (git-ignored; commit it only in a private fork) and
 # fill in your entries — or keep it in a private config repo and inject it via
 # .private-source (see doc/system/private-config.md). `pf-deploy.sh` and
-# `db-check` read the [prod] roster; the dev-machine `DBUSER` mapping now
-# lives in etc/team.ini (see etc/team.ini.template +
+# `deploy-private-config` read the [prod] roster (locally, on the deploy
+# machine — `machines.ini` is never shipped to a host); the dev-machine
+# `DBUSER` mapping now lives in etc/team.ini (see etc/team.ini.template +
 # doc/system/team-db-users.md), not here.
 #
 # [prod] prod deploy targets. Each key is the server's ZeroTier IP (the same
@@ -13,10 +14,11 @@
 #          bare tag    `worker`    -> boolean flag (framework built-in: installs
 #                                     the cron manifest on every deploy)
 #          named tag   `db:mydb`   -> a `db` resource named `mydb`
-#        `db` and `worker` are the framework's built-in tags: `db:<name>` is
-#        the advisory anchor for `db-check` (it verifies that database exists
-#        and is reachable on its host — the instance itself is provisioned by
-#        `ema create`, not by deploy), and bare `worker` installs the
+#        `db` and `worker` are the framework's built-in tags: `db:<name>`
+#        names a database and enforces the one-to-one server mapping (the
+#        instance itself is provisioned by `ema create`; db-check verifies it
+#        via the host's own `mariadb@*` units, not this roster), and bare
+#        `worker` installs the
 #        `cron-manifest` output into CRON_FILE (etc/deploy.conf) on every
 #        deploy. Every other tag is consumer-owned and carried through
 #        generically. A host with a `db:<name>` token is a database host; an

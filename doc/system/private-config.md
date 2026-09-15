@@ -2,7 +2,8 @@
 
 Date: 2026-09-08
 Scope: how this framework separates public code from private operational data
-using a `.private-source` pointer and the `fetch-private-data` CLI.
+using a `.private-source` pointer, the `fetch-private-data` injector, and the
+`deploy-private-config` prod shipper.
 
 ## What is private data
 
@@ -10,11 +11,11 @@ The public repo ships the mechanism and committed templates for every
 operational data file. The real values are private and must not enter the
 public Git history:
 
-| File | Public template | Private data |
-|---|---|---|
-| `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster |
-| `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`) |
-| `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs |
+| File | Public template | Private data | Ships to prod? |
+|---|---|---|---|
+| `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`) | **yes — the only private file that leaves the private repo for a host** |
+| `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster | no (deploy/dev-time only) |
+| `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs | no (dev-only) |
 
 `etc/deploy.conf` stays committed: it is project-static (paths, the app-user
 name — no secrets, identical on every prod host), so it is a public interface,
@@ -22,6 +23,13 @@ not private data. The `reuter.ini` connectivity sections (and any
 `<ACCOUNT>_PASSWORD` keys the consumer's service-user provisioning writes into
 them) are private data and live only in the private repo, never in the public
 history.
+
+`reuter.ini` is the only private file a prod host needs, so it is the only
+one that ever leaves the private repo for a host — and it ships **whole**
+(no inner filtering, no section splicing). `machines.ini` and `team.ini` are
+dev/deploy-time inputs: `machines.ini` feeds the local deploy roster and
+`team.ini` feeds `gen-cert`/`gen-grants`/`gen-service-accounts`/
+`init-local-env` on the deploy/dev machine. They never reach prod.
 
 ## The private repo
 
@@ -36,29 +44,33 @@ files mirror the consumer's `etc/` operational data:
 └── README.md
 ```
 
-Keep credentials out of it where possible: private-repo access control does
-not eliminate the risks of credentials copied through clones, backups, CI, or
-developer machines (the service-account auth policy — passwords vs.
-certificates — is a deferred decision; see
+Its committed content is the single source of truth on every machine that can
+reach git — nothing runs on a loose, uncommitted copy. Keep credentials out of
+it where possible: private-repo access control does not eliminate the risks of
+credentials copied through clones, backups, CI, or developer machines (the
+service-account auth policy — passwords vs. certificates — is a deferred
+decision; see
 `doc/plans/2026-09-09-ema-prod-instance-at-create-manual-reuter.md`).
 
 ## .private-source
 
-Each deploy/dev machine holds an untracked, git-ignored `.private-source` file
-that points at a checkout of the private repo. It never discloses the private
-repo's hosting provider or URL in the public history (it is git-ignored).
+Each dev/deploy machine holds an untracked, git-ignored `.private-source` file
+that points at the private repo. It never discloses the private repo's hosting
+provider or URL in the public history (it is git-ignored).
 
-Copy the committed `.private-source.example` to `.private-source` and set one
-retrieval mechanism:
+Copy the committed `.private-source.example` to `.private-source` and set the
+one retrieval mechanism — a git URL (+ optional ref):
 
 ```ini
-PRIVATE_DATA_SOURCE=/srv/private-config            # a local checkout
-# PRIVATE_DATA_GIT=git@example.com:team/app-private.git   # or a git URL
-# PRIVATE_DATA_REF=main
+PRIVATE_DATA_GIT=git@example.com:team/app-private-config.git
+PRIVATE_DATA_REF=main
 ```
 
-When neither `PRIVATE_DATA_SOURCE` nor `PRIVATE_DATA_GIT` is set, the private
-files are expected to already be present directly in `etc/` (see below).
+A present `.private-source` that sets no `PRIVATE_DATA_GIT` is an error, not a
+silent skip. An absent `.private-source` is a no-op on dev (the public repo
+stays fully functional without private data); on prod — no git, no
+`.private-source` — the stable per-app dir is resolved from
+`DEPLOY_PRIVATE_CONFIG_DIR` instead.
 
 ## fetch-private-data
 
@@ -67,43 +79,64 @@ fetch-private-data [target-dir]   # default: $PWD
 ```
 
 `fetch-private-data` reads `.private-source` and injects the private files
-into `etc/`. It resolves the source in order:
+into `etc/` **as symlinks**. It resolves the source in one of two ways:
 
-1. `PRIVATE_DATA_SOURCE` — a local checkout of the private repo (no git
-   needed); symlinks `machines.ini`/`reuter.ini`/`team.ini` into `etc/`.
-2. `PRIVATE_DATA_GIT` + `PRIVATE_DATA_REF` — an on-demand clone/fetch into the
-   git-ignored `var/private-data` (requires git; dev-only); then symlinks into
-   `etc/`.
-3. Neither set — the private files are expected to already be present directly
-   in `etc/` (regular files, e.g. shipped by the private repo's `git archive`
-   deploy). Validated warn-only; never aborts (deploy is the abort gate for a
-   missing `machines.ini`).
+1. `.private-source` present → the on-demand clone/fetch into the git-ignored
+   `var/private-data` (dev/deploy machines). `reuter.ini` is required;
+   `machines.ini`/`team.ini` are wired only when the source provides them
+   (dev alone).
+2. `.private-source` absent → a no-op, unless `DEPLOY_PRIVATE_CONFIG_DIR`
+   (from `etc/deploy.conf`) names a stable dir that exists — then it links
+   `reuter.ini` (and only `reuter.ini`) from there. This is the prod path.
 
-For the private-repo modes (1 and 2), a missing `machines.ini` or
-`reuter.ini` aborts (deploy cannot run without the prod roster, and the app
-cannot resolve a database without `reuter.ini`); a missing `team.ini` only
-warns (team DB users disabled). It is a silent no-op when `.private-source` is
-absent, so the repo stays fully functional without private data (dev/sandbox
-work and environments that do not need production data proceed without it).
+Injection is a symlink, never a copy: `etc/<f>` points into the source, so a
+later run refreshes the data through the link. The wire invariant per
+destination:
 
-`bin/pf-deploy.sh`, the `make dev-init` target, and `bin/dev/init-local-env.sh`
-call `fetch-private-data` before they read `machines.ini`/`reuter.ini`/
-`team.ini`, so the private data is present for deploy and dev-init whenever a
-`.private-source` is configured.
+- an up-to-date link (already pointing at the source) is kept;
+- a stale or dangling link is re-pointed at the source;
+- a real file at `etc/<f>` **shadows** the private data instead — it is
+  reported loudly, never overwritten (that silent skip is how a machine ends
+  up running stale private config while believing it is current).
+
+A missing `reuter.ini` in the resolved source aborts (the app cannot resolve a
+database without it).
+
+`bin/pf-deploy.sh`, `bin/deploy-private-config`, the `make dev-init` target
+(via `bin/dev/init-local-env.sh`), and the dev shell entry
+(`bin/dev/pf-shell-enter.sh`) call `fetch-private-data` before they read the
+private files, so the private data is present whenever a `.private-source` is
+configured.
 
 ## Production (no git)
 
-Prod hosts have no git, so the on-demand clone path is dev-only. The private
-repo is deployed to prod with `git archive`, run from a machine that has git:
+Prod hosts have no git and hold no `.private-source`. Delivery is a two-step
+split between the deploy machine (which has git) and the host (which has the
+stable per-app private dir):
+
+1. **`bin/deploy-private-config`** (deploy machine) ships `reuter.ini` — whole,
+   from the private repo's committed content via `git archive <ref>` — to the
+   stable per-app dir named by `etc/deploy.conf`'s `DEPLOY_PRIVATE_CONFIG_DIR`
+   on each `[prod]` host. It ships **nothing else**: `machines.ini` and
+   `team.ini` are never copied to a host. It reads the `[prod]` roster from
+   `etc/machines.ini` locally; `machines.ini` is never shipped.
+
+2. **`bin/pf-deploy.sh`**, as a built-in server step (after the repo swap,
+   before `gen-env`/`db-check`), runs `fetch-private-data` on the remote, which
+   links the stable dir's `reuter.ini` into the freshly swapped
+   `etc/reuter.ini`.
+
+Because the stable dir lives outside `DEPLOY_TARGET_DIR` (which is swapped on
+every deploy), the private file survives deploys untouched; only the symlink
+in `etc/` is recreated. Prod therefore runs committed config only: the
+committed-only guarantee comes from the deploy machine's `git archive`, not
+from anything prod-side.
 
 ```bash
-git -C <private-config> archive HEAD machines.ini reuter.ini team.ini \
-  | ssh root@$HOST "mkdir -p /srv/apps/<app>/etc && tar -x -C /srv/apps/<app>/etc"
+# deploy machine, inside nix develop, on main:
+bin/deploy-private-config          # ship reuter.ini (whole) to every [prod] host
+bin/pf-deploy.sh                   # full deploy; links reuter.ini into etc/ on each host
 ```
-
-The extracted files land directly in `etc/` (regular files, no symlinks) and
-`fetch-private-data`'s fallback (mode 3) recognizes them. Alternatively,
-extract into a stable directory and point `PRIVATE_DATA_SOURCE` at it.
 
 ## Security boundary
 

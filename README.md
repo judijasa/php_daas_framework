@@ -322,15 +322,15 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
 
 - **`etc/machines.ini`** (git-ignored; template committed) - the prod-server
   registry: `[prod]` ZeroTier-IP→`tag[:name]` tokens (comma-separated per
-  server; `db` and `worker` are the built-in tags — `db:<name>` is the
-  advisory anchor for `db-check`, bare `worker` marks a cron host — and other
+  server; `db` and `worker` are the built-in tags — `db:<name>` names a
+  database, bare `worker` marks a cron host — and other
   tags are consumer-owned). `pf-deploy.sh` (default mode) targets every
   `[prod]` host; a host carrying a `db:<name>` token is a database host (its
   per-database MariaDB instance is provisioned by `ema create`, not by
   deploy), and a host carrying bare `worker` gets the cron manifest
   installed. Each named token maps to exactly one server; a server may host
   several databases. The shared `pf-roster` CLI parses this roster for
-  `pf-deploy.sh`, `db-check` and the consumer's deploy wrapper.
+  `pf-deploy.sh`, `deploy-private-config` and the consumer's deploy wrapper.
   Commit this file only in a private fork, or keep it in a separate private
   config repo and inject it via `.private-source`
   (`doc/system/private-config.md`).
@@ -405,10 +405,10 @@ and the distro `mariadb.service` (TCP 3306, `/run/mysqld/*`) is left
 untouched.
 
 Deploy-time DB verification is **warn-only**: `db-check` (a built-in
-pf-deploy server step) checks, on a `db:`-tagged host, that each declared
-database's instance is up and its schema exists, and — on every host — that
-each `reuter.ini` section's `SERVER:PORT` is TCP-reachable. It never repairs:
-a miss is reported as a warning and the deploy proceeds.
+pf-deploy server step) checks, on every host, that each of the host's own
+`mariadb@<db>` instances is up (unit active, socket pings, schema exists) and
+that each `reuter.ini` section's `SERVER:PORT` is TCP-reachable. It never
+repairs: a miss is reported as a warning and the deploy proceeds.
 
 The framework's `pf-deploy.sh` is a closed operation: it swaps the repo, copies the
 nix closure, installs composer deps, runs idempotent provisioning, then runs
@@ -448,12 +448,12 @@ The framework ships three more CLIs run by pf-deploy as built-in server steps
   git-ignored `.env` must be recreated before cron is installed — a missing
   key would silently fall back to the framework defaults, e.g.
   `EMA_TARGET=sandbox` -> wrong DB section in production).
-- **`db-check [--host <zerotier-ip>] [--reuter-ini <path>]`** — warn-only
-  connectivity verification, run on every host right after `gen-env`: on a
-  `db:`-tagged host it checks each declared database's instance is up (unit
-  active, socket pings, schema exists), and on every host it TCP-connects
-  each `reuter.ini` section's `SERVER:PORT`. It never repairs — misses are
-  warnings, and the deploy proceeds.
+- **`db-check [--reuter-ini <path>]`** — warn-only connectivity verification,
+  run on every host right after `gen-env`: it checks the host's own
+  `mariadb@<db>` instances are up (unit active, socket pings, schema exists;
+  the instance set comes from the host's systemd units, not the roster), and
+  TCP-connects each `reuter.ini` section's `SERVER:PORT`. It never repairs —
+  misses are warnings, and the deploy proceeds.
 - **`cron-manifest`** — scans the consumer's `src/` for functions decorated
   with both `#[CronJob]` and `#[Agent]` and prints a crontab to stdout
   (`CRON_USER`, and `CRON_NIX_BIN` — pf-deploy defaults it to

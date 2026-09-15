@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# deploy-private-config — ship a consumer's private reuter.ini (whole) to the
+# stable per-app private-config dir on each prod host, from the private config
+# repo's committed content.
+#
+# Runs on the deploy machine (which has git and the private config repo
+# pointer). It ships `reuter.ini` — and ONLY `reuter.ini`: `machines.ini` and
+# `team.ini` are dev/deploy-time files that never leave the deploy machine.
+# The file is shipped whole (no inner filtering, no reuter.ini section
+# splicing) from `git archive`, so prod runs committed config only — never a
+# dirty working tree or loose git-ignored files.
+#
+# Reads (all from the consumer repo root, same layout as pf-deploy.sh):
+#   .private-source      PRIVATE_DATA_GIT (+ PRIVATE_DATA_REF); required — the
+#                        private config repo URL. (PRIVATE_DATA_SOURCE is gone:
+#                        the committed content is the single source of truth.)
+#   etc/deploy.conf      DEPLOY_PRIVATE_CONFIG_DIR — the stable per-app
+#                        private dir on each host (outside DEPLOY_TARGET_DIR,
+#                        which is swapped on every deploy).
+#   etc/machines.ini     [prod] roster, read LOCALLY (never shipped).
+#
+# Usage: deploy-private-config [target-host]   (default: every [prod] host)
+
+set -euo pipefail
+
+# Machine settings from .env (same contract as pf-deploy.sh) so REPO_PATH is
+# in scope when run through the framework entrypoints.
+if [[ -f "$PWD/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$PWD/.env"
+    set +a
+fi
+
+# Private config source pointer is required (this is the deploy machine).
+if [[ ! -f "$PWD/.private-source" ]]; then
+    echo "deploy-private-config: $PWD/.private-source not found" >&2
+    echo "  Copy the framework's .private-source.example to .private-source and set PRIVATE_DATA_GIT." >&2
+    exit 1
+fi
+set -a
+# shellcheck disable=SC1090
+. "$PWD/.private-source"
+set +a
+if [[ -z "${PRIVATE_DATA_GIT:-}" ]]; then
+    echo "deploy-private-config: .private-source sets no PRIVATE_DATA_GIT (required)." >&2
+    exit 1
+fi
+
+# Deploy config: DEPLOY_PRIVATE_CONFIG_DIR names the stable per-app dir.
+if [[ ! -f "$PWD/etc/deploy.conf" ]]; then
+    echo "deploy-private-config: $PWD/etc/deploy.conf not found" >&2
+    echo "  Copy the framework's etc/deploy.conf.template into the repo and fill in the values." >&2
+    exit 1
+fi
+set -a
+# shellcheck disable=SC1090
+. "$PWD/etc/deploy.conf"
+set +a
+if [[ -z "${DEPLOY_PRIVATE_CONFIG_DIR:-}" ]]; then
+    echo "deploy-private-config: etc/deploy.conf sets no DEPLOY_PRIVATE_CONFIG_DIR (required)." >&2
+    exit 1
+fi
+
+# Machine registry: the [prod] roster (read locally, never shipped).
+if [[ ! -f "$PWD/etc/machines.ini" ]]; then
+    echo "deploy-private-config: $PWD/etc/machines.ini not found" >&2
+    echo "  Run fetch-private-data (or make dev-init) so the private config is injected." >&2
+    exit 1
+fi
+
+# Shared roster parser (resolves vendor/bin symlinks, same pattern as
+# bin/pf-deploy.sh and bin/db-check).
+ROSTER_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-roster"
+
+# Resolve the private repo into a local checkout (on-demand clone/fetch, the
+# same shape as fetch-private-data's git mode), then `git archive` ships
+# committed content only.
+SOURCE_DIR="$PWD/var/private-data"
+REF="${PRIVATE_DATA_REF:-main}"
+if [[ -d "$SOURCE_DIR/.git" ]]; then
+    git -C "$SOURCE_DIR" fetch --quiet origin "$REF"
+    git -C "$SOURCE_DIR" checkout --quiet --detach FETCH_HEAD
+else
+    mkdir -p "$PWD/var"
+    git clone --quiet "$PRIVATE_DATA_GIT" "$SOURCE_DIR"
+    git -C "$SOURCE_DIR" checkout --quiet --detach "$REF"
+fi
+
+# reuter.ini must exist at the pinned ref: it is the only file shipped.
+if ! git -C "$SOURCE_DIR" cat-file -e "HEAD:reuter.ini" 2>/dev/null; then
+    echo "deploy-private-config: private repo $SOURCE_DIR has no reuter.ini at ref $REF." >&2
+    exit 1
+fi
+
+WANTED="${1:-}"
+
+ship_to_host() {
+    local HOST="$1"
+    echo "    Shipping reuter.ini (whole) to $HOST:$DEPLOY_PRIVATE_CONFIG_DIR ..." >&2
+    git -C "$SOURCE_DIR" archive HEAD reuter.ini \
+        | ssh "root@$HOST" "mkdir -p '$DEPLOY_PRIVATE_CONFIG_DIR' && tar -x -C '$DEPLOY_PRIVATE_CONFIG_DIR'"
+}
+
+main() {
+    local host taglist found=0 count=0
+    while IFS='=' read -r host taglist; do
+        [[ -n "$host" ]] || continue
+        count=$((count + 1))
+        if [[ -n "$WANTED" ]]; then
+            if [[ "$host" == "$WANTED" ]]; then
+                found=1
+                ship_to_host "$host"
+                break
+            fi
+            continue
+        fi
+        ship_to_host "$host"
+    done < <("$ROSTER_BIN" --list)
+
+    if [[ -n "$WANTED" && "$found" -eq 0 ]]; then
+        echo "deploy-private-config: host '$WANTED' is not in the [prod] roster of etc/machines.ini." >&2
+        exit 1
+    fi
+    if [[ "$count" -eq 0 ]]; then
+        echo "deploy-private-config: [prod] roster in etc/machines.ini is empty." >&2
+        exit 1
+    fi
+}
+
+main

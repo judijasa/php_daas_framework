@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
-# fetch-private-data — inject git-ignored private operational config from a
-# private repository into the consumer repo root.
+# fetch-private-data — inject git-ignored private operational config into the
+# consumer repo's etc/ via symlinks.
 #
-# Reads `.private-source` (git-ignored) from the repo root. That file points
-# at the private config repo — a local checkout (PRIVATE_DATA_SOURCE) or a
-# git URL (PRIVATE_DATA_GIT + PRIVATE_DATA_REF, fetched into var/private-data).
-# The private repo's tracked files mirror the consumer's etc/ operational
-# data: `machines.ini` (prod ZeroTier roster), `reuter.ini` (the manually-
-# maintained per-database connectivity, recorded from `ema create` output),
-# and `team.ini` (member identities). For each, fetch-private-data validates
-# the expected structure and symlinks the private copy into etc/ — leaving any
-# local file untouched.
+# The private repo's committed content is the single source of truth on every
+# machine that can reach git; nothing runs on a loose, uncommitted copy. There
+# is exactly one retrieval mechanism:
 #
-# When `.private-source` is absent, this is a no-op, so the public repo stays
-# fully functional without private data (dev/sandbox and environments that do
-# not need production data proceed without it).
+#   .private-source  ->  PRIVATE_DATA_GIT (+ optional PRIVATE_DATA_REF), the
+#                        private config repo URL, fetched on demand into
+#                        var/private-data (dev/deploy machines).
 #
-# When `.private-source` is present but sets neither PRIVATE_DATA_SOURCE nor
-# PRIVATE_DATA_GIT (or the machine has no git, e.g. prod), the private files
-# are expected to already be present directly in etc/ — typically shipped
-# there by the private repo's own `git archive`-based deploy. In that case
-# fetch-private-data only validates them (warn-only) and never aborts; deploy
-# remains the abort gate for a missing machines.ini.
+# `reuter.ini` is the only required private file; `machines.ini` and
+# `team.ini` are wired only when the private source provides them (dev alone —
+# they are never shipped to prod).
+#
+# When `.private-source` is absent, this is a no-op by default (the public
+# repo stays fully functional without private data). On prod — no git, no
+# `.private-source` — it resolves the stable per-app dir from
+# `etc/deploy.conf`'s `DEPLOY_PRIVATE_CONFIG_DIR` and links `reuter.ini` from
+# there into `etc/`. A present `.private-source` that sets no
+# `PRIVATE_DATA_GIT` is an error, not a silent skip.
+#
+# Injection is a symlink, never a copy: `etc/<f>` points into the source, so a
+# later run refreshes the data through the link. A real file at `etc/<f>`
+# shadows the private data instead — reported loudly, never overwritten (that
+# silent skip is how a machine ends up running stale private config while
+# believing it is current).
 #
 # Access control on the private repo is the real security boundary; the
 # untracked pointer only keeps the private repo's identity out of the public
@@ -34,20 +38,41 @@ set -euo pipefail
 ROOT="$(cd "${1:-$PWD}" && pwd)"
 SOURCE_FILE="$ROOT/.private-source"
 
-# No private source configured: nothing to inject (a no-op by design).
-if [[ ! -f "$SOURCE_FILE" ]]; then
-    exit 0
-fi
+# Wire src into etc/<f> as a symlink, honouring the invariant:
+#   - an up-to-date link (already pointing at src) is kept;
+#   - a stale or dangling link is re-pointed at src;
+#   - a real file shadows the private data and is NEVER overwritten (warn).
+wire() {
+    local src="$1" dst="$2" cur
+    if [[ -L "$dst" ]]; then
+        cur="$(readlink "$dst" 2>/dev/null || true)"
+        if [[ "$cur" == "$src" ]]; then
+            return 0
+        fi
+        echo "fetch-private-data: re-pointing $dst -> $src (was -> $cur)" >&2
+        rm -f "$dst"
+        ln -s "$src" "$dst"
+    elif [[ -e "$dst" ]]; then
+        echo "fetch-private-data: WARNING: $dst is a real file; it shadows the private data at $src and is NOT overwritten." >&2
+    else
+        ln -s "$src" "$dst"
+    fi
+}
 
-set -a
-# shellcheck disable=SC1090
-. "$SOURCE_FILE"
-set +a
+SOURCE_DIR=""
+if [[ -f "$SOURCE_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$SOURCE_FILE"
+    set +a
 
-# Resolve the private repo into a local directory: a configured local path,
-# or an on-demand clone/fetch of a configured git URL.
-SOURCE_DIR="${PRIVATE_DATA_SOURCE:-}"
-if [[ -z "$SOURCE_DIR" && -n "${PRIVATE_DATA_GIT:-}" ]]; then
+    # Git is the only retrieval mechanism: a pointer without PRIVATE_DATA_GIT
+    # is an error, not a silent skip.
+    if [[ -z "${PRIVATE_DATA_GIT:-}" ]]; then
+        echo "fetch-private-data: .private-source sets no PRIVATE_DATA_GIT (required)." >&2
+        exit 1
+    fi
+
     SOURCE_DIR="$ROOT/var/private-data"
     REF="${PRIVATE_DATA_REF:-main}"
     if [[ -d "$SOURCE_DIR/.git" ]]; then
@@ -58,59 +83,37 @@ if [[ -z "$SOURCE_DIR" && -n "${PRIVATE_DATA_GIT:-}" ]]; then
         git clone --quiet "$PRIVATE_DATA_GIT" "$SOURCE_DIR"
         git -C "$SOURCE_DIR" checkout --quiet --detach "$REF"
     fi
+    SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd)"
+else
+    # No .private-source: prod resolves the stable per-app dir from
+    # etc/deploy.conf when it is present. On a dev/deploy machine that dir
+    # simply does not exist, so this stays a no-op there.
+    if [[ -f "$ROOT/etc/deploy.conf" ]]; then
+        set -a
+        # shellcheck disable=SC1090
+        . "$ROOT/etc/deploy.conf"
+        set +a
+    fi
+    if [[ -z "${DEPLOY_PRIVATE_CONFIG_DIR:-}" ]]; then
+        exit 0
+    fi
+    SOURCE_DIR="$DEPLOY_PRIVATE_CONFIG_DIR"
+    if [[ ! -d "$SOURCE_DIR" ]]; then
+        exit 0
+    fi
 fi
 
-if [[ -z "$SOURCE_DIR" ]]; then
-    # No private repo configured: the private files must already be present
-    # directly in etc/ (e.g. shipped by the private repo's git-archive
-    # deploy). Validate warn-only; deploy is the abort gate for a missing
-    # machines.ini.
-    echo "fetch-private-data: .private-source sets no PRIVATE_DATA_SOURCE/PRIVATE_DATA_GIT; expecting private files already in etc/." >&2
-    if [[ ! -f "$ROOT/etc/machines.ini" ]]; then
-        echo "fetch-private-data: warning: etc/machines.ini not found." >&2
-    fi
-    if [[ ! -f "$ROOT/etc/reuter.ini" ]]; then
-        echo "fetch-private-data: warning: etc/reuter.ini not found." >&2
-    fi
-    if [[ ! -f "$ROOT/etc/team.ini" ]]; then
-        echo "fetch-private-data: warning: etc/team.ini not found (team DB users disabled)." >&2
-    fi
-    exit 0
-fi
-
-if [[ ! -d "$SOURCE_DIR" ]]; then
-    echo "fetch-private-data: PRIVATE_DATA_SOURCE $SOURCE_DIR is not a directory." >&2
-    exit 1
-fi
-
-# Resolve to an absolute path so the symlinks below stay valid regardless of
-# the invocation directory.
-SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd)"
-
-# Validate the expected structure before injecting anything. machines.ini and
-# reuter.ini are required (deploy cannot run without the prod roster, and the
-# app cannot resolve a database without reuter.ini); team.ini is optional
-# (only needed for team DB users / dev DBUSER).
-for f in machines.ini reuter.ini team.ini; do
-    if [[ ! -f "$SOURCE_DIR/$f" ]]; then
-        if [[ "$f" == "machines.ini" || "$f" == "reuter.ini" ]]; then
-            echo "fetch-private-data: private repo $SOURCE_DIR has no $f (required)." >&2
+# reuter.ini is the only required file: the app cannot resolve a database
+# without it. machines.ini/team.ini are wired only when provided (dev).
+mkdir -p "$ROOT/etc"
+for f in reuter.ini machines.ini team.ini; do
+    src="$SOURCE_DIR/$f"
+    if [[ ! -f "$src" ]]; then
+        if [[ "$f" == "reuter.ini" ]]; then
+            echo "fetch-private-data: private source $SOURCE_DIR has no reuter.ini (required)." >&2
             exit 1
         fi
-        echo "fetch-private-data: warning: private repo $SOURCE_DIR has no team.ini (team DB users disabled)." >&2
-    fi
-done
-
-# Inject each private file as a symlink into etc/, leaving local files (or a
-# prior link) untouched.
-mkdir -p "$ROOT/etc"
-for f in machines.ini reuter.ini team.ini; do
-    src="$SOURCE_DIR/$f"
-    dst="$ROOT/etc/$f"
-    [[ -f "$src" ]] || continue
-    if [[ -e "$dst" || -L "$dst" ]]; then
         continue
     fi
-    ln -s "$src" "$dst"
-    echo "    Linked $dst -> $src"
+    wire "$src" "$ROOT/etc/$f"
 done

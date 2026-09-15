@@ -45,6 +45,14 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 # fetch-private-data (see doc/system/private-config.md).
 export DEPLOY_REUTER_INI=/srv/apps/<app>/etc/reuter.ini
 
+# DEPLOY_PRIVATE_CONFIG_DIR: stable per-app private-config directory on the
+# host. bin/deploy-private-config ships the consumer's reuter.ini (whole) here
+# from the private config repo's committed content; fetch-private-data (a
+# pf-deploy server step) symlinks it into etc/reuter.ini, which
+# DEPLOY_REUTER_INI points at. It MUST live OUTSIDE DEPLOY_TARGET_DIR, which
+# is swapped on every deploy.
+export DEPLOY_PRIVATE_CONFIG_DIR=/srv/private/<app>
+
 # DEPLOY_NIX_RESULT_DIR: remote nix result parent.
 export DEPLOY_NIX_RESULT_DIR=/usr/local/<app>
 

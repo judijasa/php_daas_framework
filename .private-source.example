@@ -1,26 +1,27 @@
 # Private config source pointer (git-ignored).
 #
 # The public repo ships only committed templates for the operational data
-# (etc/machines.ini, etc/team.ini). The real values live in a separate,
-# access-controlled private repository — a small git repo whose tracked files
-# are `machines.ini` and `team.ini` (mirroring the consumer's etc/). This
-# file tells `fetch-private-data` where to find a checkout of that repo.
+# (etc/machines.ini, etc/reuter.ini, etc/team.ini). The real values live in a
+# separate, access-controlled private repository — a small git repo whose
+# tracked files are `machines.ini`, `reuter.ini` and `team.ini` (mirroring the
+# consumer's etc/). This file tells `fetch-private-data` where to find that
+# repo.
 #
 # Copy this file to `.private-source` (untracked, machine-specific) and set
-# exactly one retrieval mechanism:
+# the one retrieval mechanism — a git URL (+ optional ref), fetched on demand
+# into var/private-data (git-ignored, like the rest of /var/):
 #
-#   1. A local checkout of the private repo:
-PRIVATE_DATA_SOURCE=/srv/private-config
-#
-#   2. A git URL (+ optional ref); fetched on demand into var/private-data
-#      (git-ignored, like the rest of /var/):
 # PRIVATE_DATA_GIT=git@example.com:team/app-private-config.git
 # PRIVATE_DATA_REF=main
 #
-#   When neither mechanism is set, the private files are expected to already
-#   be present directly in etc/ (regular files, e.g. shipped by the private
-#   repo's git-archive deploy); fetch-private-data then only validates them
-#   (warn-only, never aborts).
+# The private repo's committed content is the single source of truth: no
+# machine runs on a loose, uncommitted copy. `reuter.ini` is the only file
+# that ever ships to a prod host (whole, via bin/deploy-private-config);
+# `machines.ini` and `team.ini` stay dev/deploy-time and never leave the
+# deploy machine. A `.private-source` that sets no PRIVATE_DATA_GIT is an
+# error, not a silent skip; an absent `.private-source` is a no-op (prod has
+# no git and no pointer — it resolves the stable per-app dir from
+# DEPLOY_PRIVATE_CONFIG_DIR instead).
 #
 # This file never discloses the private repo's identity in the public history
 # (it is git-ignored). Access control on the private repo is the real security

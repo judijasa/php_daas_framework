@@ -7,8 +7,8 @@ declare(strict_types=1);
 //
 // Reads etc/machines.ini [prod] from the consumer repo root (the current
 // working directory) and answers generic tag queries, so pf-deploy.sh,
-// db-check and the consumer deploy wrapper share one parse of the
-// `tag[:name]` token list.
+// deploy-private-config and the consumer deploy wrapper share one parse of
+// the `tag[:name]` token list.
 //
 // [prod] value grammar (comma-separated tokens):
 //   bare tag     `web`       -> boolean flag (a deploy step on this host)
@@ -16,16 +16,16 @@ declare(strict_types=1);
 //   named tag    `db:simo`   -> a `db` resource named `simo`
 //   empty value              -> code-only host (no tagged step)
 //
-// `db` and `worker` are the framework's built-in tags: `db:<name>` is the
-// advisory db-check anchor (the instance itself is provisioned by
-// `ema create`), and bare `worker` installs the cron-manifest output
-// (pf-deploy's server steps). Every other tag is consumer-owned and carried
-// through generically.
+// `db` and `worker` are the framework's built-in tags: `db:<name>` names a
+// database and enforces the one-to-one server mapping (the instance itself is
+// provisioned by `ema create`, and db-check verifies it via the host's own
+// `mariadb@*` units — not via this roster), and bare `worker` installs the
+// cron-manifest output (pf-deploy's server steps). Every other tag is
+// consumer-owned and carried through generically.
 //
 // Usage (from the consumer repo root):
 //   pf-roster              print "host=tags" per line (default)
 //   pf-roster --list       same as default
-//   pf-roster --db-servers print "name=host" per line for every db:<name>
 //   pf-roster --validate   enforce per-tag uniqueness (named tokens); exit 1
 //                          on a violation
 
@@ -75,29 +75,6 @@ function normalize(string $raw): string
     return implode(',', tokens($raw));
 }
 
-/** @return array<string, string> name => host, for every db:<name> token */
-function db_servers(array $roster): array
-{
-    $out = [];
-    foreach ($roster as $host => $raw) {
-        foreach (tokens($raw) as $tok) {
-            if (strpos($tok, 'db:') !== 0) {
-                continue;
-            }
-            $name = substr($tok, 3);
-            if ($name === '') {
-                continue;
-            }
-            if (isset($out[$name])) {
-                fwrite(STDERR, 'pf-roster: database ' . $name . ' is listed more than once in etc/machines.ini [prod] (a database maps to exactly one server).' . PHP_EOL);
-                exit(1);
-            }
-            $out[$name] = $host;
-        }
-    }
-    return $out;
-}
-
 /** @return int exit code (0 = valid) */
 function validate(array $roster): int
 {
@@ -134,18 +111,11 @@ function main(array $argv): int
         return 0;
     }
 
-    if ($mode === '--db-servers') {
-        foreach (db_servers($roster) as $name => $host) {
-            echo $name . '=' . $host . PHP_EOL;
-        }
-        return 0;
-    }
-
     if ($mode === '--validate') {
         return validate($roster);
     }
 
-    fwrite(STDERR, "pf-roster: unknown mode '" . $mode . "' (expected --list, --db-servers, or --validate)." . PHP_EOL);
+    fwrite(STDERR, "pf-roster: unknown mode '" . $mode . "' (expected --list or --validate)." . PHP_EOL);
     return 2;
 }
 

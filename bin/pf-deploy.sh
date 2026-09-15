@@ -29,11 +29,12 @@
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
 #     [prod] ZeroTier-IP -> comma-separated `tag[:name]` tokens (a `db:<name>`
-#            token is the advisory db-check anchor — the instance itself is
-#            provisioned by `ema create`, not by deploy; a host carrying the
-#            bare `worker` token gets the cron manifest installed; empty
-#            entries are code-only servers; each named token maps to exactly
-#            one server)
+#            token names a database and enforces the one-to-one server mapping
+#            — the instance itself is provisioned by `ema create`, not by
+#            deploy, and db-check verifies it via the host's own `mariadb@*`
+#            units, not this roster; a host carrying the bare `worker` token
+#            gets the cron manifest installed; empty entries are code-only
+#            servers; each named token maps to exactly one server)
 #
 # Usage:
 #   pf-deploy.sh                # deploy to every [prod] host in etc/machines.ini
@@ -95,7 +96,7 @@ ROSTER_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-roster"
 # Print each [prod] entry as "zerotier-ip=<comma-separated tag list>" (the
 # host's `tag[:name]` tokens). `main` parses this to build the deploy roster.
 # The shared pf-roster CLI owns the machines.ini parse, also used by
-# db-check and the consumer deploy wrapper.
+# deploy-private-config and the consumer deploy wrapper.
 read_prod_roster() {
   "$ROSTER_BIN" --list
 }
@@ -370,9 +371,10 @@ main() {
 }
 
 # Per-host deploy pipeline. A database host (its tag list carries a `db:`
-# token) is the advisory db-check anchor — the instance itself is provisioned
-# by `ema create`, not here; a host carrying the bare `worker` token gets the
-# cron manifest installed after the server steps. Other hosts skip both.
+# token) names a database — the instance itself is provisioned by `ema
+# create`, not here (db-check verifies it via the host's own `mariadb@*`
+# units); a host carrying the bare `worker` token gets the cron manifest
+# installed after the server steps. Other hosts skip both.
 deploy_to_host() {
   local HOST="$1"
   local TAGLIST="$2"
@@ -427,23 +429,27 @@ deploy_to_host() {
   fi
 
   # Framework server steps (run on every host): the repo dir is replaced on
-  # every deploy, so the git-ignored .env must be regenerated before anything
-  # reads it — and, on `worker` hosts, before the cron manifest is installed.
-  # gen-env runs on every host; db-check verifies DB connectivity (warn-only,
-  # never repairs); the cron install is gated on the bare `worker` token
-  # (detected above). The remote script runs from the deployed repo root and
-  # sources the DEPLOYED etc/deploy.conf, so the CRON_*/DEPLOY_* values used
-  # here are the shipped ones.
-  echo "Running framework server steps (gen-env, db-check, cron install) on remote..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST DB_CHECK_HOST=$REMOTE_HOST bash -s" <<'PF_DEPLOY_SERVER_STEPS'
+  # every deploy, so the git-ignored etc/reuter.ini and .env must be restored
+  # before anything reads them — and, on `worker` hosts, before the cron
+  # manifest is installed. fetch-private-data links reuter.ini in from the
+  # stable per-app dir (DEPLOY_PRIVATE_CONFIG_DIR); gen-env regenerates .env;
+  # db-check verifies DB connectivity (warn-only, never repairs); the cron
+  # install is gated on the bare `worker` token (detected above). The remote
+  # script runs from the deployed repo root and sources the DEPLOYED
+  # etc/deploy.conf, so the CRON_*/DEPLOY_* values used here are the shipped
+  # ones.
+  echo "Running framework server steps (fetch-private-data, gen-env, db-check, cron install) on remote..." >&2
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST bash -s" <<'PF_DEPLOY_SERVER_STEPS'
 set -euo pipefail
 # CWD is the deployed repo root (the ssh command above cds first).
 . ./etc/deploy.conf
 export PATH="$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin:$PATH"
+echo "    Linking private config (reuter.ini) into etc/..." >&2
+fetch-private-data
 echo "    Regenerating production .env..." >&2
 gen-env
 echo "    Verifying database connectivity (warn-only)..." >&2
-db-check --host "$DB_CHECK_HOST" --reuter-ini "$DEPLOY_REUTER_INI"
+db-check --reuter-ini "$DEPLOY_REUTER_INI"
 if [ "$IS_WORKER_HOST" = "1" ]; then
     if [ -z "${CRON_FILE-}" ]; then
         echo "pf-deploy: this host carries the 'worker' tag but etc/deploy.conf sets no CRON_FILE." >&2

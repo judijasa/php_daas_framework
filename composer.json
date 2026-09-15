@@ -37,6 +37,7 @@
     "bin/pf-roster",
     "bin/cron-manifest",
     "bin/fetch-private-data",
+    "bin/deploy-private-config",
     "bin/dev/pf-shell-enter.sh",
     "bin/dev/init-local-env.sh",
     "bin/pf-provision.sh",

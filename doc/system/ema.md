@@ -112,10 +112,14 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
   `vendor/bin`.
 - `pf-deploy.sh`'s built-in server steps (run after provisioning and
   `DEPLOY_INIT_CMD`, as root, on every host):
-  1. `gen-env` → `.env` with `EMA_TARGET=prod` and
+  1. `fetch-private-data` → links `reuter.ini` from `DEPLOY_PRIVATE_CONFIG_DIR`
+     into the fresh `etc/`;
+  2. `gen-env` → `.env` with `EMA_TARGET=prod` and
      `REUTER_INI=$DEPLOY_REUTER_INI`;
-  2. `db-check` → warn-only connectivity verification (never repairs);
-  3. on `worker`-tagged hosts: `cron-manifest` → `CRON_FILE`, restart cron.
+  3. `db-check` → warn-only verification (never repairs): enumerates the
+     host's own `mariadb@*` units (unit active, socket pings, schema exists)
+     and TCP-checks each reuter.ini section;
+  4. on `worker`-tagged hosts: `cron-manifest` → `CRON_FILE`, restart cron.
 - `vendor/bin/pf-provision.sh` (`pf-deploy.sh`, root) asserts the `PROD_USER`
   account and creates the permanent system dirs. It never provisions MariaDB
   and never creates databases or users — instances are owned by `ema create`.
