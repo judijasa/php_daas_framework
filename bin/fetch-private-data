@@ -10,8 +10,8 @@
 #                        private config repo URL, fetched on demand into
 #                        var/private-data (dev/deploy machines).
 #
-# `reuter.ini` is the only required private file; `machines.ini` and
-# `team.ini` are wired only when the private source provides them (dev alone —
+# `reuter.ini` is the only required private file; `machines.ini`, `team.ini`
+# and `hosts` are wired only when the private source provides them (dev alone —
 # they are never shipped to prod).
 #
 # When `.private-source` is absent, this is a no-op by default (the public
@@ -104,9 +104,9 @@ else
 fi
 
 # reuter.ini is the only required file: the app cannot resolve a database
-# without it. machines.ini/team.ini are wired only when provided (dev).
+# without it. machines.ini/team.ini/hosts are wired only when provided (dev).
 mkdir -p "$ROOT/etc"
-for f in reuter.ini machines.ini team.ini; do
+for f in reuter.ini machines.ini team.ini hosts; do
     src="$SOURCE_DIR/$f"
     if [[ ! -f "$src" ]]; then
         if [[ "$f" == "reuter.ini" ]]; then

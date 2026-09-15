@@ -17,6 +17,10 @@ public Git history:
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster | no (deploy/dev-time only) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs | no (dev-only) |
 
+A consumer may also keep an optional `etc/hosts` (a dev-only hostname→IP
+mapping, e.g. for merging into `/etc/hosts`); `fetch-private-data` wires it
+into `etc/` like `machines.ini`/`team.ini` when the private repo provides it.
+
 `etc/deploy.conf` stays committed: it is project-static (paths, the app-user
 name — no secrets, identical on every prod host), so it is a public interface,
 not private data. The `reuter.ini` connectivity sections (and any
@@ -26,10 +30,11 @@ history.
 
 `reuter.ini` is the only private file a prod host needs, so it is the only
 one that ever leaves the private repo for a host — and it ships **whole**
-(no inner filtering, no section splicing). `machines.ini` and `team.ini` are
-dev/deploy-time inputs: `machines.ini` feeds the local deploy roster and
-`team.ini` feeds `gen-cert`/`gen-grants`/`gen-service-accounts`/
-`init-local-env` on the deploy/dev machine. They never reach prod.
+(no inner filtering, no section splicing). `machines.ini`, `team.ini` and
+`hosts` are dev/deploy-time inputs: `machines.ini` feeds the local deploy
+roster, `team.ini` feeds `gen-cert`/`gen-grants`/`gen-service-accounts`/
+`init-local-env`, and `hosts` (optional) feeds the consumer's dev hostname→IP
+mapping. None of them reach prod.
 
 ## The private repo
 
@@ -41,6 +46,7 @@ files mirror the consumer's `etc/` operational data:
 ├── machines.ini
 ├── reuter.ini
 ├── team.ini
+├── hosts        (optional — dev-only hostname→IP mapping)
 └── README.md
 ```
 
@@ -83,8 +89,8 @@ into `etc/` **as symlinks**. It resolves the source in one of two ways:
 
 1. `.private-source` present → the on-demand clone/fetch into the git-ignored
    `var/private-data` (dev/deploy machines). `reuter.ini` is required;
-   `machines.ini`/`team.ini` are wired only when the source provides them
-   (dev alone).
+   `machines.ini`/`team.ini`/`hosts` are wired only when the source provides
+   them (dev alone).
 2. `.private-source` absent → a no-op, unless `DEPLOY_PRIVATE_CONFIG_DIR`
    (from `etc/deploy.conf`) names a stable dir that exists — then it links
    `reuter.ini` (and only `reuter.ini`) from there. This is the prod path.
@@ -117,8 +123,8 @@ stable per-app private dir):
 1. **`bin/deploy-private-config`** (deploy machine) ships `reuter.ini` — whole,
    from the private repo's committed content via `git archive <ref>` — to the
    stable per-app dir named by `etc/deploy.conf`'s `DEPLOY_PRIVATE_CONFIG_DIR`
-   on each `[prod]` host. It ships **nothing else**: `machines.ini` and
-   `team.ini` are never copied to a host. It reads the `[prod]` roster from
+   on each `[prod]` host. It ships **nothing else**: `machines.ini`,
+   `team.ini` and `hosts` are never copied to a host. It reads the `[prod]` roster from
    `etc/machines.ini` locally; `machines.ini` is never shipped.
 
 2. **`bin/pf-deploy.sh`**, as a built-in server step (after the repo swap,

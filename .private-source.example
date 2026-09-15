@@ -3,9 +3,10 @@
 # The public repo ships only committed templates for the operational data
 # (etc/machines.ini, etc/reuter.ini, etc/team.ini). The real values live in a
 # separate, access-controlled private repository — a small git repo whose
-# tracked files are `machines.ini`, `reuter.ini` and `team.ini` (mirroring the
-# consumer's etc/). This file tells `fetch-private-data` where to find that
-# repo.
+# tracked files are `machines.ini`, `reuter.ini` and `team.ini`, plus any
+# consumer-specific dev-only files such as `hosts` (a hostname→IP mapping),
+# mirroring the consumer's etc/. This file tells `fetch-private-data` where to
+# find that repo.
 #
 # Copy this file to `.private-source` (untracked, machine-specific) and set
 # the one retrieval mechanism — a git URL (+ optional ref), fetched on demand

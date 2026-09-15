@@ -4,8 +4,9 @@
 # repo's committed content.
 #
 # Runs on the deploy machine (which has git and the private config repo
-# pointer). It ships `reuter.ini` — and ONLY `reuter.ini`: `machines.ini` and
-# `team.ini` are dev/deploy-time files that never leave the deploy machine.
+# pointer). It ships `reuter.ini` — and ONLY `reuter.ini`: `machines.ini`,
+# `team.ini` and `hosts` are dev/deploy-time files that never leave the
+# deploy machine.
 # The file is shipped whole (no inner filtering, no reuter.ini section
 # splicing) from `git archive`, so prod runs committed config only — never a
 # dirty working tree or loose git-ignored files.
