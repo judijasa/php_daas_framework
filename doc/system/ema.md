@@ -34,7 +34,11 @@ grants are consumer policy, owned by the consumer's own provisioning.
   + apply its dependencies. It is **create-only**: it refuses when the
   database already exists. On success it prints the `[<dbname>]` connectivity
   values (`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) to record in the manual
-  reuter.ini. `--dry-run` prints the SQL without applying.
+  reuter.ini. `--dry-run` prints the SQL without applying. A `type=replica`
+  package (`$db['type']='replica'` + `$db['replica_of']=<primary>`) instead
+  takes `--from-snapshot <path>`: ema restores the shipped snapshot and
+  attaches replication (no schema apply); see
+  `doc/system/replica-bootstrap.md`.
 - `ema values <db>` — print the same connectivity values for an existing
   database (recovery when the record is lost).
 - `ema mariadb <db> < file.sql` — apply raw SQL over stdin as the section's

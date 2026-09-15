@@ -70,23 +70,27 @@ grant, so it belongs to no service-account reconcile file.
 ## The snapshot
 
 The snapshot is a `mariabackup` physical hot backup, `--prepare`d before
-shipping so the restore is a direct copy. Its provenance contract:
+shipping so the restore is a direct copy. Its provenance contract is the
+`xtrabackup_binlog_info` binlog file/position coordinate the replica resumes
+from.
 
-- `xtrabackup_binlog_info` records the binlog/GTID coordinate the replica
-  starts from;
-- the copied datadir retains the source's `server_uuid` (`auto.cnf`).
-
-The consumer's replica build checks this provenance at restore and fails
-loudly on a foreign or stale snapshot.
+The replica build (`ema create --from-snapshot`) checks that coordinate at
+restore — a missing snapshot, or one with no binlog coordinate, aborts. A
+wrong-source snapshot is not detectable at restore (MariaDB records no
+`server_uuid` in a snapshot), so it fails loudly at the attach step
+(`Slave_IO_Running != Yes`) instead.
 
 ## Workflow
 
 1. Record the primary's `[<db>]` section in `etc/reuter.ini` (from `ema
    create` output, or `ema values <db>`).
 2. Run `replica-bootstrap` from a dev machine with root SSH to both hosts.
-3. Provision the replica with the shipped snapshot (`--dest`) as the restore
-   input; the replica build writes `read_only=1`, rewrites the database name,
-   and starts replication from the recorded coordinate.
+3. Provision the replica: an `srv/<name>-<GUID>` package whose `default.php`
+   declares `$db['type']='replica'` and `$db['replica_of']=<primary>` (no
+   `$dependencies`/`upgrade.sql`), built with
+   `ema create srv/<name>-<GUID> --from-snapshot <dest>` — ema restores the
+   shipped snapshot and attaches replication from the recorded coordinate
+   (`read_only=1`, `replicate-rewrite-db = <primary>-><replica>`).
 
 The helper is re-runnable: the account creation is idempotent, and the
 snapshot is rebuilt and re-shipped on every run.
@@ -95,6 +99,7 @@ snapshot is rebuilt and re-shipped on every run.
 
 - `replica-bootstrap` is operator-run and one-time; it is not a deploy or
   cron step.
-- The snapshot tool (`mariabackup` vs. a logical `mysqldump --master-data`)
-  and the replication coordinate style (binlog position vs. GTID) are policy
-  decisions still being settled; GTID is preferred.
+- `mariabackup` is the only supported snapshot; a logical
+  `mysqldump --master-data` dump is not accepted by `--from-snapshot`.
+- The replication coordinate is the binlog file/position recorded in
+  `xtrabackup_binlog_info`; GTID resume is a tracked future refinement.

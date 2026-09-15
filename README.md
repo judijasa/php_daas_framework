@@ -180,8 +180,10 @@ bin/phprun 'src/scripts/demo/db_smoke.php:main()'
 What the agent exercises, end to end:
 
 - **`Utils\\Connectivity\\Database`** — the runner injects `$conn`, a real PDO
-  connection created by `Database::connectAs('test', 'demo')` using the `[test]`
-  section of `var/sandbox/test-d0pr2ogmhxdscar3/reuter.ini`.
+  connection created by `Database::connectAs('test', 'demo')`, which reads the
+  `[test]` section (and the `DEMO_PASSWORD` account key) from the file
+  `REUTER_INI` points at. Dev app-layer resolution (pointing `REUTER_INI` at
+  the sandbox section) is still being wired — see `doc/system/ema.md`.
 - **`Utils\DatabaseOps\BatchInsert`** — persists 10 demo rows into the `items`
   table in chunks of 5.
 - **`Utils\DatabaseOps\CursorSeq`** — reads/initializes and advances a cursor
@@ -219,7 +221,8 @@ array installs the CLIs and scripts into `vendor/bin`:
 
 - `bin/phprun`, `bin/pf-deploy.sh`, `bin/pf-roster`, `bin/gen-env`,
   `bin/db-check`, `bin/gen-grants`, `bin/gen-service-accounts`, `bin/gen-cert`,
-  `bin/cron-manifest` — the framework CLIs.
+  `bin/cron-manifest`, `bin/fetch-private-data`, `bin/deploy-private-config` —
+  the framework CLIs.
 - `bin/dev/pf-shell-enter.sh`, `bin/dev/init-local-env.sh` — the dev-init
   machinery.
 - `bin/pf-provision.sh` — the generic production provisioning script, invoked
@@ -235,6 +238,12 @@ certificates) implement the team-DB-user flow; see
 `gen-service-accounts` (passwordless, host-pinned service accounts + roles,
 closed-world) implements the service-account flow; see
 `doc/system/service-accounts.md`.
+
+`fetch-private-data` (inject git-ignored private config into `etc/` — from a
+`.private-source` clone, or by linking `reuter.ini` from
+`DEPLOY_PRIVATE_CONFIG_DIR`) and `deploy-private-config` (ship the consumer's
+`reuter.ini` whole to every `[prod]` host) implement the private-config flow;
+see `doc/system/private-config.md`.
 
 The PHP library itself (the `Utils\` PSR-4 namespace under `src/`) is
 autoloaded from `vendor/autoload.php`.
@@ -314,11 +323,13 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
 | `DEPLOY_REUTER_INI` | Path to the consumer's manual reuter.ini — one `[<dbname>]` section per database (SERVER/PORT/DBMS/MYSQL_UNIX_PORT plus the consumer's `<ACCOUNT>_PASSWORD` keys), recorded from `ema create`'s output (or `ema values <db>` to recover). `gen-env` writes it into `.env` as `REUTER_INI`; `db-check` reads it to verify reachability. The file itself is private data, injected into `etc/` by `fetch-private-data`. |
+| `DEPLOY_PRIVATE_CONFIG_DIR` | Stable per-app private-config directory on the host, **outside** `DEPLOY_TARGET_DIR` (which is swapped on every deploy). `deploy-private-config` ships the consumer's `reuter.ini` (whole) here from the private repo's committed content; `fetch-private-data` (a pf-deploy server step) links it into `etc/reuter.ini`, which `DEPLOY_REUTER_INI` points at. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/pf-provision.sh`. |
 | `CRON_FILE` | Required on `worker`-tagged hosts: remote crontab file `pf-deploy.sh` installs the `cron-manifest` output into on every deploy. |
 | `CRON_USER` | Optional: user the cron entries run as (default `root`). |
+| `CRON_NIX_BIN` | Optional: `PATH` override for the cron entries (default `$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin`, so both `phprun` and `php` resolve). |
 
 - **`etc/machines.ini`** (git-ignored; template committed) - the prod-server
   registry: `[prod]` ZeroTier-IP→`tag[:name]` tokens (comma-separated per
@@ -385,9 +396,10 @@ The remote host must have the app user in place before the first `pf-deploy.sh`
 Everything else is handled by `pf-deploy.sh` itself: the repo swap as `root`,
 the idempotent provisioning via the framework's generic
 `bin/pf-provision.sh` plus the optional consumer-specific `DEPLOY_INIT_CMD`,
-and — on every host — the built-in server steps that regenerate `.env`
-(`gen-env`) and verify DB connectivity (`db-check`, warn-only), then install
-the cron manifest on `worker`-tagged hosts. A consumer wrapper is only needed
+and — on every host — the built-in server steps that inject private config
+(`fetch-private-data`), regenerate `.env` (`gen-env`), and verify DB
+connectivity (`db-check`, warn-only), then install the cron manifest on
+`worker`-tagged hosts. A consumer wrapper is only needed
 for its own consumer-owned tag steps (see "Deploying a consumer project").
 
 ### Database instances are owned by ema
@@ -412,8 +424,9 @@ repairs: a miss is reported as a warning and the deploy proceeds.
 
 The framework's `pf-deploy.sh` is a closed operation: it swaps the repo, copies the
 nix closure, installs composer deps, runs idempotent provisioning, then runs
-the built-in server steps (regenerate `.env`, verify DB connectivity via
-`db-check`, install cron on `worker`-tagged hosts) — it invokes no consumer
+the built-in server steps (inject private config via `fetch-private-data`,
+regenerate `.env`, verify DB connectivity via `db-check`, install cron on
+`worker`-tagged hosts) — it invokes no consumer
 hooks beyond the optional `DEPLOY_INIT_CMD`. Consumer-owned tag steps (restart
 services, restore website traversal, ...) are added by wrapping
 `vendor/bin/pf-deploy.sh` in the consumer's own deploy entrypoint (its
@@ -430,12 +443,19 @@ vendor/bin/pf-deploy.sh "$@"   # framework: swap, nix, composer, provisioning, .
 #   ssh root@<host> 'cd /srv/apps/<app> && DEPLOY_TAGS="<tags>" bin/deploy/server-side-step.sh'
 ```
 
-The framework CLIs `gen-env`, `db-check` and `cron-manifest` (on PATH after
-`composer install`) are the intended tools for those built-in steps; a
-consumer wrapper needs them only for its own consumer-owned tags.
+The framework CLIs `fetch-private-data`, `gen-env`, `db-check` and
+`cron-manifest` (on PATH after `composer install`) are the intended tools for
+those built-in steps; a consumer wrapper needs them only for its own
+consumer-owned tags.
 
-The framework ships three more CLIs run by pf-deploy as built-in server steps
+The framework ships four more CLIs run by pf-deploy as built-in server steps
 (also on PATH in the consumer's dev shell and production artifact):
+
+- **`fetch-private-data`** — injects the git-ignored private config into
+  `etc/`: a `.private-source` clone/fetch links `reuter.ini` (plus
+  `machines.ini`/`team.ini`), and without one it links `reuter.ini` from
+  `DEPLOY_PRIVATE_CONFIG_DIR` (the prod server step); see
+  `doc/system/private-config.md`.
 
 - **`gen-env [target-dir]`** — regenerates `.env` as a deterministic
   projection of the consumer's committed `etc/deploy.conf`
