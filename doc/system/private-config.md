@@ -17,9 +17,11 @@ public Git history:
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster | no (deploy/dev-time only) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs | no (dev-only) |
 
-A consumer may also keep an optional `etc/hosts` (a dev-only hostname→IP
-mapping, e.g. for merging into `/etc/hosts`); `fetch-private-data` wires it
-into `etc/` like `machines.ini`/`team.ini` when the private repo provides it.
+A consumer may also keep an optional `etc/hosts` (a dev-only name→IP mapping
+for its servers); `fetch-private-data` wires it into `etc/` like
+`machines.ini`/`team.ini` when the private repo provides it. It is the single
+source for both the consumer's `/etc/hosts` merge and its generated dev ssh
+aliases (`doc/system/ssh-config.md`).
 
 `etc/deploy.conf` stays committed: it is project-static (paths, the app-user
 name — no secrets, identical on every prod host), so it is a public interface,
@@ -33,8 +35,9 @@ one that ever leaves the private repo for a host — and it ships **whole**
 (no inner filtering, no section splicing). `machines.ini`, `team.ini` and
 `hosts` are dev/deploy-time inputs: `machines.ini` feeds the local deploy
 roster, `team.ini` feeds `gen-cert`/`gen-grants`/`gen-service-accounts`/
-`init-local-env`, and `hosts` (optional) feeds the consumer's dev hostname→IP
-mapping. None of them reach prod.
+`init-local-env`, and `hosts` (optional) feeds the consumer's dev `/etc/hosts`
+merge and its generated ssh aliases (`gen-ssh-config`). None of them reach
+prod.
 
 ## The private repo
 

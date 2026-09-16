@@ -230,6 +230,9 @@ array installs the CLIs and scripts into `vendor/bin`:
 - `bin/replica-bootstrap` — one-time transport bootstrap for a read-only
   replica (creates the `replication` account and ships a consistent snapshot);
   see `doc/system/replica-bootstrap.md`.
+- `bin/gen-ssh-config` — generate the dev machine's per-project ssh aliases
+  (`~/.ssh/config.d/<app>.conf`) from the consumer's private `hosts` mapping;
+  see `doc/system/ssh-config.md`.
 
 `gen-grants` (team-member DB accounts + roles) and `gen-cert` (member client
 certificates) implement the team-DB-user flow; see
@@ -274,6 +277,12 @@ hosts, ...) stay in the consumer's Makefile, and the dev shell shellHook
 sources `pf-shell-enter.sh` (loads `.env` and sets the tmux alias; it does not
 start a daemon): standalone flakes source `./bin/dev/pf-shell-enter.sh`,
 consumers source `vendor/bin/pf-shell-enter.sh`.
+
+The generated dev ssh config is the other consumer-side dev step: once `hosts`
+is in `etc/` (the private mapping `fetch-private-data` injects),
+`vendor/bin/gen-ssh-config <app>` writes `~/.ssh/config.d/<app>.conf` so
+`ssh <app>-<name>` reaches each server as the project user with the project
+key; see `doc/system/ssh-config.md`.
 
 ## Environment variables
 

@@ -41,7 +41,8 @@
     "bin/dev/pf-shell-enter.sh",
     "bin/dev/init-local-env.sh",
     "bin/pf-provision.sh",
-    "bin/replica-bootstrap"
+    "bin/replica-bootstrap",
+    "bin/gen-ssh-config"
   ],
   "repositories": [
     {

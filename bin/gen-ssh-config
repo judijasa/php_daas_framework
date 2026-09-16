@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# gen-ssh-config — generate the dev machine's per-project ssh config drop-in
+# from a consumer's name->IP mapping.
+#
+# Framework-owned mechanism; the consumer owns the data: the `hosts` mapping
+# (`ip name` lines — the same file its `/etc/hosts` merge reads), the `<app>`
+# name, and the user/key choice. The CLI is client-side and dev-only: it writes
+# `~/.ssh/config.d/<app>.conf` on the machine it runs on, and nothing it writes
+# is shipped to a host.
+#
+# Each `hosts` entry becomes, inside the app's drop-in:
+#
+#   Host <app>-<name>
+#     HostName <ip>
+#     User <user>
+#     IdentityFile <key>
+#     IdentitiesOnly yes
+#
+# Every alias is prefixed `<app>-` for hard isolation: several consumers
+# sharing one `~/.ssh/config.d/*.conf` drop-in — even against the same server
+# IP — cannot collide on alias names. The generated region is tagged
+# (`# generated: <app>-ssh-config` … `# end: <app>-ssh-config`) and replaced in
+# place on every run (the same idiom as the consumer's `/etc/hosts` merge), so
+# the drop-in is idempotent and anything outside the tags is left untouched;
+# the write itself is atomic (temp file + rename inside the target directory).
+#
+# A drop-in is only read when `~/.ssh/config` includes it, so the CLI also
+# ensures the canonical `Include config.d/*.conf` line is present — added at
+# the top, exactly once, never clobbering other content (a relative `Include`
+# path resolves inside `~/.ssh` for a user config). `Include` needs OpenSSH
+# >= 7.3; the CLI warns when the local `ssh` is older.
+#
+# Usage: gen-ssh-config <app> [--hosts <path>] [--user <user>] [--key <path>]
+#
+#   <app>           project name: prefixes every alias and names the drop-in
+#                   (`~/.ssh/config.d/<app>.conf`).
+#   --hosts <path>  name->IP mapping to read (default: etc/hosts).
+#   --user <user>   `User` for every generated Host (default: root).
+#   --key <path>    `IdentityFile` for every generated Host (default:
+#                   ~/.ssh/<app>-sshkey). Its public half must be authorized
+#                   for <user> on each host — generating and installing the key
+#                   is an operator step, not this CLI's.
+
+set -euo pipefail
+
+INCLUDE_LINE='Include config.d/*.conf'
+INCLUDE_NOTE='# Per-project drop-ins (added by gen-ssh-config).'
+# An equivalent Include line (any case, absolute or `~` path) counts as present.
+INCLUDE_RE='^[[:space:]]*[Ii]nclude[[:space:]]+.*config\.d/\*\.conf[[:space:]]*$'
+# <app> names a file and every alias prefix; an alias must not carry whitespace
+# or glob characters (ssh reads `Host` as a pattern list).
+SAFE_RE='^[A-Za-z0-9._-]+$'
+MIN_INCLUDE_VERSION='7.3'
+
+TMP_FILES=()
+
+cleanup() {
+    local f
+    for f in "${TMP_FILES[@]}"; do
+        if [[ -n "$f" ]]; then
+            rm -f "$f"
+        fi
+    done
+    :
+}
+trap cleanup EXIT
+
+die() { echo "gen-ssh-config: ERROR: $*" >&2; exit 1; }
+
+# mktmp <dir> <name> — create a 0600 temp file next to its target (so installing
+# it is an atomic rename) and register it for removal on exit. Returns the path
+# in MKTMP_RESULT: a command substitution would run in a subshell, where the
+# registration would be lost.
+mktmp() {
+    MKTMP_RESULT="$(mktemp "$1/.$2.XXXXXX")" || die "cannot create a temp file in $1"
+    TMP_FILES+=("$MKTMP_RESULT")
+}
+
+# ensure_dir <dir> — create it (0700, like ~/.ssh itself) when it is missing.
+ensure_dir() {
+    if [[ -d "$1" ]]; then
+        return 0
+    fi
+    mkdir -p "$1"
+    chmod 700 "$1"
+}
+
+usage() {
+    cat <<'EOF'
+Usage: gen-ssh-config <app> [--hosts <path>] [--user <user>] [--key <path>]
+
+Write ~/.ssh/config.d/<app>.conf from a consumer's `hosts` name->IP mapping:
+one `Host <app>-<name>` block per entry, inside a tagged region that is
+replaced on every run (idempotent — re-run instead of hand-editing). Also
+ensures ~/.ssh/config carries the canonical `Include config.d/*.conf` line
+(at the top, exactly once, never clobbering other content).
+
+  <app>           project name: prefixes every alias and names the drop-in.
+  --hosts <path>  name->IP mapping to read (default: etc/hosts).
+  --user <user>   User for every generated Host (default: root).
+  --key <path>    IdentityFile for every generated Host
+                  (default: ~/.ssh/<app>-sshkey).
+EOF
+}
+
+# ensure_include <ssh-config> — make sure the file carries the canonical Include
+# line, exactly once and at the top, without touching anything else.
+ensure_include() {
+    local cfg="$1" first tmp mode
+
+    if [[ -f "$cfg" ]] && grep -qE "$INCLUDE_RE" "$cfg"; then
+        # Already present: leave the file alone. Warn when something active
+        # precedes it — earlier entries win over the included drop-ins.
+        first="$(grep -vE '^[[:space:]]*(#|$)' "$cfg" | head -n1 || true)"
+        if [[ -n "$first" ]] && ! [[ "$first" =~ $INCLUDE_RE ]]; then
+            echo "gen-ssh-config: WARNING: $cfg includes config.d/*.conf but not as its first active line; the entries above it take precedence over the generated aliases." >&2
+        fi
+        return 0
+    fi
+
+    mktmp "$(dirname "$cfg")" "$(basename "$cfg")"
+    tmp="$MKTMP_RESULT"
+    if [[ -f "$cfg" ]]; then
+        mode="$(stat -c '%a' "$cfg")"
+        {
+            printf '%s\n' "$INCLUDE_NOTE"
+            printf '%s\n\n' "$INCLUDE_LINE"
+            cat "$cfg"
+        } > "$tmp"
+        chmod "$mode" "$tmp"
+    else
+        printf '%s\n%s\n' "$INCLUDE_NOTE" "$INCLUDE_LINE" > "$tmp"
+    fi
+    mv -f "$tmp" "$cfg"
+    echo "gen-ssh-config: added '$INCLUDE_LINE' to $cfg"
+}
+
+# check_include_support — `Include` needs OpenSSH >= 7.3. Warn, never fail:
+# this CLI writes config, it does not call ssh.
+check_include_support() {
+    local out ver major minor
+    out="$(ssh -V 2>&1)" || return 0
+    ver="$(printf '%s\n' "$out" | sed -n 's/^OpenSSH_\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+    if [[ -z "$ver" ]]; then
+        return 0
+    fi
+    major="${ver%%.*}"
+    minor="${ver#*.}"
+    if (( major < 7 || (major == 7 && minor < 3) )); then
+        echo "gen-ssh-config: WARNING: local ssh is OpenSSH_$ver, which predates 'Include' (needs >= $MIN_INCLUDE_VERSION); the generated aliases will not be read." >&2
+    fi
+}
+
+main() {
+    local app="" hosts="" user="" key=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --hosts)   [[ -n "${2:-}" ]] || die "--hosts needs a path"; hosts="$2"; shift 2 ;;
+            --user)    [[ -n "${2:-}" ]] || die "--user needs a name"; user="$2"; shift 2 ;;
+            --key)     [[ -n "${2:-}" ]] || die "--key needs a path"; key="$2"; shift 2 ;;
+            -h|--help) usage; return 0 ;;
+            -*)        usage >&2; return 1 ;;
+            *)
+                if [[ -n "$app" ]]; then
+                    usage >&2
+                    return 1
+                fi
+                app="$1"; shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$app" ]]; then
+        usage >&2
+        return 1
+    fi
+    hosts="${hosts:-etc/hosts}"
+    user="${user:-root}"
+    key="${key:-~/.ssh/$app-sshkey}"
+
+    if ! [[ "$app" =~ $SAFE_RE ]]; then
+        die "invalid app name '$app' (allowed: letters, digits, '.', '_', '-')"
+    fi
+    if [[ -z "${HOME:-}" ]]; then
+        die "HOME is not set; the drop-in location (~/.ssh/config.d) cannot be resolved"
+    fi
+    if [[ ! -f "$hosts" ]]; then
+        die "$hosts not found — pass --hosts <path>; it is the consumer's 'ip name' mapping (fetch-private-data injects it into etc/)."
+    fi
+
+    # Parse the mapping: `ip name` per line, comments and blank lines ignored.
+    # Anything else is a data error — a silently dropped alias is how a dev
+    # machine ends up with a stale ssh config while believing it is current.
+    local -a names=() ips=() fields=()
+    local line lineno=0 seen=" " ip name
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        lineno=$((lineno + 1))
+        line="${line%%#*}"
+        fields=()
+        read -r -a fields <<<"$line" || true
+        if [[ ${#fields[@]} -eq 0 ]]; then
+            continue
+        fi
+        if [[ ${#fields[@]} -ne 2 ]]; then
+            die "$hosts:$lineno: expected '<ip> <name>' (one name per entry), got '$(printf '%s ' "${fields[@]}")'"
+        fi
+        ip="${fields[0]}"
+        name="${fields[1]}"
+        if ! [[ "$name" =~ $SAFE_RE ]]; then
+            die "$hosts:$lineno: invalid host name '$name' (allowed: letters, digits, '.', '_', '-')"
+        fi
+        if [[ "$seen" == *" $name "* ]]; then
+            die "$hosts:$lineno: duplicate host name '$name'; the first 'Host $app-$name' block would win"
+        fi
+        seen+="$name "
+        names+=("$name")
+        ips+=("$ip")
+    done < "$hosts"
+
+    if [[ ${#names[@]} -eq 0 ]]; then
+        die "$hosts has no entries (expected '<ip> <name>' lines)"
+    fi
+
+    local ssh_dir="$HOME/.ssh"
+    local conf_dir="$ssh_dir/config.d"
+    local conf="$conf_dir/$app.conf"
+    local tag_begin="# generated: $app-ssh-config"
+    local tag_end="# end: $app-ssh-config"
+    local tmp i
+
+    ensure_dir "$ssh_dir"
+    ensure_dir "$conf_dir"
+
+    mktmp "$conf_dir" "$app.conf"
+    tmp="$MKTMP_RESULT"
+    if [[ -f "$conf" ]]; then
+        # Replace the generated region in place, keeping whatever else the file
+        # holds. A begin tag without its end tag would swallow the rest of the
+        # file, so refuse instead of truncating it.
+        awk -v begin="$tag_begin" -v end="$tag_end" '
+            $0 == begin { if (inblock) exit 2; inblock = 1; next }
+            inblock && $0 == end { inblock = 0; next }
+            !inblock { print }
+            END { if (inblock) exit 2 }
+        ' "$conf" > "$tmp" \
+            || die "$conf has a malformed managed region ($tag_begin without a matching $tag_end); fix or delete the file."
+    fi
+
+    {
+        printf '%s\n' "$tag_begin"
+        printf '# Managed by gen-ssh-config - do not edit; re-run the generator instead.\n'
+        for (( i = 0; i < ${#names[@]}; i++ )); do
+            printf '\nHost %s-%s\n' "$app" "${names[i]}"
+            printf '  HostName %s\n' "${ips[i]}"
+            printf '  User %s\n' "$user"
+            printf '  IdentityFile %s\n' "$key"
+            printf '  IdentitiesOnly yes\n'
+        done
+        printf '\n%s\n' "$tag_end"
+    } >> "$tmp"
+
+    mv -f "$tmp" "$conf"
+
+    echo "gen-ssh-config: wrote $conf (${#names[@]} aliases from $hosts)"
+    ensure_include "$ssh_dir/config"
+    check_include_support
+}
+
+main "$@"
