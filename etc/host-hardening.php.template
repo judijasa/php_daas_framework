@@ -1,0 +1,43 @@
+<?php
+// Host-hardening declaration template — the firewall reconcile data consumed
+// by bin/gen-firewall. Copy from the framework's etc/host-hardening.php.template,
+// fill in the real values, and commit the filled copy to the consumer repo as
+// etc/host-hardening.php.template. The real file is private data: keep it in
+// the private config repo and let fetch-private-data inject it into
+// etc/host-hardening.php (see doc/system/private-config.md).
+//
+// gen-firewall reads etc/host-hardening.php and computes the desired ufw rule
+// set for each [prod] host from its etc/machines.ini tags, applied as root
+// with a fail-open ordering (SSH first, enable last). The framework owns the
+// mechanism and the built-in tags; this file carries only consumer data.
+// There is no SQL here — data only.
+//
+//   $zerotierRange = '10.147.x.0/24';
+//   $cloudTest     = array('endpoint' => 'http://169.254.169.254/latest/meta-data/',
+//                          'timeout' => 3);
+//   $tagRules      = array(
+//       'web' => array('80/tcp', '443/tcp'),
+//       'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud')),
+//   );
+//
+// $zerotierRange scopes the baseline SSH and the built-in db:<name> allows.
+// A concrete CIDR is used verbatim; an 'x' template (e.g. 10.147.x.0/24)
+// resolves its private third octet from the consumer's private etc/hosts.
+// $cloudTest is the optional runtime metadata probe that gates gate=>'cloud'
+// rules. Any HTTP response (even a 404) counts as cloud; no response/timeout
+// means not-cloud (fail-safe). null disables gating.
+// $tagRules maps a consumer-owned tag to its allow rules. A rule is either
+// 'PORT/PROTO' (a public allow) or array('rule' => 'PORT/PROTO',
+// 'gate' => 'cloud') (applied only when the cloud test passes).
+
+$zerotierRange = '10.147.x.0/24';
+
+$cloudTest = array(
+    'endpoint' => 'http://169.254.169.254/latest/meta-data/',
+    'timeout' => 3,
+);
+
+$tagRules = array(
+    'web' => array('80/tcp', '443/tcp'),
+    'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud')),
+);

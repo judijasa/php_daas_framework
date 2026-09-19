@@ -33,8 +33,13 @@ The CLI runs from the consumer checkout that holds `etc/machines.ini` and
 
 ### Declaration
 
-The shared `srv/host-hardening-<GUID>/default.php` carries the declaration (all
-consumer data — no tag name, port, range or endpoint is hardcoded):
+The consumer's `etc/host-hardening.php` carries the declaration (all
+consumer data — no tag name, port, range or endpoint is hardcoded). It is
+private data: the consumer commits an `etc/host-hardening.php.template` (a
+copy of this framework's `etc/host-hardening.php.template`, filled in) and
+keeps the real file in its private config repo, injected into
+`etc/host-hardening.php` by `fetch-private-data` (see
+`doc/system/private-config.md`):
 
     $zerotierRange = '10.147.x.0/24';            // CIDR, or an 'x' template
     $cloudTest     = array('endpoint' => 'http://169.254.169.254/latest/meta-data/',
@@ -95,7 +100,7 @@ reconciled as normal.
 - **Tags only add allows** — the baseline owns the defaults and any denies;
   the desired set is the union of a host's tags, never a subtraction.
 - **Declaration schema is permissive to read** — `package_declaration()`
-  coerces whatever `default.php` sets into a typed shape and reports invalid
-  rules rather than aborting on them.
+  coerces whatever `etc/host-hardening.php` sets into a typed shape and
+  reports invalid rules rather than aborting on them.
 - **No `[prod]` roster yet** — the first live `--apply` is still ahead; until
   then `gen-firewall` only ever dry-runs or fails loudly on a missing roster.

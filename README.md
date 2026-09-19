@@ -465,7 +465,8 @@ The framework ships four more CLIs run by pf-deploy as built-in server steps
 
 - **`fetch-private-data`** — injects the git-ignored private config into
   `etc/`: a `.private-source` clone/fetch links `reuter.ini` (plus
-  `machines.ini`/`team.ini`), and without one it links `reuter.ini` from
+  `machines.ini`/`team.ini`/`hosts`/`host-hardening.php`), and without one it
+  links `reuter.ini` from
   `DEPLOY_PRIVATE_CONFIG_DIR` (the prod server step); see
   `doc/system/private-config.md`.
 

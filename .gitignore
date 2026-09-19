@@ -3,6 +3,7 @@
 /etc/reuter.ini
 /etc/machines.ini
 /etc/team.ini
+/etc/host-hardening.php
 /var/
 .env
 .private-source

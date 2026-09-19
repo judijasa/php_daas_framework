@@ -16,6 +16,7 @@ public Git history:
 | `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`) | **yes — the only private file that leaves the private repo for a host** |
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster | no (deploy/dev-time only) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs | no (dev-only) |
+| `etc/host-hardening.php` | `etc/host-hardening.php.template` | firewall reconcile declaration (`$zerotierRange`, `$cloudTest`, `$tagRules`) for `gen-firewall` | no (deploy/dev-time only) |
 
 A consumer may also keep an optional `etc/hosts` (a dev-only name→IP mapping
 for its servers); `fetch-private-data` wires it into `etc/` like
@@ -32,12 +33,13 @@ history.
 
 `reuter.ini` is the only private file a prod host needs, so it is the only
 one that ever leaves the private repo for a host — and it ships **whole**
-(no inner filtering, no section splicing). `machines.ini`, `team.ini` and
-`hosts` are dev/deploy-time inputs: `machines.ini` feeds the local deploy
-roster, `team.ini` feeds `gen-cert`/`gen-grants`/`gen-service-accounts`/
-`init-local-env`, and `hosts` (optional) feeds the consumer's dev `/etc/hosts`
-merge and its generated ssh aliases (`gen-ssh-config`). None of them reach
-prod.
+(no inner filtering, no section splicing). `machines.ini`, `team.ini`,
+`hosts` and `host-hardening.php` are dev/deploy-time inputs: `machines.ini`
+feeds the local deploy roster, `team.ini` feeds
+`gen-cert`/`gen-grants`/`gen-service-accounts`/`init-local-env`, `hosts`
+(optional) feeds the consumer's dev `/etc/hosts` merge and its generated ssh
+aliases (`gen-ssh-config`), and `host-hardening.php` feeds `gen-firewall`.
+None of them reach prod.
 
 ## The private repo
 
@@ -49,7 +51,8 @@ files mirror the consumer's `etc/` operational data:
 ├── machines.ini
 ├── reuter.ini
 ├── team.ini
-├── hosts        (optional — dev-only hostname→IP mapping)
+├── hosts              (optional — dev-only hostname→IP mapping)
+├── host-hardening.php (optional — firewall reconcile declaration)
 └── README.md
 ```
 
@@ -92,8 +95,8 @@ into `etc/` **as symlinks**. It resolves the source in one of two ways:
 
 1. `.private-source` present → the on-demand clone/fetch into the git-ignored
    `var/private-data` (dev/deploy machines). `reuter.ini` is required;
-   `machines.ini`/`team.ini`/`hosts` are wired only when the source provides
-   them (dev alone).
+   `machines.ini`/`team.ini`/`hosts`/`host-hardening.php` are wired only when
+   the source provides them (dev/deploy).
 2. `.private-source` absent → a no-op, unless `DEPLOY_PRIVATE_CONFIG_DIR`
    (from `etc/deploy.conf`) names a stable dir that exists — then it links
    `reuter.ini` (and only `reuter.ini`) from there. This is the prod path.
@@ -127,7 +130,8 @@ stable per-app private dir):
    from the private repo's committed content via `git archive <ref>` — to the
    stable per-app dir named by `etc/deploy.conf`'s `DEPLOY_PRIVATE_CONFIG_DIR`
    on each `[prod]` host. It ships **nothing else**: `machines.ini`,
-   `team.ini` and `hosts` are never copied to a host. It reads the `[prod]` roster from
+   `team.ini`, `hosts` and `host-hardening.php` are never copied to a host. It
+   reads the `[prod]` roster from
    `etc/machines.ini` locally; `machines.ini` is never shipped.
 
 2. **`bin/pf-deploy.sh`**, as a built-in server step (after the repo swap,

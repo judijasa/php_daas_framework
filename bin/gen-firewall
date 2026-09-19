@@ -8,7 +8,7 @@ declare(strict_types=1);
 // The framework owns the mechanism: reading a consumer host-hardening
 // declaration, computing the full desired ufw rule set for a host, and
 // applying it as root with a fail-open ordering. The consumer owns the data:
-// the declaration (`srv/host-hardening-<GUID>`), the `etc/machines.ini`
+// the declaration (`etc/host-hardening.php`), the `etc/machines.ini`
 // `[prod]` roster (which tags a host), `etc/reuter.ini` (the `db:<name>`
 // ports), the ZeroTier range (private data) and the cloud-test endpoint.
 // No tag name, port, range or endpoint is hardcoded here. See
@@ -41,7 +41,7 @@ const HELP = <<<'TXT'
 Usage: gen-firewall [host|all] [-a|--apply] [-n|--dry-run] [-h|--help]
 
 Reconcile the tag-driven ufw firewall for prod hosts, from the shared
-srv/host-hardening-<GUID> declaration and the etc/machines.ini [prod] roster.
+etc/host-hardening.php declaration and the etc/machines.ini [prod] roster.
 
   host              ZeroTier IP of one [prod] host.
   all               reconcile every [prod] host (the default).
@@ -54,54 +54,42 @@ host is touched, then applied fail-open: reset (firewall off), default
 policies, the allow rules with SSH first, and enable last.
 TXT;
 
-function srv_package_dir(string $root, string $name): ?string
+function host_hardening_file(string $root): ?string
 {
-    $dir = $root . '/srv/' . $name;
-    return is_dir($dir) ? $dir : null;
-}
-
-function find_host_hardening_package(string $root): ?string
-{
-    $matches = glob($root . '/srv/host-hardening-*') ?: [];
-    $matches = array_values(array_filter($matches, 'is_dir'));
-    if (count($matches) === 1) {
-        return $matches[0];
+    $file = $root . '/etc/host-hardening.php';
+    if (is_file($file)) {
+        return $file;
     }
-    if (count($matches) === 0) {
-        fwrite(STDERR, "gen-firewall: no srv/host-hardening-<GUID> package found\n");
-    } else {
-        fwrite(STDERR, "gen-firewall: multiple srv/host-hardening-<GUID> packages found; keep one\n");
-    }
+    fwrite(STDERR, "gen-firewall: no {$file} (copy etc/host-hardening.php.template and fill it in, or inject it via fetch-private-data)\n");
     return null;
 }
 
-// Include a package's default.php and return the variables it defined. The
+// Include the declaration file and return the variables it defines. The
 // data file assigns local variables ($zerotierRange, $cloudTest, $tagRules);
 // including it inside this function scopes those assignments here, and
 // get_defined_vars() reads them back (PHPStan cannot see through a dynamic
 // include, so the read stays generic).
 //
 // @return array<string,mixed>
-function package_vars(string $dir): array
+function package_vars(string $file): array
 {
-    $default = $dir . '/default.php';
     $vars = [];
-    if (is_file($default)) {
-        include $default;
+    if (is_file($file)) {
+        include $file;
         $vars = get_defined_vars();
     }
     return $vars;
 }
 
-// Load the host-hardening package's declaration and coerce it into a clean
-// typed shape regardless of what default.php sets. A rule is either
+// Load the host-hardening declaration and coerce it into a clean typed shape
+// regardless of what etc/host-hardening.php sets. A rule is either
 // 'PORT/PROTO' (public allow) or array('rule' => 'PORT/PROTO',
 // 'gate' => 'cloud') (applied only when the runtime cloud test passes).
 //
 // @return array{zerotierRange: string, cloudTest: array{endpoint: string, timeout: int}|null, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>}
-function package_declaration(string $dir): array
+function package_declaration(string $file): array
 {
-    $vars = package_vars($dir);
+    $vars = package_vars($file);
 
     $zerotierRange = '';
     if (is_string($vars['zerotierRange'] ?? null)) {
@@ -218,7 +206,7 @@ function resolve_zerotier_range(string $declared, string $root): ?string
 {
     $declared = trim($declared);
     if ($declared === '') {
-        fwrite(STDERR, "gen-firewall: no \$zerotierRange declared in the host-hardening package\n");
+        fwrite(STDERR, "gen-firewall: no \$zerotierRange declared in etc/host-hardening.php\n");
         return null;
     }
     if (preg_match('/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/', $declared) === 1) {
@@ -476,11 +464,11 @@ function main(array $argv): int
         return 1;
     }
 
-    $declDir = find_host_hardening_package($root);
-    if ($declDir === null) {
+    $declFile = host_hardening_file($root);
+    if ($declFile === null) {
         return 1;
     }
-    $declaration = package_declaration($declDir);
+    $declaration = package_declaration($declFile);
 
     $range = resolve_zerotier_range($declaration['zerotierRange'], $root);
     if ($range === null) {
