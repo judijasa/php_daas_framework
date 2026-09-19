@@ -1,0 +1,520 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// gen-firewall — reconcile the tag-driven ufw firewall for prod hosts.
+//
+// The framework owns the mechanism: reading a consumer host-hardening
+// declaration, computing the full desired ufw rule set for a host, and
+// applying it as root with a fail-open ordering. The consumer owns the data:
+// the declaration (`srv/host-hardening-<GUID>`), the `etc/machines.ini`
+// `[prod]` roster (which tags a host), `etc/reuter.ini` (the `db:<name>`
+// ports), the ZeroTier range (private data) and the cloud-test endpoint.
+// No tag name, port, range or endpoint is hardcoded here. See
+// doc/system/host-hardening.md for the full contract.
+//
+// Desired rule set (order-independent set union of a host's tags):
+//
+//   baseline (every host)  default deny incoming, default allow outgoing,
+//                          allow 22/tcp from the ZeroTier range (SSH)
+//   db:<name> (built-in)   allow <reuter.ini[name].PORT>/tcp from the
+//                          ZeroTier range
+//   <tag> (declared)       allow <PORT>/<PROTO> (public), optionally gated
+//                          on the runtime cloud test
+//   worker (built-in)      no inbound rule
+//
+// Tags only add allows; the baseline owns the defaults and any denies. The
+// full set is computed BEFORE the host is touched, then applied fail-open:
+// `ufw --force reset` (firewall off), default policies, the allow rules with
+// SSH first, and `ufw --force enable` last — so a mid-way failure leaves the
+// host reachable and re-running converges.
+//
+// The CLI runs from the consumer checkout that holds `etc/machines.ini` and
+// `etc/reuter.ini` (the deploy/dev machine) and applies each host over
+// `ssh root@<host>`. It defaults to --dry-run: print the computed rules
+// without applying; pass --apply to reconcile.
+//
+// Usage: gen-firewall [host|all] [-a|--apply] [-n|--dry-run] [-h|--help]
+
+const HELP = <<<'TXT'
+Usage: gen-firewall [host|all] [-a|--apply] [-n|--dry-run] [-h|--help]
+
+Reconcile the tag-driven ufw firewall for prod hosts, from the shared
+srv/host-hardening-<GUID> declaration and the etc/machines.ini [prod] roster.
+
+  host              ZeroTier IP of one [prod] host.
+  all               reconcile every [prod] host (the default).
+  -a, --apply       actually apply over `ssh root@<host>` (default is dry-run).
+  -n, --dry-run     print the computed rules without applying (the default).
+  -h, --help        show this help.
+
+The full desired rule set (baseline union tag rules) is computed before any
+host is touched, then applied fail-open: reset (firewall off), default
+policies, the allow rules with SSH first, and enable last.
+TXT;
+
+function srv_package_dir(string $root, string $name): ?string
+{
+    $dir = $root . '/srv/' . $name;
+    return is_dir($dir) ? $dir : null;
+}
+
+function find_host_hardening_package(string $root): ?string
+{
+    $matches = glob($root . '/srv/host-hardening-*') ?: [];
+    $matches = array_values(array_filter($matches, 'is_dir'));
+    if (count($matches) === 1) {
+        return $matches[0];
+    }
+    if (count($matches) === 0) {
+        fwrite(STDERR, "gen-firewall: no srv/host-hardening-<GUID> package found\n");
+    } else {
+        fwrite(STDERR, "gen-firewall: multiple srv/host-hardening-<GUID> packages found; keep one\n");
+    }
+    return null;
+}
+
+// Include a package's default.php and return the variables it defined. The
+// data file assigns local variables ($zerotierRange, $cloudTest, $tagRules);
+// including it inside this function scopes those assignments here, and
+// get_defined_vars() reads them back (PHPStan cannot see through a dynamic
+// include, so the read stays generic).
+//
+// @return array<string,mixed>
+function package_vars(string $dir): array
+{
+    $default = $dir . '/default.php';
+    $vars = [];
+    if (is_file($default)) {
+        include $default;
+        $vars = get_defined_vars();
+    }
+    return $vars;
+}
+
+// Load the host-hardening package's declaration and coerce it into a clean
+// typed shape regardless of what default.php sets. A rule is either
+// 'PORT/PROTO' (public allow) or array('rule' => 'PORT/PROTO',
+// 'gate' => 'cloud') (applied only when the runtime cloud test passes).
+//
+// @return array{zerotierRange: string, cloudTest: array{endpoint: string, timeout: int}|null, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>}
+function package_declaration(string $dir): array
+{
+    $vars = package_vars($dir);
+
+    $zerotierRange = '';
+    if (is_string($vars['zerotierRange'] ?? null)) {
+        $zerotierRange = $vars['zerotierRange'];
+    }
+
+    $cloudTest = null;
+    $ct = $vars['cloudTest'] ?? null;
+    if (is_array($ct)) {
+        $endpoint = $ct['endpoint'] ?? null;
+        $timeout = $ct['timeout'] ?? null;
+        if (is_string($endpoint) && $endpoint !== '' && (is_int($timeout) || (is_string($timeout) && ctype_digit($timeout)))) {
+            $cloudTest = ['endpoint' => $endpoint, 'timeout' => (int) $timeout];
+        }
+    }
+
+    $tagRules = [];
+    $tr = $vars['tagRules'] ?? null;
+    if (is_array($tr)) {
+        foreach ($tr as $tag => $list) {
+            if (!is_array($list)) {
+                continue;
+            }
+            $rules = [];
+            foreach ($list as $entry) {
+                $rule = normalize_rule($entry);
+                if ($rule !== null) {
+                    $rules[] = $rule;
+                }
+            }
+            $tagRules[(string) $tag] = $rules;
+        }
+    }
+
+    return ['zerotierRange' => $zerotierRange, 'cloudTest' => $cloudTest, 'tagRules' => $tagRules];
+}
+
+// @param mixed $entry
+// @return array{rule: string, gate: string|null}|null
+function normalize_rule(mixed $entry): ?array
+{
+    $rule = null;
+    $gate = null;
+    if (is_string($entry) && $entry !== '') {
+        $rule = $entry;
+    } elseif (is_array($entry)) {
+        $r = $entry['rule'] ?? null;
+        if (!is_string($r) || $r === '') {
+            return null;
+        }
+        $rule = $r;
+        $g = $entry['gate'] ?? null;
+        if ($g !== null) {
+            if (!is_string($g)) {
+                return null;
+            }
+            $gate = $g;
+        }
+    } else {
+        return null;
+    }
+
+    if (preg_match('/^\d{1,5}\/(tcp|udp)$/', $rule) !== 1) {
+        fwrite(STDERR, "gen-firewall: ignoring invalid rule '{$rule}' (expected PORT/PROTO, e.g. '80/tcp')\n");
+        return null;
+    }
+
+    return ['rule' => $rule, 'gate' => $gate];
+}
+
+// etc/machines.ini [prod] roster: host => raw tag string. Mirrors the
+// pf-roster parse (same token grammar) so the deploy chain and this CLI share
+// one reading of the roster.
+//
+// @return array<string,string>
+function prod_roster(string $path): array
+{
+    if (!is_file($path)) {
+        return [];
+    }
+    $cnf = parse_ini_file($path, true, INI_SCANNER_RAW);
+    if ($cnf === false || !isset($cnf['prod']) || !is_array($cnf['prod'])) {
+        return [];
+    }
+    $out = [];
+    foreach ($cnf['prod'] as $host => $value) {
+        $host = (string) $host;
+        if ($host === '' || $host[0] === '#') {
+            continue;
+        }
+        $out[$host] = is_string($value) ? trim($value) : '';
+    }
+    return $out;
+}
+
+// @return array<int,string> trimmed tokens, empties dropped
+function tokens(string $raw): array
+{
+    $out = [];
+    foreach (explode(',', $raw) as $rawTok) {
+        $tok = trim($rawTok);
+        if ($tok !== '') {
+            $out[] = $tok;
+        }
+    }
+    return $out;
+}
+
+// Resolve the ZeroTier range the baseline SSH and `db:<name>` rules are
+// scoped to. A concrete CIDR is used verbatim; an 'x' template
+// (e.g. '10.147.x.0/24') resolves its private third octet from the consumer's
+// private etc/hosts (`ip name` mapping) — never hardcoded here.
+function resolve_zerotier_range(string $declared, string $root): ?string
+{
+    $declared = trim($declared);
+    if ($declared === '') {
+        fwrite(STDERR, "gen-firewall: no \$zerotierRange declared in the host-hardening package\n");
+        return null;
+    }
+    if (preg_match('/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/', $declared) === 1) {
+        return $declared;
+    }
+    if (preg_match('/^(\d{1,3}\.\d{1,3})\.x\.(\d{1,3})\/(\d{1,2})$/', $declared, $m) === 1) {
+        $octets = array_values(zerotier_octets($root . '/etc/hosts', $m[1]));
+        if (count($octets) === 1) {
+            return $m[1] . '.' . $octets[0] . '.' . $m[2] . '/' . $m[3];
+        }
+        if (count($octets) === 0) {
+            fwrite(STDERR, "gen-firewall: no {$m[1]}.* hosts in etc/hosts to resolve the ZeroTier octet for \$zerotierRange '{$declared}'\n");
+        } else {
+            fwrite(STDERR, "gen-firewall: ambiguous ZeroTier octets in etc/hosts (" . implode(', ', $octets) . ") for \$zerotierRange '{$declared}'\n");
+        }
+        return null;
+    }
+    fwrite(STDERR, "gen-firewall: \$zerotierRange '{$declared}' is not a CIDR or an 'x' template (e.g. '10.147.x.0/24')\n");
+    return null;
+}
+
+// @return array<int,string> distinct third octets among $prefix.* IPs in hosts
+function zerotier_octets(string $hostsPath, string $prefix): array
+{
+    if (!is_file($hostsPath)) {
+        return [];
+    }
+    $lines = file($hostsPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) {
+        return [];
+    }
+    $pattern = '/^\s*' . preg_quote($prefix . '.', '/') . '(\d{1,3})\.\d{1,3}\b/';
+    $octets = [];
+    foreach ($lines as $line) {
+        $line = (string) preg_replace('/#.*$/', '', $line);
+        if (preg_match($pattern, $line, $m) === 1) {
+            $octets[$m[1]] = true;
+        }
+    }
+    return array_keys($octets);
+}
+
+// etc/reuter.ini sections: dbname => key => value (string-coerced).
+//
+// @return array<string, array<string, string>>
+function reuter_sections(string $path): array
+{
+    if (!is_file($path)) {
+        return [];
+    }
+    $cnf = parse_ini_file($path, true, INI_SCANNER_RAW);
+    if (!is_array($cnf)) {
+        return [];
+    }
+    $out = [];
+    foreach ($cnf as $name => $section) {
+        if (is_array($section)) {
+            $row = [];
+            foreach ($section as $key => $value) {
+                $row[(string) $key] = is_string($value) ? $value : '';
+            }
+            $out[(string) $name] = $row;
+        }
+    }
+    return $out;
+}
+
+// @param array{endpoint: string, timeout: int} $cloudTest
+function probe_cloud(string $host, array $cloudTest): bool
+{
+    $endpoint = escapeshellarg($cloudTest['endpoint']);
+    $timeout = $cloudTest['timeout'];
+    // Any HTTP response (even a 404) means the metadata service answered ->
+    // cloud. No response/timeout means not cloud (fail-safe).
+    $remote = 'curl -sS --connect-timeout ' . $timeout . ' --max-time ' . $timeout . ' ' . $endpoint . ' -o /dev/null 2>/dev/null';
+    $cmd = 'ssh -o ConnectTimeout=5 ' . escapeshellarg('root@' . $host) . ' ' . escapeshellarg($remote);
+    $output = [];
+    $code = 0;
+    exec($cmd . ' 2>/dev/null', $output, $code);
+    return $code === 0;
+}
+
+// Compute one host's desired ufw steps. Returns null on a config error
+// (message already written to stderr).
+//
+// @param array{zerotierRange: string, cloudTest: array{endpoint: string, timeout: int}|null, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>} $declaration
+// @param array<string, array<string, string>> $reuter
+// @return array{host: string, tags: array<int,string>, steps: array<int, array{cmd: string, gated: bool}>}|null
+function build_host_plan(string $host, string $rawTags, array $declaration, array $reuter, string $range): ?array
+{
+    $cloudTest = $declaration['cloudTest'];
+    $tagRules = $declaration['tagRules'];
+
+    $steps = [];
+    $steps[] = ['cmd' => 'ufw --force reset', 'gated' => false];
+    $steps[] = ['cmd' => 'ufw default deny incoming', 'gated' => false];
+    $steps[] = ['cmd' => 'ufw default allow outgoing', 'gated' => false];
+    // SSH first: the operator stays reachable until the very last enable.
+    $steps[] = ['cmd' => 'ufw allow from ' . $range . ' to any port 22 proto tcp', 'gated' => false];
+
+    $hostTags = tokens($rawTags);
+
+    foreach ($hostTags as $tag) {
+        if (strpos($tag, 'db:') === 0) {
+            $name = substr($tag, 3);
+            if ($name === '') {
+                fwrite(STDERR, "gen-firewall: host {$host} has an empty db: tag\n");
+                return null;
+            }
+            $port = $reuter[$name]['PORT'] ?? null;
+            if (!is_string($port) || $port === '') {
+                fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}': no PORT in etc/reuter.ini [{$name}]\n");
+                return null;
+            }
+            $steps[] = ['cmd' => 'ufw allow from ' . $range . ' to any port ' . $port . ' proto tcp', 'gated' => false];
+            continue;
+        }
+        if ($tag === 'worker') {
+            continue; // built-in tag: cron writes loopback/local, no inbound rule
+        }
+        if (!array_key_exists($tag, $tagRules)) {
+            fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}' maps to no rule (adds no allow)\n");
+            continue;
+        }
+        foreach ($tagRules[$tag] as $rule) {
+            if ($rule['gate'] === null) {
+                $steps[] = ['cmd' => 'ufw allow ' . $rule['rule'], 'gated' => false];
+            } elseif ($rule['gate'] === 'cloud') {
+                if ($cloudTest === null) {
+                    fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}' rule '{$rule['rule']}' is gated on the cloud test but no \$cloudTest is declared\n");
+                    return null;
+                }
+                $steps[] = ['cmd' => 'ufw allow ' . $rule['rule'], 'gated' => true];
+            } else {
+                fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}' rule '{$rule['rule']}' has unknown gate '{$rule['gate']}' (only 'cloud' is supported)\n");
+                return null;
+            }
+        }
+    }
+
+    $steps[] = ['cmd' => 'ufw --force enable', 'gated' => false];
+
+    return ['host' => $host, 'tags' => $hostTags, 'steps' => $steps];
+}
+
+// @param array{host: string, tags: array<int,string>, steps: array<int, array{cmd: string, gated: bool}>} $plan
+// @param array{endpoint: string, timeout: int}|null $cloudTest
+function print_plan(array $plan, ?array $cloudTest): void
+{
+    $tagLabel = implode(', ', $plan['tags']);
+    fwrite(STDOUT, '# host ' . $plan['host'] . ($tagLabel === '' ? '' : ' (' . $tagLabel . ')') . PHP_EOL);
+    foreach ($plan['steps'] as $step) {
+        if ($step['gated']) {
+            $endpoint = $cloudTest !== null ? $cloudTest['endpoint'] : 'cloud test';
+            fwrite(STDOUT, '# [cloud-gated: ' . $endpoint . '] ' . $step['cmd'] . PHP_EOL);
+        } else {
+            fwrite(STDOUT, $step['cmd'] . PHP_EOL);
+        }
+    }
+    fwrite(STDOUT, PHP_EOL);
+}
+
+// @param array{host: string, tags: array<int,string>, steps: array<int, array{cmd: string, gated: bool}>} $plan
+// @param array{endpoint: string, timeout: int}|null $cloudTest
+function apply_plan(array $plan, ?array $cloudTest): int
+{
+    $host = $plan['host'];
+
+    // Resolve the cloud gate once per host (fail-safe: not-cloud -> skip).
+    $hasGated = false;
+    foreach ($plan['steps'] as $step) {
+        if ($step['gated']) {
+            $hasGated = true;
+            break;
+        }
+    }
+    $cloudPassed = false;
+    if ($hasGated) {
+        if ($cloudTest === null) {
+            fwrite(STDERR, "gen-firewall: host {$host} has cloud-gated rules but no \$cloudTest is declared\n");
+            return 1;
+        }
+        $cloudPassed = probe_cloud($host, $cloudTest);
+        if (!$cloudPassed) {
+            fwrite(STDERR, "gen-firewall: host {$host} cloud test failed; skipping cloud-gated rules\n");
+        }
+    }
+
+    $lines = ['set -e'];
+    foreach ($plan['steps'] as $step) {
+        if ($step['gated'] && !$cloudPassed) {
+            continue;
+        }
+        $lines[] = $step['cmd'];
+    }
+    $script = implode("\n", $lines) . "\n";
+
+    $tmp = tempnam(sys_get_temp_dir(), 'gen_firewall_');
+    if ($tmp === false || file_put_contents($tmp, $script) === false) {
+        fwrite(STDERR, "gen-firewall: could not write the temporary ufw script\n");
+        return 1;
+    }
+    $cmd = 'ssh -o ConnectTimeout=5 ' . escapeshellarg('root@' . $host) . ' bash -s < ' . escapeshellarg($tmp);
+    fwrite(STDERR, "gen-firewall: reconciling host {$host} ...\n");
+    $code = 0;
+    passthru($cmd, $code);
+    @unlink($tmp);
+    return $code;
+}
+
+function main(array $argv): int
+{
+    $root = getcwd();
+    if ($root === false) {
+        $root = '.';
+    }
+
+    $positional = [];
+    $apply = false;
+    foreach (array_slice($argv, 1) as $arg) {
+        if ($arg === '-a' || $arg === '--apply') {
+            $apply = true;
+        } elseif ($arg === '-n' || $arg === '--dry-run') {
+            $apply = false;
+        } elseif ($arg === '-h' || $arg === '--help') {
+            fwrite(STDOUT, HELP);
+            return 0;
+        } elseif ($arg !== '' && $arg[0] === '-') {
+            fwrite(STDERR, "gen-firewall: unknown flag: {$arg}\n");
+            return 1;
+        } else {
+            $positional[] = $arg;
+        }
+    }
+    if (count($positional) > 1) {
+        fwrite(STDERR, "gen-firewall: at most one host (or 'all') may be given\n");
+        fwrite(STDERR, HELP);
+        return 1;
+    }
+    $target = $positional[0] ?? 'all';
+
+    $roster = prod_roster($root . '/etc/machines.ini');
+    if (count($roster) === 0) {
+        fwrite(STDERR, "gen-firewall: no [prod] roster in {$root}/etc/machines.ini (copy etc/machines.ini.template and fill it in)\n");
+        return 1;
+    }
+
+    $targets = [];
+    if ($target === 'all') {
+        $targets = array_keys($roster);
+    } elseif (array_key_exists($target, $roster)) {
+        $targets = [$target];
+    } else {
+        fwrite(STDERR, "gen-firewall: host '{$target}' is not in the [prod] roster of etc/machines.ini\n");
+        return 1;
+    }
+
+    $declDir = find_host_hardening_package($root);
+    if ($declDir === null) {
+        return 1;
+    }
+    $declaration = package_declaration($declDir);
+
+    $range = resolve_zerotier_range($declaration['zerotierRange'], $root);
+    if ($range === null) {
+        return 1;
+    }
+
+    $reuter = reuter_sections($root . '/etc/reuter.ini');
+
+    // Compute every host's plan first, before touching any host.
+    $plans = [];
+    foreach ($targets as $host) {
+        $plan = build_host_plan($host, $roster[$host], $declaration, $reuter, $range);
+        if ($plan === null) {
+            return 1;
+        }
+        $plans[] = $plan;
+    }
+
+    foreach ($plans as $plan) {
+        if (!$apply) {
+            print_plan($plan, $declaration['cloudTest']);
+        } else {
+            $code = apply_plan($plan, $declaration['cloudTest']);
+            if ($code !== 0) {
+                fwrite(STDERR, "gen-firewall: host {$plan['host']} apply failed (exit {$code})\n");
+                return 1;
+            }
+        }
+    }
+
+    if (!$apply) {
+        fwrite(STDERR, "gen-firewall: dry-run; rules printed, not applied (pass --apply to reconcile)\n");
+    }
+    return 0;
+}
+
+exit(main($argv));

@@ -42,7 +42,8 @@
     "bin/dev/init-local-env.sh",
     "bin/pf-provision.sh",
     "bin/replica-bootstrap",
-    "bin/gen-ssh-config"
+    "bin/gen-ssh-config",
+    "bin/gen-firewall"
   ],
   "repositories": [
     {

@@ -233,6 +233,9 @@ array installs the CLIs and scripts into `vendor/bin`:
 - `bin/gen-ssh-config` — generate the dev machine's per-project ssh aliases
   (`~/.ssh/config.d/<app>.conf`) from the consumer's private `hosts` mapping;
   see `doc/system/ssh-config.md`.
+- `bin/gen-firewall` — reconcile the tag-driven `ufw` firewall for every
+  `[prod]` host (reset + reapply with fail-open ordering) from the consumer's
+  host-hardening declaration; see `doc/system/host-hardening.md`.
 
 `gen-grants` (team-member DB accounts + roles) and `gen-cert` (member client
 certificates) implement the team-DB-user flow; see
