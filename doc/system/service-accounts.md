@@ -41,9 +41,10 @@ consumer data — no account name, role name or source is hardcoded):
   Its per-host roles are the union of those sources' roles, intersected with
   the roles that hold a `GRANT` on the target database.
 - `$allowlist` (optional) adds accounts the closed-world drop must never
-  remove. `root`, `mariadb.sys` and `replication` are an always-on safety
-  floor: they are never dropped, and a declared `$allowlist` extends (never
-  replaces) them.
+  remove. `root` and `mariadb.sys` are an always-on safety floor: they are
+  never dropped, and a declared `$allowlist` extends (never replaces) them.
+  Accounts the consumer creates itself (e.g. `replication` via
+  `replica-bootstrap`) are not covered by the floor and must be declared here.
 
 `upgrade.sql` carries the `CREATE ROLE` and per-database `GRANT … TO <role>`
 DDL exactly as `gen-grants` consumes today; `{{dbname}}` is filled from the

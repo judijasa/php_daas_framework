@@ -65,7 +65,10 @@ GRANT REPLICATION SLAVE ON *.* TO 'replication'@'<replica-ip>';
 It is passwordless (empty password — the security boundary is the host pin
 plus the transport network) and host-pinned to the replica host, so only the
 replica may connect as it. It is an instance-level grant, not a per-database
-grant, so it belongs to no service-account reconcile file.
+grant, so it belongs to no service-account reconcile file. It is not covered
+by the service-account reconcile's drop floor (`root` and `mariadb.sys`
+only), so a consumer running that reconcile must declare `replication` in its
+`$allowlist` or the next reconcile drops the account.
 
 ## The snapshot
 
