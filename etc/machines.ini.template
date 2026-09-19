@@ -1,7 +1,8 @@
 # Machine registry: prod machines only.
-# Copy to etc/machines.ini (git-ignored; commit it only in a private fork) and
-# fill in your entries — or keep it in a private config repo and inject it via
-# .private-source (see doc/system/private-config.md). `pf-deploy.sh` and
+# This file is private data: keep it in a private config repo and inject it via
+# .private-source into etc/machines.ini (see doc/system/private-config.md) —
+# never a real file at that path, which would shadow the injected data instead
+# of being overwritten. `pf-deploy.sh` and
 # `deploy-private-config` read the [prod] roster (locally, on the deploy
 # machine — `machines.ini` is never shipped to a host); the dev-machine
 # `DBUSER` mapping now lives in etc/team.ini (see etc/team.ini.template +

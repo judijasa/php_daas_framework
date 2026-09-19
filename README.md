@@ -85,13 +85,12 @@ and build on directly.
    ema sandbox srv/test-D0PR2OGMHXDSCAR3
    ```
 
-   Optional: `cp etc/team.ini.template etc/team.ini` and add this machine's
-   hostname to your member section (maps `$(hostname)` to your team DB
-   username for remote DB access); and `cp etc/machines.ini.template
-   etc/machines.ini` to fill in the `[prod]` ZeroTier deploy roster. Or keep
-   `etc/team.ini` and `etc/machines.ini` in a private config repo and inject
-   them via a git-ignored `.private-source` (see
-   `doc/system/private-config.md`).
+   Optional: keep `etc/team.ini` (add this machine's hostname to your member
+   section — it maps `$(hostname)` to your team DB username for remote DB
+   access) and `etc/machines.ini` (the `[prod]` ZeroTier deploy roster) in a
+   private config repo and inject them via a git-ignored `.private-source`
+   (see `doc/system/private-config.md`). A real file at either path shadows
+   the injected private data, so never copy a template into `etc/`.
 
 3. Re-enter the shell (or `source .env`) so the shell sees the repo paths.
    Write your agents under `src/scripts/` (see
@@ -354,9 +353,8 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
   installed. Each named token maps to exactly one server; a server may host
   several databases. The shared `pf-roster` CLI parses this roster for
   `pf-deploy.sh`, `deploy-private-config` and the consumer's deploy wrapper.
-  Commit this file only in a private fork, or keep it in a separate private
-  config repo and inject it via `.private-source`
-  (`doc/system/private-config.md`).
+  This file is private data: keep it in a separate private config repo and
+  inject it via `.private-source` (`doc/system/private-config.md`).
 
 - **`.env`** (git-ignored, machine-specific) - same contract as `phprun`;
   pf-deploy.sh needs `REPO_PATH` (set by the consumer's dev-init).

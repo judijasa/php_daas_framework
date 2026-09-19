@@ -1,7 +1,8 @@
 ; Team member registry — one DB account per team member, host-pinned to the
-; member's machine(s). Copy to etc/team.ini (git-ignored) and fill it in —
-; or keep it in a private config repo and inject it via .private-source (see
-; doc/system/private-config.md).
+; member's machine(s). This file is private data: keep it in a private config
+; repo and inject it via .private-source into etc/team.ini (see
+; doc/system/private-config.md) — never a real file at that path, which would
+; shadow the injected data instead of being overwritten.
 ;
 ; Each section is one member and the section name IS that member's DB
 ; username. `subject` is the member's client-certificate subject DN, passed

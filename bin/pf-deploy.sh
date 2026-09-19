@@ -79,13 +79,13 @@ set +a
 FETCH_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/fetch-private-data"
 "$FETCH_BIN" "$PWD"
 
-# Load the machine registry (git-ignored; copy from machines.ini.template).
+# Load the machine registry (git-ignored; injected by fetch-private-data).
 # [prod] lists every prod deploy target by ZeroTier IP; the host whose
 # `tag[:name]` list carries a `db:` token is the database host, and one that
 # carries the bare `worker` token gets the cron manifest installed.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
   echo "pf-deploy: $PWD/etc/machines.ini not found" >&2
-  echo "  Copy the framework's etc/machines.ini.template into the repo and fill in the [prod] roster." >&2
+  echo "  Inject the private etc/machines.ini via fetch-private-data (.private-source) — it carries the [prod] roster." >&2
   exit 1
 fi
 

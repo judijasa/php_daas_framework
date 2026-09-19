@@ -60,7 +60,7 @@ function host_hardening_file(string $root): ?string
     if (is_file($file)) {
         return $file;
     }
-    fwrite(STDERR, "gen-firewall: no {$file} (copy etc/host-hardening.php.template and fill it in, or inject it via fetch-private-data)\n");
+    fwrite(STDERR, "gen-firewall: no {$file} (inject it via fetch-private-data — see doc/system/private-config.md)\n");
     return null;
 }
 
@@ -453,7 +453,7 @@ function main(array $argv): int
 
     $roster = prod_roster($root . '/etc/machines.ini');
     if (count($roster) === 0) {
-        fwrite(STDERR, "gen-firewall: no [prod] roster in {$root}/etc/machines.ini (copy etc/machines.ini.template and fill it in)\n");
+        fwrite(STDERR, "gen-firewall: no [prod] roster in {$root}/etc/machines.ini (inject etc/machines.ini via fetch-private-data — see doc/system/private-config.md)\n");
         return 1;
     }
 
