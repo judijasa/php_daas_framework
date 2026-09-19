@@ -395,7 +395,10 @@ function apply_plan(array $plan, ?array $cloudTest): int
         }
     }
 
-    $lines = ['set -e'];
+    $lines = [
+        "command -v ufw >/dev/null 2>&1 || { echo 'gen-firewall: ufw is not installed on this host' >&2; exit 1; }",
+        'set -e',
+    ];
     foreach ($plan['steps'] as $step) {
         if ($step['gated'] && !$cloudPassed) {
             continue;
