@@ -24,15 +24,9 @@ REPO_PATH="$(cd "$TARGET_DIR" && pwd)"
 REPO_VAR="$REPO_PATH/var"
 REPO_LOG="$REPO_VAR/log"
 
-# Inject git-ignored private config (etc/machines.ini, etc/reuter.ini,
-# etc/team.ini) from the private repository referenced by .private-source,
-# when configured (no-op otherwise), so DBUSER resolution sees the private
-# data.
-if command -v fetch-private-data >/dev/null 2>&1; then
-    ( cd "$REPO_PATH" && fetch-private-data )
-elif [ -x "$REPO_PATH/bin/fetch-private-data" ]; then
-    ( cd "$REPO_PATH" && "$REPO_PATH/bin/fetch-private-data" )
-fi
+# Private config is consumer-owned: the framework neither fetches nor injects
+# it, so the real etc/team.ini (read below for DBUSER) must already be in the
+# checkout — see doc/system/consumer-config.md.
 
 {
     printf 'export REPO_PATH=%s\n' "$REPO_PATH"

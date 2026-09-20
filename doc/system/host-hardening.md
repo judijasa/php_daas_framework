@@ -36,8 +36,8 @@ The CLI runs from the consumer checkout that holds `etc/machines.ini` and
 The consumer's `etc/host-hardening.php` carries the declaration (all
 consumer data — no tag name, port, range or endpoint is hardcoded). It is
 private data: the real file lives in the consumer's private config repo and
-is injected into `etc/host-hardening.php` by `fetch-private-data` (see
-`doc/system/private-config.md`). The consumer's committed
+the consumer places it at `etc/host-hardening.php` (see
+`doc/system/consumer-config.md`). The consumer's committed
 `etc/host-hardening.php.template` is a copy of this framework's template with
 placeholder values — never the real deployment values, which would put them in
 the public history:

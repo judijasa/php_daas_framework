@@ -3,8 +3,9 @@
 #
 # Runs as root on the remote via `deploy`, from the deployed repo
 # root (the repo directory already exists — created by the deploy swap).
-# Parameterized entirely by the injected (private) etc/deploy.conf; the
-# consumer owns the values, the framework owns the mechanism. Idempotent.
+# Parameterized entirely by the consumer's etc/deploy.conf, sourced as a plain
+# file (restored on the host before this runs); the consumer owns the values,
+# the framework owns the mechanism. Idempotent.
 #
 # The framework no longer provisions MariaDB: database instances are created
 # by `ema create` at database-creation time (one instance per database), and

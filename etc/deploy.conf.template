@@ -2,14 +2,11 @@
 # server listed in etc/machines.ini: PROD_USER and the DEPLOY_* paths are
 # identical on all hosts.
 #
-# The real file is private data: keep `deploy.conf` in a separate private
-# config repo and inject it via `.private-source` into etc/deploy.conf (see
-# doc/system/private-config.md) — never a real file at that path, which would
-# shadow the injected data instead of being overwritten. Committing it into the
-# repo instead is supported for a project that runs without private data: copy
-# this template to etc/deploy.conf, fill in the values, and leave it out of the
-# private repo (deploy-private-config ships it only when it is there). Either
-# way `deploy` requires it at the repo root and fails loudly if missing.
+# The real file is consumer-owned private data: keep it in a separate private
+# config repo (never in the public history) and place it at etc/deploy.conf —
+# copy this template and fill in the values. The framework does not fetch,
+# ship or inject it: it sources whatever real file sits at that path, and
+# `deploy` fails loudly when it is missing.
 #
 # Database instances are no longer provisioned at deploy time — they
 # are created by `ema create` (one instance per database) and the operator
@@ -48,18 +45,28 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 # [<dbname>] section per database (SERVER/PORT/DBMS/MYSQL_UNIX_PORT plus the
 # consumer's <ACCOUNT>_PASSWORD keys), recorded from `ema create`'s output.
 # gen-env writes it into .env as REUTER_INI; pf-deploy's db-check reads it to
-# verify reachability. The file itself is private data, injected into etc/ by
-# fetch-private-data (see doc/system/private-config.md).
+# verify reachability. The file is the consumer's private data, and the repo
+# dir is replaced on every deploy, so it must be restored on the host (e.g. by
+# DEPLOY_PRE_PROVISION_CMD, from a stable per-app dir outside
+# DEPLOY_TARGET_DIR).
 export DEPLOY_REUTER_INI=/srv/apps/<app>/etc/reuter.ini
 
-# DEPLOY_PRIVATE_CONFIG_DIR: stable per-app private-config directory on the
-# host. bin/deploy-private-config ships the consumer's deploy.conf and
-# reuter.ini (whole) here from the private config repo's committed content;
-# fetch-private-data (a pf-deploy step, run right after the repo swap) symlinks
-# them into etc/ — deploy.conf before pf-provision.sh and the server steps
-# source it, reuter.ini where DEPLOY_REUTER_INI points. It MUST live OUTSIDE
-# DEPLOY_TARGET_DIR, which is swapped on every deploy.
-export DEPLOY_PRIVATE_CONFIG_DIR=/srv/private/<app>
+# Optional: consumer-owned pre-provision hook — the consumer's own way of
+# restoring private config into the freshly swapped repo. `deploy` runs it on
+# the host as root, in the repo root, right after the repo swap + composer
+# install and before anything sources etc/deploy.conf (pf-provision.sh and the
+# framework server steps), so it must materialize the real etc/deploy.conf and
+# whatever else the host needs (typically etc/reuter.ini, at
+# DEPLOY_REUTER_INI). The deploy machine's deploy.conf environment is replayed
+# for it, so every variable defined in this file is available to the hook —
+# e.g. DEPLOY_PRIVATE_CONFIG_DIR below, naming the stable per-app dir the hook
+# copies from. A project that commits its real etc/deploy.conf needs no hook.
+# export DEPLOY_PRE_PROVISION_CMD="vendor/bin/restore-consumer-config"
+#
+# Companion example for such a hook: the stable per-app consumer-config
+# directory on the host. It MUST live OUTSIDE DEPLOY_TARGET_DIR, which is
+# swapped on every deploy.
+# export DEPLOY_PRIVATE_CONFIG_DIR=/srv/private/<app>
 
 # DEPLOY_NIX_RESULT_DIR: remote nix result parent.
 export DEPLOY_NIX_RESULT_DIR=/usr/local/<app>

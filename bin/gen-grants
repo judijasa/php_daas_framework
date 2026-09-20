@@ -189,7 +189,7 @@ function main(array $argv): int
 
     $teamIni = $root . '/etc/team.ini';
     if (!is_file($teamIni)) {
-        fwrite(STDERR, "gen-grants: {$teamIni} not found (inject etc/team.ini via fetch-private-data — see doc/system/private-config.md)\n");
+        fwrite(STDERR, "gen-grants: {$teamIni} not found (etc/team.ini is consumer-owned private data — see doc/system/consumer-config.md)\n");
         return 1;
     }
     $team = parse_ini_file($teamIni, true, INI_SCANNER_RAW);

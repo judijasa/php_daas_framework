@@ -9,13 +9,19 @@
 #
 # Configuration is loaded from the consumer repo root: `.env` (machine
 # settings, same contract as `phprun`) for REPO_PATH, the git-ignored
-# etc/deploy.conf (private data, injected by fetch-private-data) for the
-# project deploy parameters, and the git-ignored etc/machines.ini machine
-# registry. Run from the repo root, inside `nix develop`.
+# etc/deploy.conf (the consumer's real deploy config, sourced as a plain
+# file) for the project deploy parameters, and the git-ignored
+# etc/machines.ini machine registry. Run from the repo root, inside
+# `nix develop`.
+#
+# Private config is consumer-owned: the framework ships only the templates in
+# etc/ and never fetches, ships or injects the real files. A prod host gets
+# them from the consumer's DEPLOY_PRE_PROVISION_CMD hook (or from the repo
+# itself when the consumer commits them).
 #
 # Config surfaces in the consumer repo root:
-#   etc/deploy.conf  (git-ignored, injected; required) - project deployment target,
-#   shared by every prod host:
+#   etc/deploy.conf  (git-ignored, consumer-owned; required) - project
+#   deployment target, shared by every prod host:
 #     PROD_USER              unprivileged app user on the remote host
 #                            (must exist with SSH access before first deploy)
 #     DEPLOY_TARGET_DIR      remote repo location (e.g. /srv/apps/<app>)
@@ -25,6 +31,14 @@
 #                            `ema create`); gen-env projects it as REUTER_INI
 #     DEPLOY_NIX_RESULT_DIR  remote nix result parent (e.g. /usr/local/<app>)
 #     DEPLOY_NIX_GCROOT      remote nix gcroot (e.g. /nix/var/nix/gcroots/<app>)
+#     DEPLOY_PRE_PROVISION_CMD
+#                            optional: consumer-specific hook run on the host
+#                            after the repo swap + composer install and before
+#                            the generic provision, so it can restore the real
+#                            (consumer-owned) private config the swap wiped —
+#                            the repo carries only the templates. The deploy
+#                            machine's deploy.conf environment is replayed for
+#                            it; skipped if unset.
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
@@ -59,34 +73,41 @@ if [[ -f "$PWD/.env" ]]; then
   set +a
 fi
 
-# Load the deploy config from a git-ignored etc/deploy.conf (private data,
-# injected by fetch-private-data via `make dev-init`). Unlike .env (generated
-# per environment), deploy.conf describes the deployment target. It is
-# required.
+# Load the deploy config from a git-ignored etc/deploy.conf. The real file is
+# consumer-owned and sourced as a plain file — the framework ships only
+# etc/deploy.conf.template and never fetches, ships or symlinks it. Unlike
+# .env (generated per environment), deploy.conf describes the deployment
+# target. It is required.
 if [[ ! -f "$PWD/etc/deploy.conf" ]]; then
   echo "pf-deploy: $PWD/etc/deploy.conf not found" >&2
-  echo "  Inject the private deploy.conf via fetch-private-data (make dev-init) — it lives in the private config repo." >&2
+  echo "  Copy etc/deploy.conf.template to etc/deploy.conf and fill in the values — see doc/system/consumer-config.md." >&2
   exit 1
 fi
+_ENV_BEFORE="$(compgen -e | sort)"
 set -a
 . "$PWD/etc/deploy.conf"
 set +a
+_ENV_AFTER="$(compgen -e | sort)"
 
-# Inject git-ignored private config (etc/deploy.conf, etc/machines.ini,
-# etc/reuter.ini, etc/team.ini) from the private repository referenced by .private-source,
-# when configured. A no-op when .private-source is absent — the repo stays
-# functional without private data (see bin/fetch-private-data +
-# doc/system/private-config.md).
-FETCH_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/fetch-private-data"
-"$FETCH_BIN" "$PWD"
+# Serialize the variables etc/deploy.conf adds, as sourceable
+# `declare -x NAME="value"` lines. The deployed repo carries no deploy.conf
+# until the consumer's DEPLOY_PRE_PROVISION_CMD restores it, so the deploy
+# machine's deploy.conf environment is replayed for that hook (see
+# deploy_to_host).
+DEPLOY_CONF_ENV=""
+while IFS= read -r _v; do
+  [ -n "$_v" ] || continue
+  DEPLOY_CONF_ENV+="$(declare -p "$_v")"$'\n'
+done < <(comm -13 <(printf '%s\n' "$_ENV_BEFORE") <(printf '%s\n' "$_ENV_AFTER"))
+unset _v
 
-# Load the machine registry (git-ignored; injected by fetch-private-data).
+# Load the machine registry (git-ignored; template committed, consumer-owned).
 # [prod] lists every prod deploy target by ZeroTier IP; the host whose
 # `tag[:name]` list carries a `db:` token is the database host, and one that
 # carries the bare `worker` token gets the cron manifest installed.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
   echo "pf-deploy: $PWD/etc/machines.ini not found" >&2
-  echo "  Inject the private etc/machines.ini via fetch-private-data (.private-source) — it carries the [prod] roster." >&2
+  echo "  Copy etc/machines.ini.template to etc/machines.ini and fill in the [prod] roster." >&2
   exit 1
 fi
 
@@ -96,8 +117,8 @@ ROSTER_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-roster"
 
 # Print each [prod] entry as "zerotier-ip=<comma-separated tag list>" (the
 # host's `tag[:name]` tokens). `main` parses this to build the deploy roster.
-# The shared pf-roster CLI owns the machines.ini parse, also used by
-# deploy-private-config and the consumer deploy wrapper.
+# The shared pf-roster CLI owns the machines.ini parse, also used by the
+# consumer deploy wrapper.
 read_prod_roster() {
   "$ROSTER_BIN" --list
 }
@@ -416,13 +437,32 @@ deploy_to_host() {
   [ "$NIX_EXISTS" != "true" ] && install_nix_remotely "$REMOTE_HOST" "$PROD_USER" || true
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
-  # Inject the private deploy.conf + reuter.ini into the freshly-swapped repo
-  # before anything sources etc/deploy.conf (pf-provision.sh below and the
-  # server steps that follow both do). DEPLOY_PRIVATE_CONFIG_DIR was read from
-  # the deploy machine's own deploy.conf; pass it explicitly so the host needs
-  # no committed deploy.conf (the repo now ships only the template).
-  echo "Injecting private config (deploy.conf, reuter.ini) into the deployed repo..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && DEPLOY_PRIVATE_CONFIG_DIR='$DEPLOY_PRIVATE_CONFIG_DIR' vendor/bin/fetch-private-data"
+  # Private config is consumer-owned: the framework never fetches, ships or
+  # injects it, and the swap above wiped etc/ (the repo ships only the
+  # templates). DEPLOY_PRE_PROVISION_CMD is the consumer's single hook into
+  # that lifecycle: it runs on the host right here — after the swap + composer
+  # install and before anything sources etc/deploy.conf (pf-provision.sh below
+  # and the framework server steps both do) — with the deploy machine's
+  # deploy.conf environment replayed, so it can restore the real files from
+  # wherever the consumer keeps them (e.g. a stable per-app dir outside
+  # DEPLOY_TARGET_DIR, which is swapped on every deploy). A consumer that
+  # commits a real etc/deploy.conf needs no hook; either way the file must
+  # exist by now, so its absence is reported here instead of as a bare shell
+  # error from the first `source`.
+  echo "Running the consumer pre-provision hook (if configured) on remote..." >&2
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
+set -euo pipefail
+$DEPLOY_CONF_ENV
+if [ -n "\${DEPLOY_PRE_PROVISION_CMD:-}" ]; then
+    echo "    Running DEPLOY_PRE_PROVISION_CMD (consumer private config)..." >&2
+    bash -c "\$DEPLOY_PRE_PROVISION_CMD" </dev/null
+fi
+if [ ! -f etc/deploy.conf ]; then
+    echo "pf-deploy: no etc/deploy.conf in $REMOTE_TARGET_DIR on this host." >&2
+    echo "  The framework ships only etc/deploy.conf.template: commit a real file or set DEPLOY_PRE_PROVISION_CMD to restore it." >&2
+    exit 1
+fi
+EOF
   # Generic provisioning (framework mechanism, shipped in the deployed repo):
   # assert PROD_USER, create permanent dirs — parameterized by
   # etc/deploy.conf. Idempotent, so it runs on every deploy. (Database

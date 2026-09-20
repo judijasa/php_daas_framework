@@ -70,9 +70,10 @@ itself, so the session that runs it must have those values in scope
 
 `etc/reuter.ini` is **manual, consumer-owned** private data — there is no
 generator anymore. `ema create` prints the `[<dbname>]` section and the
-operator records it (or `ema values <db>` recovers a lost record); the file is
-injected into `etc/` by the consumer's `fetch-private-data` (see
-`doc/system/private-config.md`). Sections are keyed by database name — the
+operator records it (or `ema values <db>` recovers a lost record); the
+consumer owns the file (it keeps it in its private config repo and places it
+in `etc/` — see `doc/system/consumer-config.md`). Sections are keyed by
+database name — the
 section header IS the dbname:
 
     [mydb]
@@ -114,22 +115,24 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
   archive), then runs `composer install` on the remote so the framework CLIs
   (`gen-env`, `db-check`, `pf-provision.sh`, ...) and `ema` land in
   `vendor/bin`.
+- `pf-deploy.sh` runs the consumer's optional `DEPLOY_PRE_PROVISION_CMD` on the
+  host right after the repo swap + `composer install` and before provisioning:
+  it restores the real private config the swap wiped (at least
+  `etc/deploy.conf` and `etc/reuter.ini`), with the deploy machine's
+  `deploy.conf` environment replayed.
 - `pf-deploy.sh`'s built-in server steps (run after provisioning and
   `DEPLOY_INIT_CMD`, as root, on every host):
-  1. `fetch-private-data` → links `reuter.ini` from `DEPLOY_PRIVATE_CONFIG_DIR`
-     into the fresh `etc/`;
-  2. `gen-env` → `.env` with `EMA_TARGET=prod` and
+  1. `gen-env` → `.env` with `EMA_TARGET=prod` and
      `REUTER_INI=$DEPLOY_REUTER_INI`;
-  3. `db-check` → warn-only verification (never repairs): enumerates the
+  2. `db-check` → warn-only verification (never repairs): enumerates the
      host's own `mariadb@*` units (unit active, socket pings, schema exists)
      and TCP-checks each reuter.ini section;
-  4. on `worker`-tagged hosts: `cron-manifest` → `CRON_FILE`, restart cron.
+  3. on `worker`-tagged hosts: `cron-manifest` → `CRON_FILE`, restart cron.
 - `vendor/bin/pf-provision.sh` (`pf-deploy.sh`, root) asserts the `PROD_USER`
   account and creates the permanent system dirs. It never provisions MariaDB
   and never creates databases or users — instances are owned by `ema create`.
 - Consumer repos git-ignore `/var/`, `/etc/reuter.ini`, `/etc/machines.ini`,
-  and `.env` (reuter.ini/machines.ini are private data injected by
-  `fetch-private-data`).
+  and `.env` (reuter.ini/machines.ini are consumer-owned private data).
 
 ## Creating databases on prod
 

@@ -128,7 +128,7 @@ main() {
 
     [[ -n "$PRIMARY" ]] || { usage >&2; return 1; }
     [[ -n "$REPLICA_HOST" ]] || { usage >&2; return 1; }
-    [[ -f "$REUTER_INI_PATH" ]] || die "reuter.ini not found at $REUTER_INI_PATH (inject it via fetch-private-data — see doc/system/private-config.md)"
+    [[ -f "$REUTER_INI_PATH" ]] || die "reuter.ini not found at $REUTER_INI_PATH (consumer-owned private data — see doc/system/consumer-config.md)"
 
     local primary_host socket
     primary_host="$(reuter_value "$REUTER_INI_PATH" "$PRIMARY" "SERVER")"

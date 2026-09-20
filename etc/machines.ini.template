@@ -1,10 +1,8 @@
 # Machine registry: prod machines only.
-# This file is private data: keep it in a private config repo and inject it via
-# .private-source into etc/machines.ini (see doc/system/private-config.md) —
-# never a real file at that path, which would shadow the injected data instead
-# of being overwritten. `pf-deploy.sh` and
-# `deploy-private-config` read the [prod] roster (locally, on the deploy
-# machine — `machines.ini` is never shipped to a host); the dev-machine
+# This file is private data: keep it in the consumer's private config repo and
+# place it at etc/machines.ini (see doc/system/consumer-config.md). It is
+# dev/deploy-time only — `pf-deploy.sh` reads the [prod] roster locally, on the
+# deploy machine, and `machines.ini` is never shipped to a host; the dev-machine
 # `DBUSER` mapping now lives in etc/team.ini (see etc/team.ini.template +
 # doc/system/team-db-users.md), not here.
 #

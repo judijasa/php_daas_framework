@@ -1,12 +1,10 @@
 <?php
 // Host-hardening declaration template — the firewall reconcile data consumed
 // by bin/gen-firewall. The real values are private data: keep the file in the
-// consumer's private config repo and let fetch-private-data inject it into
-// etc/host-hardening.php as a symlink (see doc/system/private-config.md).
-// The consumer commits a copy of this template carrying placeholder values
-// only — never the real deployment values, and never a real file at
-// etc/host-hardening.php, which would shadow the private data instead of being
-// overwritten.
+// consumer's private config repo and place it at etc/host-hardening.php (see
+// doc/system/consumer-config.md). The consumer commits a copy of this template
+// carrying placeholder values only — never the real deployment values, which
+// would put them in the public history.
 //
 // gen-firewall reads etc/host-hardening.php and computes the desired ufw rule
 // set for each [prod] host from its etc/machines.ini tags, applied as root

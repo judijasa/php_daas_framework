@@ -32,7 +32,7 @@ subject_for() {
     local member="$1"
     local ini="${TEAM_INI:-$PWD/etc/team.ini}"
     if [[ ! -f "$ini" ]]; then
-        echo "gen-cert: $ini not found (inject etc/team.ini via fetch-private-data — see doc/system/private-config.md)" >&2
+        echo "gen-cert: $ini not found (etc/team.ini is consumer-owned private data — see doc/system/consumer-config.md)" >&2
         exit 1
     fi
     awk -F= -v m="$member" '

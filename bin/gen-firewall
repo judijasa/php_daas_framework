@@ -60,7 +60,7 @@ function host_hardening_file(string $root): ?string
     if (is_file($file)) {
         return $file;
     }
-    fwrite(STDERR, "gen-firewall: no {$file} (inject it via fetch-private-data — see doc/system/private-config.md)\n");
+    fwrite(STDERR, "gen-firewall: no {$file} (etc/host-hardening.php is consumer-owned private data — see doc/system/consumer-config.md)\n");
     return null;
 }
 
@@ -453,7 +453,7 @@ function main(array $argv): int
 
     $roster = prod_roster($root . '/etc/machines.ini');
     if (count($roster) === 0) {
-        fwrite(STDERR, "gen-firewall: no [prod] roster in {$root}/etc/machines.ini (inject etc/machines.ini via fetch-private-data — see doc/system/private-config.md)\n");
+        fwrite(STDERR, "gen-firewall: no [prod] roster in {$root}/etc/machines.ini (etc/machines.ini is consumer-owned private data — see doc/system/consumer-config.md)\n");
         return 1;
     }
 

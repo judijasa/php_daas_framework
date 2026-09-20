@@ -1,29 +1,29 @@
-# Private config source pointer (git-ignored).
+# Private config source pointer (git-ignored) — a consumer-side convention.
 #
-# The public repo ships only committed templates for the operational data
-# (etc/machines.ini, etc/reuter.ini, etc/team.ini). The real values live in a
-# separate, access-controlled private repository — a small git repo whose
-# tracked files are `machines.ini`, `reuter.ini` and `team.ini`, plus any
-# consumer-specific dev-only files such as `hosts` (a hostname→IP mapping),
-# mirroring the consumer's etc/. This file tells `fetch-private-data` where to
-# find that repo.
+# The framework ships only committed templates for the operational data
+# (etc/machines.ini, etc/reuter.ini, etc/team.ini, ...). The real values are
+# private and must not enter the public Git history: keep them in a separate,
+# access-controlled private repository — a small git repo whose tracked files
+# mirror the consumer's etc/ (machines.ini, reuter.ini, team.ini, plus any
+# consumer-specific dev-only files such as `hosts`, a hostname→IP mapping).
 #
-# Copy this file to `.private-source` (untracked, machine-specific) and set
-# the one retrieval mechanism — a git URL (+ optional ref), fetched on demand
-# into var/private-data (git-ignored, like the rest of /var/):
+# Fetching and injecting that data is a consumer concern: the framework does
+# not read this file (its dev-init/deploy tooling, or plain symlinks into
+# etc/, are the consumer's own business). This file documents the shape of the
+# pointer so consumers share one convention — copy it to `.private-source`
+# (untracked, machine-specific) and set the retrieval mechanism: a git URL
+# (+ optional ref), fetched on demand into var/private-data (git-ignored, like
+# the rest of /var/):
 #
-# PRIVATE_DATA_GIT=git@example.com:team/app-private-config.git
+# PRIVATE_DATA_GIT=git@example.com:team/app-consumer-config.git
 # PRIVATE_DATA_REF=main
 #
 # The private repo's committed content is the single source of truth: no
-# machine runs on a loose, uncommitted copy. `reuter.ini` is the only file
-# that ever ships to a prod host (whole, via bin/deploy-private-config);
-# `machines.ini` and `team.ini` stay dev/deploy-time and never leave the
-# deploy machine. A `.private-source` that sets no PRIVATE_DATA_GIT is an
-# error, not a silent skip; an absent `.private-source` is a no-op (prod has
-# no git and no pointer — it resolves the stable per-app dir from
-# DEPLOY_PRIVATE_CONFIG_DIR instead).
+# machine runs on a loose, uncommitted copy. Nothing in the private repo
+# reaches a prod host on its own — the consumer's own deploy tooling decides
+# what a host needs (typically etc/deploy.conf and etc/reuter.ini, restored by
+# its DEPLOY_PRE_PROVISION_CMD hook; see doc/system/consumer-config.md).
 #
 # This file never discloses the private repo's identity in the public history
 # (it is git-ignored). Access control on the private repo is the real security
-# boundary — see doc/system/private-config.md.
+# boundary — see doc/system/consumer-config.md.

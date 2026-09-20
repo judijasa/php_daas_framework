@@ -11,8 +11,9 @@
 ; value means a passwordless account.
 ;
 ; This file carries prod connectivity only and is MANUALLY MAINTAINED by the
-; consumer (private data, injected into etc/ by fetch-private-data — see
-; doc/system/private-config.md). There is no generator anymore: `ema create
+; consumer: it is private data, kept in the consumer's own private config repo
+; and placed at this path (see doc/system/consumer-config.md). There is no
+; generator anymore: `ema create
 ; srv/<name>-<GUID>` provisions the database's own MariaDB instance and
 ; prints the [<dbname>] section (SERVER/PORT/DBMS/MYSQL_UNIX_PORT) for the
 ; operator to record here (or `ema values <db>` recovers a lost record). The

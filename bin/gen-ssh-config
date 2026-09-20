@@ -185,7 +185,7 @@ main() {
         die "HOME is not set; the drop-in location (~/.ssh/config.d) cannot be resolved"
     fi
     if [[ ! -f "$hosts" ]]; then
-        die "$hosts not found — pass --hosts <path>; it is the consumer's 'ip name' mapping (fetch-private-data injects it into etc/)."
+        die "$hosts not found — pass --hosts <path>; it is the consumer's 'ip name' mapping (kept as private data in etc/)."
     fi
 
     # Parse the mapping: `ip name` per line, comments and blank lines ignored.

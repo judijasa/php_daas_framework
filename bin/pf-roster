@@ -6,9 +6,9 @@ declare(strict_types=1);
 // pf-roster — shared [prod] roster parser for the deploy toolchain.
 //
 // Reads etc/machines.ini [prod] from the consumer repo root (the current
-// working directory) and answers generic tag queries, so pf-deploy.sh,
-// deploy-private-config and the consumer deploy wrapper share one parse of
-// the `tag[:name]` token list.
+// working directory) and answers generic tag queries, so pf-deploy.sh and
+// the consumer deploy wrapper share one parse of the `tag[:name]` token
+// list.
 //
 // [prod] value grammar (comma-separated tokens):
 //   bare tag     `web`       -> boolean flag (a deploy step on this host)

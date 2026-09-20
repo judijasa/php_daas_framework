@@ -8,7 +8,7 @@ owns the mechanism (`bin/gen-ssh-config`); the consumer owns the data (its
 ## What it writes
 
 `gen-ssh-config <app>` reads the consumer's `hosts` mapping — the same private
-file its `/etc/hosts` merge reads (see `doc/system/private-config.md`) — and
+file its `/etc/hosts` merge reads (see `doc/system/consumer-config.md`) — and
 emits one drop-in per app:
 
 ```text
@@ -40,7 +40,8 @@ gen-ssh-config <app> [--hosts <path>] [--user <user>] [--key <path>]
 | `--key <path>` | `IdentityFile` for every generated `Host` (default `~/.ssh/<app>-sshkey`). |
 
 A consumer wires it into its own dev init, after the step that puts `hosts` in
-place (`fetch-private-data` injects the private config into `etc/`):
+place (the consumer's own consumer-config step — see
+`doc/system/consumer-config.md`):
 
 ```make
 _dev-ssh-config:
