@@ -3,8 +3,9 @@
 #
 # Runs as root on the remote via `deploy`, from the deployed repo
 # root (the repo directory already exists — created by the deploy swap).
-# Parameterized entirely by the consumer's etc/deploy.conf, sourced as a plain
-# file (restored on the host before this runs); the consumer owns the values,
+# Parameterized by the consumer's etc/deploy.conf — sourced as a plain
+# file when present, otherwise the replayed deploy.conf environment supplies
+# the values. The consumer owns the values,
 # the framework owns the mechanism. Idempotent.
 #
 # The framework no longer provisions MariaDB: database instances are created
@@ -23,13 +24,18 @@
 # state) belong in DEPLOY_INIT_CMD, which `deploy` runs after this
 # script.
 #
-# Usage: pf-provision.sh   (root; config from etc/deploy.conf)
+# Usage: pf-provision.sh   (root; config from etc/deploy.conf or the replayed env)
 
 set -euo pipefail
 
-set -a
-. ./etc/deploy.conf
-set +a
+# Values come from the replayed deploy.conf environment (see pf-deploy.sh);
+# a consumer that commits a real etc/deploy.conf still overrides it.
+if [[ -f ./etc/deploy.conf ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./etc/deploy.conf
+    set +a
+fi
 
 # 1. Assert the provisioning system user exists (assert-only by decision;
 #    ssh access to PROD_USER is a documented pre-deploy prerequisite).

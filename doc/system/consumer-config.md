@@ -3,10 +3,12 @@
 Date: 2026-09-20
 Scope: how this framework separates public code from private operational data.
 The framework owns the mechanism and ships committed templates; the consumer
-owns the private files, keeps them in its own private repository, and is
-responsible for putting them in place. The framework never fetches, ships or
-injects private config — it sources the real files it finds in `etc/` as plain
-files and fails loudly when one is missing.
+owns the private files, keeps them in its own private repository, and declares
+which of them the framework must ship to prod (`DEPLOY_PRIVATE_FILES`). Deploy
+config (`etc/deploy.conf`) is deploy-machine-only: the framework sources it
+locally and replays its environment to the host, so prod never holds a copy.
+The framework sources whatever real `etc/` files it finds and fails loudly when
+one it needs is missing.
 
 ## What is private data
 
@@ -16,16 +18,18 @@ public Git history:
 
 | File | Public template | Private data |
 |---|---|---|
-| `etc/deploy.conf` | `etc/deploy.conf.template` | project deployment target (paths, the app-user name, cron target); needed on every prod host |
+| `etc/deploy.conf` | `etc/deploy.conf.template` | project deployment target (paths, the app-user name, cron target); deploy machine only — its values are replayed to hosts as env |
 | `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`); needed on every prod host |
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster (dev/deploy machine only) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs (dev machine only) |
 | `etc/host-hardening.php` | `etc/host-hardening.php.template` | firewall reconcile declaration (`$zerotierRange`, `$cloudTest`, `$tagRules`) for `gen-firewall` (dev/deploy machine only) |
 | `etc/hosts` | — (optional) | dev-only name→IP mapping for the consumer's `/etc/hosts` merge and its generated dev ssh aliases (`gen-ssh-config`) |
 
-`deploy.conf` and `reuter.ini` are the only private files a prod host needs, so
-they are the only ones a consumer's deploy pipeline ever has to deliver — and
-they are delivered **whole** (no inner filtering, no section splicing).
+`reuter.ini` is the only private file a prod host needs, so it is the only one
+a consumer's deploy pipeline ever has to deliver — and it is delivered **whole**
+(no inner filtering, no section splicing). `deploy.conf` stays on the deploy
+machine: its values are the deploy parameters, replayed to the host as
+environment rather than shipped as a file.
 `machines.ini`, `team.ini`, `hosts` and `host-hardening.php` are dev/deploy-time
 inputs: `machines.ini` feeds the local deploy roster, `team.ini` feeds
 `gen-cert`/`gen-grants`/`gen-service-accounts`/`init-local-env`, `hosts`
@@ -57,19 +61,21 @@ service-account auth policy — passwords vs. certificates — is a deferred
 decision; see
 `doc/plans/2026-09-09-ema-prod-instance-at-create-manual-reuter.md`).
 
-## Consumer-owned delivery
+## Private-file delivery
 
-Getting the private files onto a machine is the consumer's job. The framework
-neither knows nor cares how it is done — a git clone plus symlinks into `etc/`,
-a `git archive` extraction, `scp`, or the consumer's own script all work. What
-the framework guarantees is the reading side:
+Getting the private files onto a prod host is the framework's job for the files
+the consumer declares in `DEPLOY_PRIVATE_FILES`, and the consumer's job for
+everything else. What the framework guarantees on the reading side:
 
 - `bin/pf-deploy.sh` sources `etc/deploy.conf` and reads the `[prod]` roster
   from `etc/machines.ini` as plain files on the dev/deploy machine, and fails
-  loudly when either is missing.
+  loudly when either is missing. It replays the sourced `deploy.conf`
+  environment to every remote step and ships the files named in
+  `DEPLOY_PRIVATE_FILES` into the freshly swapped `etc/`.
 - `bin/pf-provision.sh`, `bin/gen-env`, `bin/cron-manifest`, `bin/db-check`
-  and `bin/replica-bootstrap` read the real files the same way: no fetching, no
-  symlink creation, no "shadowed file" warnings.
+  and `bin/replica-bootstrap` read the real files the same way: `deploy.conf`
+  is sourced only when present (otherwise the replayed environment supplies the
+  values); no fetching, no symlink creation, no "shadowed file" warnings.
 - `bin/gen-cert`, `bin/gen-grants`, `bin/gen-ssh-config` and `bin/gen-firewall`
   read their private inputs from `etc/` and fail loudly when one is absent
   (`gen-ssh-config` takes `--hosts <path>` for a mapping kept elsewhere).
@@ -80,35 +86,35 @@ the framework guarantees is the reading side:
 to share: an untracked, git-ignored `.private-source` at the repo root naming
 the private repo's git URL (+ optional ref), fetched on demand into the
 git-ignored `var/private-data`. The framework does not read that file — it is
-the consumer's own dev-init/deploy tooling that fetches and injects.
+the consumer's own dev-init tooling that fetches and materializes `etc/` before
+`deploy` ships `DEPLOY_PRIVATE_FILES`.
 
 ## Production (no git)
 
 Prod hosts have no git and no consumer-config tooling, so delivery runs from the
 deploy machine, which has both. `bin/pf-deploy.sh` swaps the repo directory on
 every deploy, which wipes `etc/`, so the real private files must be restored on
-the host **before** anything sources them. The framework's single hook for that
-is `DEPLOY_PRE_PROVISION_CMD` (optional; see `etc/deploy.conf.template`):
+the host **before** anything reads them. Two mechanisms cover that:
 
-1. The consumer ships its private files to a stable per-app directory on the
-   host (outside `DEPLOY_TARGET_DIR`, which is swapped on every deploy) with its
-   own tooling — the framework ships nothing. `DEPLOY_PRIVATE_CONFIG_DIR` is a
-   documented example variable for that directory; it is consumer-owned, not
-   framework machinery, and no framework script reads it.
-2. `bin/pf-deploy.sh` runs `DEPLOY_PRE_PROVISION_CMD` on the host as root, in
-   the repo root, right after the repo swap + `composer install` and before
-   `pf-provision.sh` and the built-in server steps. The deploy machine's
-   `deploy.conf` environment is replayed for the hook, so it can reference any
-   `DEPLOY_*` value (including `DEPLOY_PRIVATE_CONFIG_DIR`) without the host
-   having a `deploy.conf` of its own yet.
-3. The hook materializes the real `etc/deploy.conf` and `etc/reuter.ini` (the
-   latter at `DEPLOY_REUTER_INI`). `pf-deploy.sh` then fails loudly if
-   `etc/deploy.conf` is still missing, so a consumer that commits its real
-   `deploy.conf` and needs no hook also works.
+1. **`DEPLOY_PRIVATE_FILES`** (see `etc/deploy.conf.template`) names the
+   `etc/`-relative files the framework ships — tarred from the deploy machine's
+   `etc/` and extracted into the freshly swapped `etc/` in one post-swap step.
+   The consumer materializes `etc/` first (its own dev-init/fetch step). This is
+   the plain, no-hook path; for a host that only needs `reuter.ini`, that is the
+   whole story.
+2. **`DEPLOY_PRE_PROVISION_CMD`** (optional) runs on the host as root, in the
+   repo root, after the private files are shipped and before `pf-provision.sh`
+   and the built-in server steps, for anything beyond a plain file copy. The
+   deploy machine's `deploy.conf` environment is replayed for it.
+
+`deploy.conf` is **not** shipped. Its values are replayed as environment to
+every remote step, so the host never needs a copy; a consumer that commits a
+real `etc/deploy.conf` still works (the host-side scripts source the file only
+when present), but committing it is optional.
 
 ```bash
 # deploy machine, inside nix develop, on main:
-bin/pf-deploy.sh   # full deploy; the host's DEPLOY_PRE_PROVISION_CMD restores etc/
+bin/pf-deploy.sh   # full deploy; ships DEPLOY_PRIVATE_FILES, replays deploy.conf env
 ```
 
 ## Security boundary

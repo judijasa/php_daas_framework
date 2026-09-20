@@ -39,6 +39,7 @@
     "bin/dev/pf-shell-enter.sh",
     "bin/dev/init-local-env.sh",
     "bin/pf-provision.sh",
+    "bin/pf-server-steps.sh",
     "bin/replica-bootstrap",
     "bin/gen-ssh-config",
     "bin/gen-firewall"

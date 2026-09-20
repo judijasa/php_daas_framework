@@ -14,14 +14,16 @@
 # etc/machines.ini machine registry. Run from the repo root, inside
 # `nix develop`.
 #
-# Private config is consumer-owned: the framework ships only the templates in
-# etc/ and never fetches, ships or injects the real files. A prod host gets
-# them from the consumer's DEPLOY_PRE_PROVISION_CMD hook (or from the repo
-# itself when the consumer commits them).
+# Private config: the framework ships the consumer-declared private files
+# (DEPLOY_PRIVATE_FILES) into the freshly swapped etc/ and replays the deploy
+# machine's deploy.conf environment to every remote step, so a prod host needs
+# no deploy.conf of its own. A consumer that commits a real etc/deploy.conf
+# (or restores one via DEPLOY_PRE_PROVISION_CMD) still works — host-side
+# scripts source the file only when present.
 #
 # Config surfaces in the consumer repo root:
-#   etc/deploy.conf  (git-ignored, consumer-owned; required) - project
-#   deployment target, shared by every prod host:
+#   etc/deploy.conf  (git-ignored, consumer-owned; required on the deploy
+#   machine) - project deployment target, shared by every prod host:
 #     PROD_USER              unprivileged app user on the remote host
 #                            (must exist with SSH access before first deploy)
 #     DEPLOY_TARGET_DIR      remote repo location (e.g. /srv/apps/<app>)
@@ -31,14 +33,17 @@
 #                            `ema create`); gen-env projects it as REUTER_INI
 #     DEPLOY_NIX_RESULT_DIR  remote nix result parent (e.g. /usr/local/<app>)
 #     DEPLOY_NIX_GCROOT      remote nix gcroot (e.g. /nix/var/nix/gcroots/<app>)
+#     DEPLOY_PRIVATE_FILES   optional: space-separated etc/-relative private
+#                            file names the framework ships from the deploy
+#                            machine's etc/ into the freshly swapped etc/ on
+#                            the host. Skipped if unset.
 #     DEPLOY_PRE_PROVISION_CMD
 #                            optional: consumer-specific hook run on the host
-#                            after the repo swap + composer install and before
-#                            the generic provision, so it can restore the real
-#                            (consumer-owned) private config the swap wiped —
-#                            the repo carries only the templates. The deploy
-#                            machine's deploy.conf environment is replayed for
-#                            it; skipped if unset.
+#                            after the repo swap + composer install (and after
+#                            DEPLOY_PRIVATE_FILES are shipped) and before the
+#                            generic provision, for anything beyond a plain
+#                            file copy. The deploy machine's deploy.conf
+#                            environment is replayed for it; skipped if unset.
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
@@ -437,18 +442,27 @@ deploy_to_host() {
   [ "$NIX_EXISTS" != "true" ] && install_nix_remotely "$REMOTE_HOST" "$PROD_USER" || true
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
-  # Private config is consumer-owned: the framework never fetches, ships or
-  # injects it, and the swap above wiped etc/ (the repo ships only the
-  # templates). DEPLOY_PRE_PROVISION_CMD is the consumer's single hook into
-  # that lifecycle: it runs on the host right here — after the swap + composer
-  # install and before anything sources etc/deploy.conf (pf-provision.sh below
-  # and the framework server steps both do) — with the deploy machine's
-  # deploy.conf environment replayed, so it can restore the real files from
-  # wherever the consumer keeps them (e.g. a stable per-app dir outside
-  # DEPLOY_TARGET_DIR, which is swapped on every deploy). A consumer that
-  # commits a real etc/deploy.conf needs no hook; either way the file must
-  # exist by now, so its absence is reported here instead of as a bare shell
-  # error from the first `source`.
+  # Private config, framework-owned transport (B): ship the files the consumer
+  # declares in DEPLOY_PRIVATE_FILES into the freshly swapped etc/ in one step
+  # — no stable per-app dir, no consumer hook needed for a plain copy. Values
+  # from etc/deploy.conf are NOT shipped as a file; they are replayed as
+  # environment to every remote step below (A).
+  if [ -n "${DEPLOY_PRIVATE_FILES:-}" ]; then
+    echo "Shipping private files ($DEPLOY_PRIVATE_FILES) to $REMOTE_HOST..." >&2
+    tar -C etc -cf - $DEPLOY_PRIVATE_FILES | ssh "root@$REMOTE_HOST" "
+      set -e
+      cd '$REMOTE_TARGET_DIR'
+      mkdir -p etc
+      tar -x -C etc --no-same-owner
+      for _f in $DEPLOY_PRIVATE_FILES; do chown $PROD_USER:$PROD_USER \"etc/\$_f\"; done
+    "
+  fi
+
+  # Deploy config replay (A): every post-swap remote step gets the deploy
+  # machine's deploy.conf environment, so the host needs no deploy.conf of its
+  # own. A consumer that commits a real etc/deploy.conf (or restores one via
+  # the hook below) still overrides it — the host-side scripts source the file
+  # only when present.
   echo "Running the consumer pre-provision hook (if configured) on remote..." >&2
   ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
 set -euo pipefail
@@ -457,59 +471,47 @@ if [ -n "\${DEPLOY_PRE_PROVISION_CMD:-}" ]; then
     echo "    Running DEPLOY_PRE_PROVISION_CMD (consumer private config)..." >&2
     bash -c "\$DEPLOY_PRE_PROVISION_CMD" </dev/null
 fi
-if [ ! -f etc/deploy.conf ]; then
-    echo "pf-deploy: no etc/deploy.conf in $REMOTE_TARGET_DIR on this host." >&2
-    echo "  The framework ships only etc/deploy.conf.template: commit a real file or set DEPLOY_PRE_PROVISION_CMD to restore it." >&2
-    exit 1
-fi
+# The required values must be in scope now — from the replayed environment, a
+# restored deploy.conf, or a committed one. No hard file requirement.
+for _v in DEPLOY_TARGET_DIR DEPLOY_LOG_DIR DEPLOY_REUTER_INI DEPLOY_NIX_RESULT_DIR DEPLOY_NIX_GCROOT; do
+    if [ -z "\${!_v:-}" ]; then
+        echo "pf-deploy: missing required config on host: \$_v" >&2
+        exit 1
+    fi
+done
 EOF
   # Generic provisioning (framework mechanism, shipped in the deployed repo):
-  # assert PROD_USER, create permanent dirs — parameterized by
-  # etc/deploy.conf. Idempotent, so it runs on every deploy. (Database
-  # instances are provisioned by `ema create` at database-creation time, not
-  # here.)
+  # assert PROD_USER, create permanent dirs — parameterized by the replayed
+  # deploy.conf environment (or a committed etc/deploy.conf). Idempotent, so it
+  # runs on every deploy. (Database instances are provisioned by `ema create`
+  # at database-creation time, not here.)
   echo "Running generic provisioning (vendor/bin/pf-provision.sh) on remote..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && vendor/bin/pf-provision.sh"
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
+set -euo pipefail
+$DEPLOY_CONF_ENV
+vendor/bin/pf-provision.sh
+EOF
   # Optional consumer-specific extras, run after the generic step.
   if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
     echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2
-    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && $DEPLOY_INIT_CMD"
+    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
+set -euo pipefail
+$DEPLOY_CONF_ENV
+$DEPLOY_INIT_CMD
+EOF
   fi
 
-  # Framework server steps (run on every host): the repo dir is replaced on
-  # every deploy, so the git-ignored deploy.conf/reuter.ini and .env were
-  # already restored by the injection step above (before anything read them).
-  # gen-env regenerates .env; db-check verifies DB connectivity (warn-only,
-  # never repairs); the cron install is gated on the bare `worker` token
-  # (detected above). The remote script runs from the deployed repo root and
-  # sources the injected etc/deploy.conf, so the CRON_*/DEPLOY_* values used
-  # here are the shipped ones.
+  # Framework server steps (run on every host): gen-env regenerates .env;
+  # db-check verifies DB connectivity (warn-only, never repairs); the cron
+  # install is gated on the bare `worker` token (detected above). The steps run
+  # from the deployed repo root with the replayed deploy.conf environment; the
+  # private etc/ files were shipped above.
   echo "Running framework server steps (gen-env, db-check, cron install) on remote..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST bash -s" <<'PF_DEPLOY_SERVER_STEPS'
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST bash -s" <<EOF
 set -euo pipefail
-# CWD is the deployed repo root (the ssh command above cds first).
-. ./etc/deploy.conf
-export PATH="$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin:$PATH"
-echo "    Regenerating production .env..." >&2
-gen-env
-echo "    Verifying database connectivity (warn-only)..." >&2
-db-check --reuter-ini "$DEPLOY_REUTER_INI"
-if [ "$IS_WORKER_HOST" = "1" ]; then
-    if [ -z "${CRON_FILE-}" ]; then
-        echo "pf-deploy: this host carries the 'worker' tag but etc/deploy.conf sets no CRON_FILE." >&2
-        exit 1
-    fi
-    # Cron entries need both phprun (vendor/bin) and php (nix result bin) on
-    # PATH; CRON_NIX_BIN becomes the crontab `NIX_BIN=` assignment prepended
-    # to every entry. Consumers may override it in etc/deploy.conf.
-    export CRON_NIX_BIN="${CRON_NIX_BIN:-$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin}"
-    echo "    Updating cron jobs from #[CronJob]/#[Agent] attributes..." >&2
-    cron-manifest > "$CRON_FILE"
-    chmod 644 "$CRON_FILE"
-    systemctl restart cron 2>/dev/null || systemctl restart crond
-    echo "    Cron jobs installed to $CRON_FILE." >&2
-fi
-PF_DEPLOY_SERVER_STEPS
+$DEPLOY_CONF_ENV
+vendor/bin/pf-server-steps.sh
+EOF
 
   # Here, you can also clear any caches or perform other post-deployment tasks
   # Perhaps better to clear caches in src/scripts/maintenance cron jobs.
