@@ -117,18 +117,20 @@ both modes share the identical `Utils\` classes in `src/`.
 ### Standalone prod init
 
 Deploying this repo to a production server runs the exact same `bin/pf-deploy.sh`
-workflow as a consumer — only the config data is this repo's own. One
-committed config file must exist before the first deploy:
+workflow as a consumer — only the config data is this repo's own. The deploy
+config must exist before the first deploy:
 
-1. **`etc/deploy.conf`** — copy from `etc/deploy.conf.template`, fill in the
-   deployment target (`PROD_USER`, `DEPLOY_TARGET_DIR`, `DEPLOY_LOG_DIR`,
-   `DEPLOY_REUTER_INI`, `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`), and
-   commit. Optional: `DEPLOY_INIT_CMD` (consumer-specific provisioning
-   command run after the framework's generic `bin/pf-provision.sh`) and cron
-   vars (`CRON_FILE`, `CRON_USER`). `pf-deploy.sh` fails loudly if this file is
-   missing. The remote host must already have the `PROD_USER` account with
-   SSH access — see "Before the first deploy" under "Deploying a consumer
-   project".
+1. **`etc/deploy.conf`** — the deployment target (`PROD_USER`,
+   `DEPLOY_TARGET_DIR`, `DEPLOY_LOG_DIR`, `DEPLOY_REUTER_INI`,
+   `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`; optional `DEPLOY_INIT_CMD`,
+   the consumer-specific provisioning command run after the framework's
+   generic `bin/pf-provision.sh`, and the cron vars `CRON_FILE`/`CRON_USER`).
+   Keep it in a private config repo and inject it via `.private-source` (see
+   `doc/system/private-config.md`); a project that runs without private data
+   copies `etc/deploy.conf.template` to `etc/deploy.conf` and commits it
+   instead. `pf-deploy.sh` fails loudly if the file is missing. The remote host
+   must already have the `PROD_USER` account with SSH access — see "Before the
+   first deploy" under "Deploying a consumer project".
 
 The git-ignored `.env` is generated on the remote by `pf-deploy.sh` on every
 deploy — there is no committed `etc/env.prod` anymore: `gen-env` (a built-in
@@ -245,9 +247,10 @@ closed-world) implements the service-account flow; see
 `doc/system/service-accounts.md`.
 
 `fetch-private-data` (inject git-ignored private config into `etc/` — from a
-`.private-source` clone, or by linking `reuter.ini` from
+`.private-source` clone, or by linking `deploy.conf` and `reuter.ini` from
 `DEPLOY_PRIVATE_CONFIG_DIR`) and `deploy-private-config` (ship the consumer's
-`reuter.ini` whole to every `[prod]` host) implement the private-config flow;
+`deploy.conf` + `reuter.ini` whole to every `[prod]` host) implement the
+private-config flow;
 see `doc/system/private-config.md`.
 
 The PHP library itself (the `Utils\` PSR-4 namespace under `src/`) is
@@ -296,7 +299,7 @@ invoke `phprun` from the repo root. Values in `.env` override anything
 already in the process environment; if neither provides the required
 variables, `phprun` fails loudly. The dev `.env` is regenerated every time by
 `make dev-init` (`init-local-env.sh`); the production `.env` is regenerated on
-every deploy by `gen-env` as a deterministic projection of the committed
+every deploy by `gen-env` as a deterministic projection of the injected
 `etc/deploy.conf`.
 
 | Variable | Purpose |
@@ -313,7 +316,7 @@ repo to a remote production server: near-atomic swap of the repo dir, local
 `nix build` + closure copy, `composer install` on every deploy (`git archive` wipes `vendor/` each time), and idempotent
 provisioning on every deploy.
 
-Standalone, the same CLI deploys this repo itself — the required committed
+Standalone, the same CLI deploys this repo itself — the required deploy
 config (`etc/deploy.conf`) and the exact steps are in "Standalone prod init"
 under "Standalone template usage". The workflow is identical to a consumer's;
 only the config data differs.
@@ -325,8 +328,10 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
 
 `pf-deploy.sh` reads three config surfaces from the consumer repo root:
 
-- **`etc/deploy.conf`** (committed, required) - the project-static deployment
-  target; copy from `etc/deploy.conf.template` and fill in:
+- **`etc/deploy.conf`** (private data, injected; required) - the deployment
+  target; keep it in a separate private config repo and inject it via
+  `.private-source`, or copy `etc/deploy.conf.template` into the repo and
+  commit it when the project runs without private data:
 
 | Variable | Purpose |
 |---|---|
@@ -462,14 +467,14 @@ The framework ships four more CLIs run by pf-deploy as built-in server steps
 (also on PATH in the consumer's dev shell and production artifact):
 
 - **`fetch-private-data`** — injects the git-ignored private config into
-  `etc/`: a `.private-source` clone/fetch links `reuter.ini` (plus
-  `machines.ini`/`team.ini`/`hosts`/`host-hardening.php`), and without one it
-  links `reuter.ini` from
+  `etc/`: a `.private-source` clone/fetch links `deploy.conf` and `reuter.ini`
+  (plus `machines.ini`/`team.ini`/`hosts`/`host-hardening.php`), and without
+  one it links `deploy.conf` + `reuter.ini` from
   `DEPLOY_PRIVATE_CONFIG_DIR` (the prod server step); see
   `doc/system/private-config.md`.
 
 - **`gen-env [target-dir]`** — regenerates `.env` as a deterministic
-  projection of the consumer's committed `etc/deploy.conf`
+  projection of the consumer's injected `etc/deploy.conf`
   (`REPO_PATH`/`REPO_LOG`/`REUTER_INI`/`EMA_TARGET=prod`; the `.env` stays
   `MYSQL_*`-free — the DB host's socket lives in the prod `reuter.ini`
   section recorded from `ema create`), with a fail-fast guard: a required

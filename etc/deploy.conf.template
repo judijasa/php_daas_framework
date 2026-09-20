@@ -1,10 +1,17 @@
-# Project-static deploy configuration (COMMIT this file to the consumer repo).
-# Copy from the framework's etc/deploy.conf.template, fill in the values, and
-# commit it. `deploy` requires it at the repo root and fails loudly if missing.
+# Deploy configuration template — the deployment target shared by every prod
+# server listed in etc/machines.ini: PROD_USER and the DEPLOY_* paths are
+# identical on all hosts.
 #
-# This is the common deploy config for every prod server listed in
-# etc/machines.ini: PROD_USER and the DEPLOY_* paths are identical on all
-# hosts. Database instances are no longer provisioned at deploy time — they
+# The real file is private data: keep `deploy.conf` in a separate private
+# config repo and inject it via `.private-source` into etc/deploy.conf (see
+# doc/system/private-config.md) — never a real file at that path, which would
+# shadow the injected data instead of being overwritten. Committing it into the
+# repo instead is supported for a project that runs without private data: copy
+# this template to etc/deploy.conf, fill in the values, and leave it out of the
+# private repo (deploy-private-config ships it only when it is there). Either
+# way `deploy` requires it at the repo root and fails loudly if missing.
+#
+# Database instances are no longer provisioned at deploy time — they
 # are created by `ema create` (one instance per database) and the operator
 # records the emitted connectivity in the consumer's manual reuter.ini (see
 # doc/system/ema.md). DEPLOY_REUTER_INI points at that file.
@@ -46,11 +53,12 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 export DEPLOY_REUTER_INI=/srv/apps/<app>/etc/reuter.ini
 
 # DEPLOY_PRIVATE_CONFIG_DIR: stable per-app private-config directory on the
-# host. bin/deploy-private-config ships the consumer's reuter.ini (whole) here
-# from the private config repo's committed content; fetch-private-data (a
-# pf-deploy server step) symlinks it into etc/reuter.ini, which
-# DEPLOY_REUTER_INI points at. It MUST live OUTSIDE DEPLOY_TARGET_DIR, which
-# is swapped on every deploy.
+# host. bin/deploy-private-config ships the consumer's deploy.conf and
+# reuter.ini (whole) here from the private config repo's committed content;
+# fetch-private-data (a pf-deploy step, run right after the repo swap) symlinks
+# them into etc/ — deploy.conf before pf-provision.sh and the server steps
+# source it, reuter.ini where DEPLOY_REUTER_INI points. It MUST live OUTSIDE
+# DEPLOY_TARGET_DIR, which is swapped on every deploy.
 export DEPLOY_PRIVATE_CONFIG_DIR=/srv/private/<app>
 
 # DEPLOY_NIX_RESULT_DIR: remote nix result parent.

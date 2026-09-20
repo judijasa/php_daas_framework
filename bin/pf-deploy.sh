@@ -8,13 +8,13 @@
 # /etc/<instance>/reuter.ini), and installs cron on `worker`-tagged hosts.
 #
 # Configuration is loaded from the consumer repo root: `.env` (machine
-# settings, same contract as `phprun`) for REPO_PATH, a committed
-# etc/deploy.conf for the project-static deploy parameters, and the
-# git-ignored etc/machines.ini machine registry. Run from the repo root,
-# inside `nix develop`.
+# settings, same contract as `phprun`) for REPO_PATH, the git-ignored
+# etc/deploy.conf (private data, injected by fetch-private-data) for the
+# project deploy parameters, and the git-ignored etc/machines.ini machine
+# registry. Run from the repo root, inside `nix develop`.
 #
 # Config surfaces in the consumer repo root:
-#   etc/deploy.conf  (COMMITTED, required) - project-static deployment target,
+#   etc/deploy.conf  (git-ignored, injected; required) - project deployment target,
 #   shared by every prod host:
 #     PROD_USER              unprivileged app user on the remote host
 #                            (must exist with SSH access before first deploy)
@@ -59,20 +59,21 @@ if [[ -f "$PWD/.env" ]]; then
   set +a
 fi
 
-# Load project-static deploy config from a committed etc/deploy.conf. Unlike
-# .env (generated per environment, git-ignored), deploy.conf is committed and
-# describes the deployment target. It is required.
+# Load the deploy config from a git-ignored etc/deploy.conf (private data,
+# injected by fetch-private-data via `make dev-init`). Unlike .env (generated
+# per environment), deploy.conf describes the deployment target. It is
+# required.
 if [[ ! -f "$PWD/etc/deploy.conf" ]]; then
   echo "pf-deploy: $PWD/etc/deploy.conf not found" >&2
-  echo "  Copy the framework's etc/deploy.conf.template into the repo and fill in the values." >&2
+  echo "  Inject the private deploy.conf via fetch-private-data (make dev-init) — it lives in the private config repo." >&2
   exit 1
 fi
 set -a
 . "$PWD/etc/deploy.conf"
 set +a
 
-# Inject git-ignored private config (etc/machines.ini, etc/reuter.ini,
-# etc/team.ini) from the private repository referenced by .private-source,
+# Inject git-ignored private config (etc/deploy.conf, etc/machines.ini,
+# etc/reuter.ini, etc/team.ini) from the private repository referenced by .private-source,
 # when configured. A no-op when .private-source is absent — the repo stays
 # functional without private data (see bin/fetch-private-data +
 # doc/system/private-config.md).
@@ -415,6 +416,13 @@ deploy_to_host() {
   [ "$NIX_EXISTS" != "true" ] && install_nix_remotely "$REMOTE_HOST" "$PROD_USER" || true
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
+  # Inject the private deploy.conf + reuter.ini into the freshly-swapped repo
+  # before anything sources etc/deploy.conf (pf-provision.sh below and the
+  # server steps that follow both do). DEPLOY_PRIVATE_CONFIG_DIR was read from
+  # the deploy machine's own deploy.conf; pass it explicitly so the host needs
+  # no committed deploy.conf (the repo now ships only the template).
+  echo "Injecting private config (deploy.conf, reuter.ini) into the deployed repo..." >&2
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && DEPLOY_PRIVATE_CONFIG_DIR='$DEPLOY_PRIVATE_CONFIG_DIR' vendor/bin/fetch-private-data"
   # Generic provisioning (framework mechanism, shipped in the deployed repo):
   # assert PROD_USER, create permanent dirs — parameterized by
   # etc/deploy.conf. Idempotent, so it runs on every deploy. (Database
@@ -429,23 +437,19 @@ deploy_to_host() {
   fi
 
   # Framework server steps (run on every host): the repo dir is replaced on
-  # every deploy, so the git-ignored etc/reuter.ini and .env must be restored
-  # before anything reads them — and, on `worker` hosts, before the cron
-  # manifest is installed. fetch-private-data links reuter.ini in from the
-  # stable per-app dir (DEPLOY_PRIVATE_CONFIG_DIR); gen-env regenerates .env;
-  # db-check verifies DB connectivity (warn-only, never repairs); the cron
-  # install is gated on the bare `worker` token (detected above). The remote
-  # script runs from the deployed repo root and sources the DEPLOYED
-  # etc/deploy.conf, so the CRON_*/DEPLOY_* values used here are the shipped
-  # ones.
-  echo "Running framework server steps (fetch-private-data, gen-env, db-check, cron install) on remote..." >&2
+  # every deploy, so the git-ignored deploy.conf/reuter.ini and .env were
+  # already restored by the injection step above (before anything read them).
+  # gen-env regenerates .env; db-check verifies DB connectivity (warn-only,
+  # never repairs); the cron install is gated on the bare `worker` token
+  # (detected above). The remote script runs from the deployed repo root and
+  # sources the injected etc/deploy.conf, so the CRON_*/DEPLOY_* values used
+  # here are the shipped ones.
+  echo "Running framework server steps (gen-env, db-check, cron install) on remote..." >&2
   ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST bash -s" <<'PF_DEPLOY_SERVER_STEPS'
 set -euo pipefail
 # CWD is the deployed repo root (the ssh command above cds first).
 . ./etc/deploy.conf
 export PATH="$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin:$PATH"
-echo "    Linking private config (reuter.ini) into etc/..." >&2
-fetch-private-data
 echo "    Regenerating production .env..." >&2
 gen-env
 echo "    Verifying database connectivity (warn-only)..." >&2

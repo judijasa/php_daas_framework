@@ -13,7 +13,8 @@ public Git history:
 
 | File | Public template | Private data | Ships to prod? |
 |---|---|---|---|
-| `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`) | **yes — the only private file that leaves the private repo for a host** |
+| `etc/deploy.conf` | `etc/deploy.conf.template` | project deployment target (paths, the app-user name, cron target) | **yes — ships to prod with `reuter.ini`** |
+| `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`) | **yes — ships to prod with `deploy.conf`** |
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster | no (deploy/dev-time only) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs | no (dev-only) |
 | `etc/host-hardening.php` | `etc/host-hardening.php.template` | firewall reconcile declaration (`$zerotierRange`, `$cloudTest`, `$tagRules`) for `gen-firewall` | no (deploy/dev-time only) |
@@ -24,16 +25,17 @@ for its servers); `fetch-private-data` wires it into `etc/` like
 source for both the consumer's `/etc/hosts` merge and its generated dev ssh
 aliases (`doc/system/ssh-config.md`).
 
-`etc/deploy.conf` stays committed: it is project-static (paths, the app-user
-name — no secrets, identical on every prod host), so it is a public interface,
-not private data. The `reuter.ini` connectivity sections (and any
-`<ACCOUNT>_PASSWORD` keys the consumer's service-user provisioning writes into
-them) are private data and live only in the private repo, never in the public
-history.
+`etc/deploy.conf` is now private data too (the project deployment target:
+paths, the app-user name, the cron target) — it ships to prod with
+`reuter.ini`, so the public repo keeps only `etc/deploy.conf.template`. The
+`reuter.ini` connectivity sections (and any `<ACCOUNT>_PASSWORD` keys the
+consumer's service-user provisioning writes into them) are private data and
+live only in the private repo, never in the public history.
 
-`reuter.ini` is the only private file a prod host needs, so it is the only
-one that ever leaves the private repo for a host — and it ships **whole**
-(no inner filtering, no section splicing). `machines.ini`, `team.ini`,
+`deploy.conf` and `reuter.ini` are the only private files a prod host needs,
+so they are the only ones that ever leave the private repo for a host — and
+they ship **whole** (no inner filtering, no section splicing). `machines.ini`,
+`team.ini`,
 `hosts` and `host-hardening.php` are dev/deploy-time inputs: `machines.ini`
 feeds the local deploy roster, `team.ini` feeds
 `gen-cert`/`gen-grants`/`gen-service-accounts`/`init-local-env`, `hosts`
@@ -48,6 +50,7 @@ files mirror the consumer's `etc/` operational data:
 
 ```text
 <private-config>/
+├── deploy.conf
 ├── machines.ini
 ├── reuter.ini
 ├── team.ini
@@ -94,12 +97,14 @@ fetch-private-data [target-dir]   # default: $PWD
 into `etc/` **as symlinks**. It resolves the source in one of two ways:
 
 1. `.private-source` present → the on-demand clone/fetch into the git-ignored
-   `var/private-data` (dev/deploy machines). `reuter.ini` is required;
+   `var/private-data` (dev/deploy machines). `reuter.ini` is required, and so
+   is `deploy.conf` unless the repo carries its own committed copy;
    `machines.ini`/`team.ini`/`hosts`/`host-hardening.php` are wired only when
    the source provides them (dev/deploy).
 2. `.private-source` absent → a no-op, unless `DEPLOY_PRIVATE_CONFIG_DIR`
-   (from `etc/deploy.conf`) names a stable dir that exists — then it links
-   `reuter.ini` (and only `reuter.ini`) from there. This is the prod path.
+   (passed in the environment by pf-deploy.sh, or from the already-injected
+   `etc/deploy.conf`) names a stable dir that exists — then it links
+   `deploy.conf` and `reuter.ini` from there. This is the prod path.
 
 Injection is a symlink, never a copy: `etc/<f>` points into the source, so a
 later run refreshes the data through the link. The wire invariant per
@@ -111,8 +116,9 @@ destination:
   reported loudly, never overwritten (that silent skip is how a machine ends
   up running stale private config while believing it is current).
 
-A missing `reuter.ini` in the resolved source aborts (the app cannot resolve a
-database without it).
+A missing `reuter.ini` in the resolved source aborts (the app cannot resolve
+a database without it), and so does a missing `deploy.conf` unless the repo
+carries its own committed copy (the deploy flow sources it).
 
 `bin/pf-deploy.sh`, `bin/deploy-private-config`, the `make dev-init` target
 (via `bin/dev/init-local-env.sh`), and the dev shell entry
@@ -126,18 +132,19 @@ Prod hosts have no git and hold no `.private-source`. Delivery is a two-step
 split between the deploy machine (which has git) and the host (which has the
 stable per-app private dir):
 
-1. **`bin/deploy-private-config`** (deploy machine) ships `reuter.ini` — whole,
-   from the private repo's committed content via `git archive <ref>` — to the
-   stable per-app dir named by `etc/deploy.conf`'s `DEPLOY_PRIVATE_CONFIG_DIR`
-   on each `[prod]` host. It ships **nothing else**: `machines.ini`,
-   `team.ini`, `hosts` and `host-hardening.php` are never copied to a host. It
-   reads the `[prod]` roster from
-   `etc/machines.ini` locally; `machines.ini` is never shipped.
+1. **`bin/deploy-private-config`** (deploy machine) ships `deploy.conf` and
+   `reuter.ini` — whole, from the private repo's committed content via
+   `git archive <ref>` — to the stable per-app dir named by
+   `etc/deploy.conf`'s `DEPLOY_PRIVATE_CONFIG_DIR` on each `[prod]` host. It
+   ships **nothing else**: `machines.ini`, `team.ini`, `hosts` and
+   `host-hardening.php` are never copied to a host. It reads the `[prod]`
+   roster from `etc/machines.ini` locally; `machines.ini` is never shipped.
 
-2. **`bin/pf-deploy.sh`**, as a built-in server step (after the repo swap,
-   before `gen-env`/`db-check`), runs `fetch-private-data` on the remote, which
-   links the stable dir's `reuter.ini` into the freshly swapped
-   `etc/reuter.ini`.
+2. **`bin/pf-deploy.sh`**, as a built-in step after the repo swap (before
+   `pf-provision.sh` and the `gen-env`/`db-check` server steps), runs
+   `fetch-private-data` on the remote with `DEPLOY_PRIVATE_CONFIG_DIR` in the
+   environment, which links the stable dir's `deploy.conf` and `reuter.ini`
+   into the freshly swapped `etc/`.
 
 Because the stable dir lives outside `DEPLOY_TARGET_DIR` (which is swapped on
 every deploy), the private file survives deploys untouched; only the symlink
@@ -147,8 +154,8 @@ from anything prod-side.
 
 ```bash
 # deploy machine, inside nix develop, on main:
-bin/deploy-private-config          # ship reuter.ini (whole) to every [prod] host
-bin/pf-deploy.sh                   # full deploy; links reuter.ini into etc/ on each host
+bin/deploy-private-config          # ship deploy.conf + reuter.ini (whole) to every [prod] host
+bin/pf-deploy.sh                   # full deploy; links deploy.conf + reuter.ini into etc/ on each host
 ```
 
 ## Security boundary

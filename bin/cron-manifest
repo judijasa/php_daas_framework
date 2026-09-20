@@ -12,7 +12,7 @@ set -euo pipefail
 # Configuration comes from the same two surfaces as `deploy` and `phprun`:
 #   .env            (repo-root, git-ignored)  REPO_PATH (also used to locate
 #                                              src/ and as the cd target).
-#   etc/deploy.conf (committed, required)     CRON_USER, CRON_NIX_BIN (or
+#   etc/deploy.conf (git-ignored, injected)   CRON_USER, CRON_NIX_BIN (or
 #                                              DEPLOY_NIX_RESULT_DIR, from
 #                                              which the bin dir is derived).
 #

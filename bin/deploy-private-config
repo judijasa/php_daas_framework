@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# deploy-private-config — ship a consumer's private reuter.ini (whole) to the
-# stable per-app private-config dir on each prod host, from the private config
-# repo's committed content.
+# deploy-private-config — ship a consumer's private deploy.conf and reuter.ini
+# (whole) to the stable per-app private-config dir on each prod host, from the
+# private config repo's committed content.
 #
 # Runs on the deploy machine (which has git and the private config repo
-# pointer). It ships `reuter.ini` — and ONLY `reuter.ini`: `machines.ini`,
-# `team.ini` and `hosts` are dev/deploy-time files that never leave the
-# deploy machine.
-# The file is shipped whole (no inner filtering, no reuter.ini section
+# pointer). It ships `reuter.ini`, plus `deploy.conf` when the consumer keeps
+# it private — and nothing else: `machines.ini`, `team.ini`, `hosts` and
+# `host-hardening.php` are dev/deploy-time files that never leave the deploy
+# machine.
+# The files are shipped whole (no inner filtering, no reuter.ini section
 # splicing) from `git archive`, so prod runs committed config only — never a
 # dirty working tree or loose git-ignored files.
 #
@@ -51,7 +52,7 @@ fi
 # Deploy config: DEPLOY_PRIVATE_CONFIG_DIR names the stable per-app dir.
 if [[ ! -f "$PWD/etc/deploy.conf" ]]; then
     echo "deploy-private-config: $PWD/etc/deploy.conf not found" >&2
-    echo "  Copy the framework's etc/deploy.conf.template into the repo and fill in the values." >&2
+    echo "  Inject the private deploy.conf via fetch-private-data (make dev-init) — it lives in the private config repo." >&2
     exit 1
 fi
 set -a
@@ -88,18 +89,23 @@ else
     git -C "$SOURCE_DIR" checkout --quiet --detach "$REF"
 fi
 
-# reuter.ini must exist at the pinned ref: it is the only file shipped.
+# reuter.ini is required; deploy.conf ships only when the consumer keeps it
+# private (a committed-deploy.conf consumer leaves it out of the private repo).
 if ! git -C "$SOURCE_DIR" cat-file -e "HEAD:reuter.ini" 2>/dev/null; then
     echo "deploy-private-config: private repo $SOURCE_DIR has no reuter.ini at ref $REF." >&2
     exit 1
+fi
+SHIP_FILES="reuter.ini"
+if git -C "$SOURCE_DIR" cat-file -e "HEAD:deploy.conf" 2>/dev/null; then
+    SHIP_FILES="deploy.conf $SHIP_FILES"
 fi
 
 WANTED="${1:-}"
 
 ship_to_host() {
     local HOST="$1"
-    echo "    Shipping reuter.ini (whole) to $HOST:$DEPLOY_PRIVATE_CONFIG_DIR ..." >&2
-    git -C "$SOURCE_DIR" archive HEAD reuter.ini \
+    echo "    Shipping $SHIP_FILES (whole) to $HOST:$DEPLOY_PRIVATE_CONFIG_DIR ..." >&2
+    git -C "$SOURCE_DIR" archive HEAD $SHIP_FILES \
         | ssh "root@$HOST" "mkdir -p '$DEPLOY_PRIVATE_CONFIG_DIR' && tar -x -C '$DEPLOY_PRIVATE_CONFIG_DIR'"
 }
 
