@@ -96,18 +96,12 @@ the consumer's own dev-init tooling that fetches and materializes `etc/` before
 Prod hosts have no git and no consumer-config tooling, so delivery runs from the
 deploy machine, which has both. `bin/pf-deploy.sh` swaps the repo directory on
 every deploy, which wipes `etc/`, so the real private files must be restored on
-the host **before** anything reads them. Two mechanisms cover that:
-
-1. **`DEPLOY_PRIVATE_FILES`** (see `etc/deploy.conf.template`) names the
-   `etc/`-relative files the framework ships — tarred from the deploy machine's
-   `etc/` and extracted into the freshly swapped `etc/` in one post-swap step.
-   The consumer materializes `etc/` first (its own dev-init/fetch step). This is
-   the plain, no-hook path; for a host that only needs `reuter.ini`, that is the
-   whole story.
-2. **`DEPLOY_PRE_PROVISION_CMD`** (optional) runs on the host as root, in the
-   repo root, after the private files are shipped and before `pf-provision.sh`
-   and the built-in server steps, for anything beyond a plain file copy. The
-   deploy machine's `deploy.conf` environment is replayed for it.
+the host **before** anything reads them. **`DEPLOY_PRIVATE_FILES`** (see
+`etc/deploy.conf.template`) covers that: it names the `etc/`-relative files
+the framework ships — tarred from the deploy machine's `etc/` and extracted
+into the freshly swapped `etc/` in one post-swap step, before anything sources
+them. The consumer materializes `etc/` first (its own dev-init/fetch step); for
+a host that only needs `reuter.ini`, that is the whole story.
 
 `deploy.conf` is **not** shipped. Its values are replayed as environment to
 every remote step, so the host never needs a copy; a consumer that commits a

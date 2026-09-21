@@ -21,8 +21,9 @@
 # The private repo's committed content is the single source of truth: no
 # machine runs on a loose, uncommitted copy. Nothing in the private repo
 # reaches a prod host on its own — the consumer's own deploy tooling decides
-# what a host needs (typically etc/deploy.conf and etc/reuter.ini, restored by
-# its DEPLOY_PRE_PROVISION_CMD hook; see doc/system/consumer-config.md).
+# what a host needs (typically etc/reuter.ini, shipped by the framework's
+# DEPLOY_PRIVATE_FILES; the etc/deploy.conf values travel as replayed
+# environment; see doc/system/consumer-config.md).
 #
 # This file never discloses the private repo's identity in the public history
 # (it is git-ignored). Access control on the private repo is the real security

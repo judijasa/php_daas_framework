@@ -115,11 +115,11 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
   archive), then runs `composer install` on the remote so the framework CLIs
   (`gen-env`, `db-check`, `pf-provision.sh`, ...) and `ema` land in
   `vendor/bin`.
-- `pf-deploy.sh` runs the consumer's optional `DEPLOY_PRE_PROVISION_CMD` on the
-  host right after the repo swap + `composer install` and before provisioning:
-  it restores the real private config the swap wiped (at least
-  `etc/deploy.conf` and `etc/reuter.ini`), with the deploy machine's
-  `deploy.conf` environment replayed.
+- `pf-deploy.sh` ships the private files the consumer names in
+  `DEPLOY_PRIVATE_FILES` into the freshly swapped `etc/` right after the repo
+  swap + `composer install` and before anything reads them (the swap wipes
+  `etc/`). `etc/deploy.conf` is never shipped: its values are replayed as
+  environment to every remote step.
 - `pf-deploy.sh`'s built-in server steps (run after provisioning and
   `DEPLOY_INIT_CMD`, as root, on every host):
   1. `gen-env` → `.env` with `EMA_TARGET=prod` and

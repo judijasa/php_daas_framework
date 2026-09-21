@@ -58,13 +58,6 @@ export DEPLOY_REUTER_INI=/srv/apps/<app>/etc/reuter.ini
 # typically just reuter.ini. Skipped if unset; the consumer must have
 # materialized etc/ first (its own dev-init/fetch step).
 # export DEPLOY_PRIVATE_FILES="reuter.ini"
-#
-# Optional: consumer-owned pre-provision hook, run after the private files are
-# shipped and before anything sources etc/deploy.conf (pf-provision.sh and the
-# framework server steps), for anything beyond a plain file copy. The deploy
-# machine's deploy.conf environment is replayed for it. A project that commits
-# its real etc/deploy.conf needs neither shipping nor a hook.
-# export DEPLOY_PRE_PROVISION_CMD="vendor/bin/restore-consumer-config"
 
 # DEPLOY_NIX_RESULT_DIR: remote nix result parent.
 export DEPLOY_NIX_RESULT_DIR=/usr/local/<app>

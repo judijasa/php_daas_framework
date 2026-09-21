@@ -18,8 +18,7 @@
 # (DEPLOY_PRIVATE_FILES) into the freshly swapped etc/ and replays the deploy
 # machine's deploy.conf environment to every remote step, so a prod host needs
 # no deploy.conf of its own. A consumer that commits a real etc/deploy.conf
-# (or restores one via DEPLOY_PRE_PROVISION_CMD) still works — host-side
-# scripts source the file only when present.
+# still works — host-side scripts source the file only when present.
 #
 # Config surfaces in the consumer repo root:
 #   etc/deploy.conf  (git-ignored, consumer-owned; required on the deploy
@@ -37,13 +36,6 @@
 #                            file names the framework ships from the deploy
 #                            machine's etc/ into the freshly swapped etc/ on
 #                            the host. Skipped if unset.
-#     DEPLOY_PRE_PROVISION_CMD
-#                            optional: consumer-specific hook run on the host
-#                            after the repo swap + composer install (and after
-#                            DEPLOY_PRIVATE_FILES are shipped) and before the
-#                            generic provision, for anything beyond a plain
-#                            file copy. The deploy machine's deploy.conf
-#                            environment is replayed for it; skipped if unset.
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
@@ -95,10 +87,9 @@ set +a
 _ENV_AFTER="$(compgen -e | sort)"
 
 # Serialize the variables etc/deploy.conf adds, as sourceable
-# `declare -x NAME="value"` lines. The deployed repo carries no deploy.conf
-# until the consumer's DEPLOY_PRE_PROVISION_CMD restores it, so the deploy
-# machine's deploy.conf environment is replayed for that hook (see
-# deploy_to_host).
+# `declare -x NAME="value"` lines. The deployed repo carries no deploy.conf,
+# so the deploy machine's deploy.conf environment is replayed to every
+# post-swap remote step (see deploy_to_host).
 DEPLOY_CONF_ENV=""
 while IFS= read -r _v; do
   [ -n "$_v" ] || continue
@@ -444,9 +435,9 @@ deploy_to_host() {
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
   # Private config, framework-owned transport (B): ship the files the consumer
   # declares in DEPLOY_PRIVATE_FILES into the freshly swapped etc/ in one step
-  # — no stable per-app dir, no consumer hook needed for a plain copy. Values
-  # from etc/deploy.conf are NOT shipped as a file; they are replayed as
-  # environment to every remote step below (A).
+  # — no stable per-app dir, no consumer hook. Values from etc/deploy.conf are
+  # NOT shipped as a file; they are replayed as environment to every remote
+  # step below (A).
   if [ -n "${DEPLOY_PRIVATE_FILES:-}" ]; then
     echo "Shipping private files ($DEPLOY_PRIVATE_FILES) to $REMOTE_HOST..." >&2
     tar -C etc -cf - $DEPLOY_PRIVATE_FILES | ssh "root@$REMOTE_HOST" "
@@ -460,19 +451,14 @@ deploy_to_host() {
 
   # Deploy config replay (A): every post-swap remote step gets the deploy
   # machine's deploy.conf environment, so the host needs no deploy.conf of its
-  # own. A consumer that commits a real etc/deploy.conf (or restores one via
-  # the hook below) still overrides it — the host-side scripts source the file
-  # only when present.
-  echo "Running the consumer pre-provision hook (if configured) on remote..." >&2
+  # own. A consumer that commits a real etc/deploy.conf still overrides it —
+  # the host-side scripts source the file only when present.
+  echo "Checking the required deploy config on remote..." >&2
   ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
 set -euo pipefail
 $DEPLOY_CONF_ENV
-if [ -n "\${DEPLOY_PRE_PROVISION_CMD:-}" ]; then
-    echo "    Running DEPLOY_PRE_PROVISION_CMD (consumer private config)..." >&2
-    bash -c "\$DEPLOY_PRE_PROVISION_CMD" </dev/null
-fi
-# The required values must be in scope now — from the replayed environment, a
-# restored deploy.conf, or a committed one. No hard file requirement.
+# The required values must be in scope now — from the replayed environment or a
+# committed deploy.conf. No hard file requirement.
 for _v in DEPLOY_TARGET_DIR DEPLOY_LOG_DIR DEPLOY_REUTER_INI DEPLOY_NIX_RESULT_DIR DEPLOY_NIX_GCROOT; do
     if [ -z "\${!_v:-}" ]; then
         echo "pf-deploy: missing required config on host: \$_v" >&2

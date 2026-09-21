@@ -123,9 +123,6 @@ config must exist before the first deploy:
 1. **`etc/deploy.conf`** — the deployment target (`PROD_USER`,
    `DEPLOY_TARGET_DIR`, `DEPLOY_LOG_DIR`, `DEPLOY_REUTER_INI`,
    `DEPLOY_NIX_RESULT_DIR`, `DEPLOY_NIX_GCROOT`; optional
-   `DEPLOY_PRE_PROVISION_CMD`, the consumer hook run on the host right after
-   the repo swap + `composer install` and before provisioning, to restore the
-   real private files into the freshly swapped `etc/`; optional
    `DEPLOY_INIT_CMD`, the consumer-specific provisioning command run after
    the framework's generic `bin/pf-provision.sh`; and the cron vars
    `CRON_FILE`/`CRON_USER`). The real file is consumer-owned: copy
@@ -156,8 +153,8 @@ bin/pf-deploy.sh                 # continuous deployment to every [prod] host in
 bin/pf-deploy.sh <target_host>   # deploy to a single prod host (must be in [prod])
 ```
 
-`pf-deploy.sh` runs only its own optional hooks (`DEPLOY_PRE_PROVISION_CMD`,
-`DEPLOY_INIT_CMD`); consumer-specific post-deploy steps are added by wrapping
+`pf-deploy.sh` runs only its own optional hook (`DEPLOY_INIT_CMD`);
+consumer-specific post-deploy steps are added by wrapping
 `vendor/bin/pf-deploy.sh` (see "Deploying a consumer project" below).
 
 ## Quick test: PHP–MariaDB integration with ema
@@ -345,8 +342,7 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
 | `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name (e.g. `php_daas_framework` -> `daas`). Must exist with SSH access before the first deploy (see below). |
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
-| `DEPLOY_REUTER_INI` | Path to the consumer's manual reuter.ini — one `[<dbname>]` section per database (SERVER/PORT/DBMS/MYSQL_UNIX_PORT plus the consumer's `<ACCOUNT>_PASSWORD` keys), recorded from `ema create`'s output (or `ema values <db>` to recover). `gen-env` writes it into `.env` as `REUTER_INI`; `db-check` reads it to verify reachability. The file is consumer-owned private data the consumer places in `etc/` — and, on a host, restores with `DEPLOY_PRE_PROVISION_CMD`, since the repo dir is swapped on every deploy. |
-| `DEPLOY_PRE_PROVISION_CMD` | Optional: consumer hook run on the host as root, in the repo root, right after the repo swap + `composer install` and before the generic provisioning, to restore the real private files into the freshly swapped `etc/`. The deploy machine's `deploy.conf` environment is replayed for it, so it can use any variable defined there — e.g. `DEPLOY_PRIVATE_CONFIG_DIR`, a stable per-app consumer-config dir **outside** `DEPLOY_TARGET_DIR` (which is swapped on every deploy), the documented example variable for such a hook to copy from. |
+| `DEPLOY_REUTER_INI` | Path to the consumer's manual reuter.ini — one `[<dbname>]` section per database (SERVER/PORT/DBMS/MYSQL_UNIX_PORT plus the consumer's `<ACCOUNT>_PASSWORD` keys), recorded from `ema create`'s output (or `ema values <db>` to recover). `gen-env` writes it into `.env` as `REUTER_INI`; `db-check` reads it to verify reachability. The file is consumer-owned private data the consumer places in `etc/` — and, on a host, ships via `DEPLOY_PRIVATE_FILES`, since the repo dir is swapped on every deploy. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/pf-provision.sh`. |
@@ -417,10 +413,10 @@ The remote host must have the app user in place before the first `pf-deploy.sh`
    installed.
 
 Everything else is handled by `pf-deploy.sh` itself: the repo swap as `root`,
-the consumer's `DEPLOY_PRE_PROVISION_CMD` hook (which restores the host's
-private config before anything sources it), the idempotent provisioning via
-the framework's generic `bin/pf-provision.sh` plus the optional
-consumer-specific `DEPLOY_INIT_CMD`, and — on every host — the built-in
+the private files the consumer declares in `DEPLOY_PRIVATE_FILES` (shipped into
+the freshly swapped `etc/` before anything sources them), the idempotent
+provisioning via the framework's generic `bin/pf-provision.sh` plus the
+optional consumer-specific `DEPLOY_INIT_CMD`, and — on every host — the built-in
 server steps that regenerate `.env` (`gen-env`) and verify DB connectivity
 (`db-check`, warn-only), then install the cron manifest on
 `worker`-tagged hosts. A consumer wrapper is only needed
@@ -447,10 +443,10 @@ that each `reuter.ini` section's `SERVER:PORT` is TCP-reachable. It never
 repairs: a miss is reported as a warning and the deploy proceeds.
 
 The framework's `pf-deploy.sh` pipeline is fixed: it swaps the repo, copies
-the nix closure, installs composer deps, runs the optional
-`DEPLOY_PRE_PROVISION_CMD` hook (private config) and the optional
-`DEPLOY_INIT_CMD` hook (consumer provisioning) around the idempotent
-provisioning, then runs the built-in server steps (regenerate `.env`, verify
+the nix closure, installs composer deps, ships the private files named in
+`DEPLOY_PRIVATE_FILES`, runs the optional `DEPLOY_INIT_CMD` hook (consumer
+provisioning) around the idempotent provisioning, then runs the built-in
+server steps (regenerate `.env`, verify
 DB connectivity via `db-check`, install cron on `worker`-tagged hosts).
 Consumer-owned tag steps (restart
 services, restore website traversal, ...) are added by wrapping
