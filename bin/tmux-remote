@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# tmux-remote — drop into an interactive tmux session on a consumer host,
+# preloaded with that consumer's nix-built runtime environment (php, composer,
+# mariadb, jq, tmux, plus the consumer's own phprun/ema).
+#
+# Framework-owned mechanism; the consumer owns the data: its etc/deploy.conf
+# (DEPLOY_TARGET_DIR, DEPLOY_NIX_RESULT_DIR) and the ssh aliases its
+# gen-ssh-config wrote. The CLI is client-side and dev-only: it runs on the
+# operator's machine and hands the session to the host over ssh.
+#
+# The app prefix is never typed. <app> is `basename "$PWD"` — the repo
+# directory you are standing in, the same derivation gen-ssh-config uses — so
+# `tmux-remote <name>` resolves the ssh alias `<app>-<name>`. To touch another
+# app you open that app's own shell; there is no override flag.
+#
+# Plain `ssh <app>-<name>` stays the untouched non-nix path: this CLI only adds
+# the nix-enabled convenience shell. On the host it runs (reusing only the PATH
+# formula from bin/pf-server-steps.sh, not that deploy script):
+#
+#   cd "$DEPLOY_TARGET_DIR" && source .env \
+#     && export PATH="$PWD/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin:$PATH" \
+#     && tmux -f "<framework package>/etc/tmux-remote.conf" new-session -A -s <name>
+#
+# The tmux session name is <name> (the short host name): the app context is
+# already carried by the local tmux session the operator launches from. The
+# remote config — red status bar, prefix C-a — is the framework's own
+# etc/tmux-remote.conf, resolved on the host from the package's path relative
+# to the repo root (no package name is hardcoded). See doc/system/tmux-remote.md.
+#
+# Usage: tmux-remote <name>   (run from the repo root)
+
+set -euo pipefail
+
+# A host name becomes an alias component and the remote session name; keep it
+# to what the consumer's `hosts` mapping allows (same rule as gen-ssh-config).
+SAFE_RE='^[A-Za-z0-9._-]+$'
+MAX_LINKS=16
+
+die() { echo "tmux-remote: ERROR: $*" >&2; exit 1; }
+
+usage() {
+    cat <<'EOF'
+Usage: tmux-remote <name>
+
+Open (or re-attach to) an interactive tmux session on a consumer host, with
+the consumer's nix-built runtime on PATH. Run from the repo root: <app> is
+`basename "$PWD"`, so the ssh alias resolved is <app>-<name> — the alias
+gen-ssh-config writes. The remote session is named <name> and configured by
+the framework's etc/tmux-remote.conf (red status bar, prefix C-a, so it never
+clashes with a local tmux's C-b).
+
+  <name>          short host name from the consumer's `hosts` mapping.
+EOF
+}
+
+main() {
+    local name=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) usage; return 0 ;;
+            -*)        usage >&2; return 1 ;;
+            *)
+                if [[ -n "$name" ]]; then
+                    usage >&2
+                    return 1
+                fi
+                name="$1"; shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$name" ]]; then
+        usage >&2
+        return 1
+    fi
+    if ! [[ "$name" =~ $SAFE_RE ]]; then
+        die "invalid host name '$name' (allowed: letters, digits, '.', '_', '-')"
+    fi
+
+    local app
+    app="$(basename "$PWD")"
+    if ! [[ "$app" =~ $SAFE_RE ]]; then
+        die "the repo directory name '$app' is not usable as an app prefix (allowed: letters, digits, '.', '_', '-')"
+    fi
+
+    # The consumer's etc/deploy.conf is private data kept on the deploy machine
+    # (never shipped): source it as a plain file — the same loading contract as
+    # bin/cron-manifest and bin/pf-deploy.sh — and read the two values this CLI
+    # needs.
+    local deploy_conf="$PWD/etc/deploy.conf"
+    if [[ ! -f "$deploy_conf" ]]; then
+        die "$deploy_conf not found — run tmux-remote from the repo root of a consumer whose etc/deploy.conf is in place (see doc/system/consumer-config.md)."
+    fi
+    set -a
+    # shellcheck disable=SC1090
+    . "$deploy_conf"
+    set +a
+
+    if [[ -z "${DEPLOY_TARGET_DIR:-}" ]]; then
+        die "$deploy_conf sets no DEPLOY_TARGET_DIR"
+    fi
+    if [[ -z "${DEPLOY_NIX_RESULT_DIR:-}" ]]; then
+        die "$deploy_conf sets no DEPLOY_NIX_RESULT_DIR"
+    fi
+
+    # Locate this package inside the checkout. The host's repo holds it at the
+    # same path relative to the repo root as this machine does — `vendor/<pkg>`
+    # for a consumer, the repo root itself when this repo deploys itself — so
+    # the relative path is all the remote side needs and no package name is
+    # hardcoded. $0 is followed one symlink level (composer installs
+    # `vendor/bin/<cli>` as a symlink into the package) and the result is kept
+    # logical (`cd` + `pwd`, no further resolution), so a path-repository
+    # consumer — whose vendor/<vendor>/<pkg> is itself a symlink to another
+    # checkout — still resolves to the path the host will have.
+    local self="$0" link hops=0
+    while [[ -L "$self" ]]; do
+        hops=$((hops + 1))
+        if (( hops > MAX_LINKS )); then
+            die "cannot resolve $0: too many symlink hops (loop?)"
+        fi
+        link="$(readlink "$self")"
+        case "$link" in
+            /*) self="$link" ;;
+            *)  self="$(dirname "$self")/$link" ;;
+        esac
+    done
+
+    local pkg_root pkg_rel
+    pkg_root="$(cd "$(dirname "$self")/.." && pwd)"
+    case "$pkg_root" in
+        "$PWD")   pkg_rel="" ;;
+        "$PWD"/*) pkg_rel="${pkg_root#"$PWD"/}" ;;
+        *) die "cannot place the framework package inside this checkout: $0 resolves to $pkg_root, outside the repo root $PWD — run tmux-remote from the consumer repo root (vendor/bin/tmux-remote)." ;;
+    esac
+
+    local conf_rel='etc/tmux-remote.conf'
+    if [[ -n "$pkg_rel" ]]; then
+        conf_rel="$pkg_rel/$conf_rel"
+    fi
+    local remote_conf="$DEPLOY_TARGET_DIR/$conf_rel"
+    local alias="$app-$name"
+
+    # Preflight the alias: `ssh -G` prints the config ssh would use, and an
+    # alias nothing matches resolves to itself. Failing here beats a cryptic
+    # "could not resolve hostname" after the fact.
+    local resolved
+    if ! resolved="$(ssh -G "$alias" 2>/dev/null | awk '$1 == "hostname" { print $2; exit }')"; then
+        die "'ssh -G $alias' failed — the local ssh configuration could not be read."
+    fi
+    if [[ -z "$resolved" || "$resolved" == "$alias" ]]; then
+        die "ssh alias '$alias' is not configured on this machine — run gen-ssh-config from this repo root to write ~/.ssh/config.d/$app.conf (see doc/system/ssh-config.md)."
+    fi
+
+    # Remote command. $PWD and $PATH expand on the host (after the cd, so $PWD
+    # is the deployed repo root); every locally-known path is quoted with
+    # printf %q, so a consumer path with spaces survives the round trip.
+    local target_q nix_q conf_q name_q remote_cmd
+    printf -v target_q '%q' "$DEPLOY_TARGET_DIR"
+    printf -v nix_q '%q' "$DEPLOY_NIX_RESULT_DIR"
+    printf -v conf_q '%q' "$remote_conf"
+    printf -v name_q '%q' "$name"
+
+    printf -v remote_cmd '%s\n' \
+        "cd $target_q || exit 1" \
+        'set -a; . ./.env; set +a' \
+        "export PATH=\$PWD/vendor/bin:$nix_q/result/bin:\$PATH" \
+        "conf=$conf_q" \
+        'if [ ! -f "$conf" ]; then' \
+        '  echo "tmux-remote: $conf is missing on the host — deploy the repo (composer install delivers the framework package) before opening a remote shell." >&2' \
+        '  exit 1' \
+        'fi' \
+        "exec tmux -f \"\$conf\" new-session -A -s $name_q"
+
+    echo "tmux-remote: ssh $alias -> tmux session '$name'" >&2
+    # -t: tmux needs a terminal; ssh would only allocate one implicitly.
+    ssh -t "$alias" "$remote_cmd"
+}
+
+main "$@"

@@ -76,9 +76,11 @@ everything else. What the framework guarantees on the reading side:
   and `bin/replica-bootstrap` read the real files the same way: `deploy.conf`
   is sourced only when present (otherwise the replayed environment supplies the
   values); no fetching, no symlink creation, no "shadowed file" warnings.
-- `bin/gen-cert`, `bin/gen-grants`, `bin/gen-ssh-config` and `bin/gen-firewall`
-  read their private inputs from `etc/` and fail loudly when one is absent
-  (`gen-ssh-config` takes `--hosts <path>` for a mapping kept elsewhere).
+- `bin/gen-cert`, `bin/gen-grants`, `bin/gen-ssh-config`, `bin/gen-firewall`
+  and `bin/tmux-remote` read their private inputs from `etc/` and fail loudly
+  when one is absent (`gen-ssh-config` takes `--hosts <path>` for a mapping kept
+  elsewhere; `tmux-remote` needs the deploy machine's `etc/deploy.conf` for the
+  remote-shell paths).
 
 ### A consumer-side convention: `.private-source`
 

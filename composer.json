@@ -42,7 +42,8 @@
     "bin/pf-server-steps.sh",
     "bin/replica-bootstrap",
     "bin/gen-ssh-config",
-    "bin/gen-firewall"
+    "bin/gen-firewall",
+    "bin/tmux-remote"
   ],
   "repositories": [
     {

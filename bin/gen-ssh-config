@@ -30,10 +30,14 @@
 # path resolves inside `~/.ssh` for a user config). `Include` needs OpenSSH
 # >= 7.3; the CLI warns when the local `ssh` is older.
 #
-# Usage: gen-ssh-config <app> [--hosts <path>] [--user <user>] [--key <path>]
+# Usage: gen-ssh-config [--hosts <path>] [--user <user>] [--key <path>]
 #
-#   <app>           project name: prefixes every alias and names the drop-in
-#                   (`~/.ssh/config.d/<app>.conf`).
+# <app> is never typed: it is `basename "$PWD"`, the repo directory the CLI is
+# run from (and the same derivation `tmux-remote` uses, so the aliases line up
+# with it). It prefixes every alias and names the drop-in
+# (`~/.ssh/config.d/<app>.conf`); to write another app's drop-in, run this CLI
+# from that app's own root.
+#
 #   --hosts <path>  name->IP mapping to read (default: etc/hosts).
 #   --user <user>   `User` for every generated Host (default: root).
 #   --key <path>    `IdentityFile` for every generated Host (default:
@@ -87,7 +91,7 @@ ensure_dir() {
 
 usage() {
     cat <<'EOF'
-Usage: gen-ssh-config <app> [--hosts <path>] [--user <user>] [--key <path>]
+Usage: gen-ssh-config [--hosts <path>] [--user <user>] [--key <path>]
 
 Write ~/.ssh/config.d/<app>.conf from a consumer's `hosts` name->IP mapping:
 one `Host <app>-<name>` block per entry, inside a tagged region that is
@@ -95,7 +99,8 @@ replaced on every run (idempotent — re-run instead of hand-editing). Also
 ensures ~/.ssh/config carries the canonical `Include config.d/*.conf` line
 (at the top, exactly once, never clobbering other content).
 
-  <app>           project name: prefixes every alias and names the drop-in.
+Run it from the repo root: <app> is `basename "$PWD"` — never typed.
+
   --hosts <path>  name->IP mapping to read (default: etc/hosts).
   --user <user>   User for every generated Host (default: root).
   --key <path>    IdentityFile for every generated Host
@@ -152,7 +157,7 @@ check_include_support() {
 }
 
 main() {
-    local app="" hosts="" user="" key=""
+    local hosts="" user="" key=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --hosts)   [[ -n "${2:-}" ]] || die "--hosts needs a path"; hosts="$2"; shift 2 ;;
@@ -161,26 +166,24 @@ main() {
             -h|--help) usage; return 0 ;;
             -*)        usage >&2; return 1 ;;
             *)
-                if [[ -n "$app" ]]; then
-                    usage >&2
-                    return 1
-                fi
-                app="$1"; shift
+                die "unexpected argument '$1' — <app> is not a parameter: it is basename \"\$PWD\", so run gen-ssh-config from the repo root."
                 ;;
         esac
     done
 
-    if [[ -z "$app" ]]; then
-        usage >&2
-        return 1
+    # <app> is derived, never typed: the repo directory the CLI is run from.
+    # `tmux-remote` derives its alias prefix the same way, so the two always
+    # agree on `<app>-<name>`.
+    local app
+    app="$(basename "$PWD")"
+    if ! [[ "$app" =~ $SAFE_RE ]]; then
+        die "the repo directory name '$app' is not a valid app name (allowed: letters, digits, '.', '_', '-')"
     fi
+
     hosts="${hosts:-etc/hosts}"
     user="${user:-root}"
     key="${key:-~/.ssh/$app-sshkey}"
 
-    if ! [[ "$app" =~ $SAFE_RE ]]; then
-        die "invalid app name '$app' (allowed: letters, digits, '.', '_', '-')"
-    fi
     if [[ -z "${HOME:-}" ]]; then
         die "HOME is not set; the drop-in location (~/.ssh/config.d) cannot be resolved"
     fi

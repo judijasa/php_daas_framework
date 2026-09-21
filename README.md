@@ -240,6 +240,9 @@ array installs the CLIs and scripts into `vendor/bin`:
 - `bin/gen-firewall` — reconcile the tag-driven `ufw` firewall for every
   `[prod]` host (reset + reapply with fail-open ordering) from the consumer's
   host-hardening declaration; see `doc/system/host-hardening.md`.
+- `bin/tmux-remote` — open (or re-attach to) an interactive tmux session on a
+  consumer host, with the consumer's nix-built runtime on PATH; see
+  `doc/system/tmux-remote.md`.
 
 `gen-grants` (team-member DB accounts + roles) and `gen-cert` (member client
 certificates) implement the team-DB-user flow; see
@@ -285,10 +288,13 @@ start a daemon): standalone flakes source `./bin/dev/pf-shell-enter.sh`,
 consumers source `vendor/bin/pf-shell-enter.sh`.
 
 The generated dev ssh config is the other consumer-side dev step: once `hosts`
-is in `etc/` (the consumer's private mapping),
-`vendor/bin/gen-ssh-config <app>` writes `~/.ssh/config.d/<app>.conf` so
-`ssh <app>-<name>` reaches each server as the project user with the project
-key; see `doc/system/ssh-config.md`.
+is in `etc/` (the consumer's private mapping), `vendor/bin/gen-ssh-config` —
+run from the repo root, which is where `<app>` comes from (`basename "$PWD"`) —
+writes `~/.ssh/config.d/<app>.conf` so `ssh <app>-<name>` reaches each server
+as the project user with the project key; see `doc/system/ssh-config.md`. On
+top of that non-nix path, `vendor/bin/tmux-remote <name>` opens an interactive
+tmux session on the host with the consumer's nix-built runtime on PATH; see
+`doc/system/tmux-remote.md`.
 
 ## Environment variables
 

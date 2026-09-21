@@ -3,13 +3,14 @@
 Date: 2026-09-15
 Scope: the dev machine's ssh aliases for a consumer's servers. The framework
 owns the mechanism (`bin/gen-ssh-config`); the consumer owns the data (its
-`hosts` name→IP mapping, the `<app>` name, and the user/key choice).
+`hosts` name→IP mapping, the repo directory name that supplies `<app>`, and the
+user/key choice).
 
 ## What it writes
 
-`gen-ssh-config <app>` reads the consumer's `hosts` mapping — the same private
-file its `/etc/hosts` merge reads (see `doc/system/consumer-config.md`) — and
-emits one drop-in per app:
+`gen-ssh-config` reads the consumer's `hosts` mapping — the same private file
+its `/etc/hosts` merge reads (see `doc/system/consumer-config.md`) — and emits
+one drop-in per app:
 
 ```text
 # ~/.ssh/config.d/<app>.conf
@@ -29,12 +30,17 @@ is client-side and dev-only: it writes `~/.ssh/config.d/<app>.conf` on the
 machine it runs on, and nothing it writes is shipped to a host.
 
 ```bash
-gen-ssh-config <app> [--hosts <path>] [--user <user>] [--key <path>]
+gen-ssh-config [--hosts <path>] [--user <user>] [--key <path>]
 ```
+
+`<app>` is never typed: it is `basename "$PWD"`, the repo directory the CLI is
+run from. The aliases it prefixes are what `tmux-remote` resolves (see
+`doc/system/tmux-remote.md`), so both derive `<app>` the same way and always
+agree on `<app>-<name>`; to write another app's drop-in, run the CLI from that
+app's own root.
 
 | Argument | Meaning |
 |---|---|
-| `<app>` | project name: prefixes every alias and names the drop-in (`~/.ssh/config.d/<app>.conf`). Letters, digits, `.`, `_` and `-` only. |
 | `--hosts <path>` | name→IP mapping to read (default `etc/hosts`). |
 | `--user <user>` | `User` for every generated `Host` (default `root`). |
 | `--key <path>` | `IdentityFile` for every generated `Host` (default `~/.ssh/<app>-sshkey`). |
@@ -45,7 +51,7 @@ place (the consumer's own consumer-config step — see
 
 ```make
 _dev-ssh-config:
-	@vendor/bin/gen-ssh-config <app> --user root --key ~/.ssh/<app>-sshkey
+	@vendor/bin/gen-ssh-config --user root --key ~/.ssh/<app>-sshkey
 ```
 
 ## The `hosts` contract
@@ -102,8 +108,10 @@ without its matching end tag aborts instead of truncating the file.
 - `User` and `IdentityFile` are written verbatim: a shell-expanded `~` (as in
   a Makefile flag) lands in the drop-in as an absolute path, while the default
   key is written as `~/.ssh/<app>-sshkey`. Both forms work for ssh.
-- The CLI does not wrap `ssh`/`scp`/`rsync`; it only writes config. A consumer
-  wanting short names under them is out of scope.
+- The CLI does not wrap `ssh`/`scp`/`rsync`; it only writes config. The
+  nix-enabled convenience shell over the generated aliases is `tmux-remote`
+  (`doc/system/tmux-remote.md`); plain `ssh <app>-<name>` stays the non-nix
+  path.
 - `hosts` is optional private data: a consumer whose private repo provides
   none must tolerate the failure (skip the step, or pass `--hosts`); a mapping
   with no active entries is an error, never an empty alias set.
