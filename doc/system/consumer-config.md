@@ -22,7 +22,7 @@ public Git history:
 | `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`); needed on every prod host |
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster (dev/deploy machine only) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs (dev machine only) |
-| `etc/host-hardening.php` | `etc/host-hardening.php.template` | firewall reconcile declaration (`$zerotierRange`, `$cloudTest`, `$tagRules`) for `gen-firewall` (dev/deploy machine only) |
+| `etc/host-hardening.php` | `etc/host-hardening.php.template` | firewall reconcile declaration (`$zerotierRange`, `$tagRules`) for `gen-firewall` (dev/deploy machine only) |
 | `etc/hosts` | — (optional) | dev-only name→IP mapping for the consumer's `/etc/hosts` merge and its generated dev ssh aliases (`gen-ssh-config`) |
 
 `reuter.ini` is the only private file a prod host needs, so it is the only one

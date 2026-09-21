@@ -5,9 +5,9 @@ Scope: how this framework turns a consumer's host-hardening declaration into
 the desired `ufw` rule set for every prod host, then applies it as root with a
 fail-open ordering. The framework owns the mechanism (`bin/gen-firewall`); the
 consumer owns the data (the declaration, the `etc/machines.ini` `[prod]`
-roster, the `db:<name>` ports in `etc/reuter.ini`, the ZeroTier range, and the
-cloud-test endpoint). sshd hardening is out of scope here — it stays a
-consumer-side manual pre-deployment step.
+roster, the `db:<name>` ports in `etc/reuter.ini`, and the ZeroTier range).
+sshd hardening is out of scope here — it stays a consumer-side manual
+pre-deployment step.
 
 ## Model
 
@@ -34,7 +34,7 @@ The CLI runs from the consumer checkout that holds `etc/machines.ini` and
 ### Declaration
 
 The consumer's `etc/host-hardening.php` carries the declaration (all
-consumer data — no tag name, port, range or endpoint is hardcoded). It is
+consumer data — no tag name, port or range is hardcoded). It is
 private data: the real file lives in the consumer's private config repo and
 the consumer places it at `etc/host-hardening.php` (see
 `doc/system/consumer-config.md`). The consumer's committed
@@ -43,8 +43,6 @@ placeholder values — never the real deployment values, which would put them in
 the public history:
 
     $zerotierRange = '10.147.x.0/24';            // CIDR, or an 'x' template
-    $cloudTest     = array('endpoint' => 'http://169.254.169.254/latest/meta-data/',
-                           'timeout' => 3);      // optional; null disables gating
     $tagRules      = array(
         'web' => array('80/tcp', '443/tcp'),
         'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud')),
@@ -54,15 +52,21 @@ the public history:
   CIDR is used verbatim; an `'x'` template (e.g. `10.147.x.0/24`) resolves its
   private third octet from the consumer's private `etc/hosts` (`ip name`
   mapping) — the range is never hardcoded here.
-- `$cloudTest` is the optional runtime metadata probe (endpoint + timeout)
-  that gates `gate => 'cloud'` rules. Any HTTP response (even a 404) counts as
-  cloud; no response/timeout means not-cloud (fail-safe: the gated rule is
-  skipped, not the whole host).
 - `$tagRules` maps a consumer-owned tag to its allow rules. A rule is either
   `'PORT/PROTO'` (a public allow, e.g. `80/tcp`) or
   `array('rule' => 'PORT/PROTO', 'gate' => 'cloud')` (applied only when the
-  cloud test passes). Any rule that is not a valid `PORT/PROTO` is reported and
-  ignored.
+  host itself reports as virtualized). Any rule that is not a valid
+  `PORT/PROTO` is reported and ignored.
+- The `gate => 'cloud'` condition is mechanism-owned, not declared: at
+  reconcile time the CLI asks the target host whether it is virtualized
+  (`systemd-detect-virt`, over the same `ssh root@<host>` it already uses) and
+  applies the gated rules only if it is. A hypervisor or container means the
+  host's path to its ZeroTier peers is not a plain LAN path — the condition the
+  gate is after — and nothing cloud-specific is configured, so a provider
+  moving or dropping its metadata service cannot affect the reconcile. The
+  probe fails safe: systemd absent, an unreachable host or no answer all read
+  as *not* virtualized, so the gated rule is skipped (with a warning) and the
+  rest of the host is reconciled normally.
 
 ### Roster and built-in tags
 
@@ -89,9 +93,9 @@ For each target host the CLI computes the full step list — baseline first,
 then each tag's allows, then `enable` last — and then either prints it
 (dry-run) or applies it. Apply is a `set -e` shell script piped to
 `ssh root@<host> bash -s`: `ufw --force reset` first, then the ordered steps.
-A cloud-gated rule is resolved once per host before anything runs; if the
-cloud test fails, the gated rules are omitted and the host is otherwise
-reconciled as normal.
+The cloud gate is resolved once per host before anything runs; if the host
+does not report as virtualized, the gated rules are omitted and the host is
+otherwise reconciled as normal.
 
 ## Notes
 

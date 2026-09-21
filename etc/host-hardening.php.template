@@ -13,8 +13,6 @@
 // There is no SQL here — data only.
 //
 //   $zerotierRange = '10.147.x.0/24';
-//   $cloudTest     = array('endpoint' => 'http://169.254.169.254/latest/meta-data/',
-//                          'timeout' => 3);
 //   $tagRules      = array(
 //       'web' => array('80/tcp', '443/tcp'),
 //       'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud')),
@@ -23,19 +21,13 @@
 // $zerotierRange scopes the baseline SSH and the built-in db:<name> allows.
 // A concrete CIDR is used verbatim; an 'x' template (e.g. 10.147.x.0/24)
 // resolves its private third octet from the consumer's private etc/hosts.
-// $cloudTest is the optional runtime metadata probe that gates gate=>'cloud'
-// rules. Any HTTP response (even a 404) counts as cloud; no response/timeout
-// means not-cloud (fail-safe). null disables gating.
 // $tagRules maps a consumer-owned tag to its allow rules. A rule is either
 // 'PORT/PROTO' (a public allow) or array('rule' => 'PORT/PROTO',
-// 'gate' => 'cloud') (applied only when the cloud test passes).
+// 'gate' => 'cloud') (applied only when the host itself reports as virtualized
+// — the framework probes the host for that at reconcile time, so there is
+// nothing cloud-specific to declare here).
 
 $zerotierRange = '10.147.x.0/24';
-
-$cloudTest = array(
-    'endpoint' => 'http://169.254.169.254/latest/meta-data/',
-    'timeout' => 3,
-);
 
 $tagRules = array(
     'web' => array('80/tcp', '443/tcp'),

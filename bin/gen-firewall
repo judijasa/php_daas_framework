@@ -10,9 +10,10 @@ declare(strict_types=1);
 // applying it as root with a fail-open ordering. The consumer owns the data:
 // the declaration (`etc/host-hardening.php`), the `etc/machines.ini`
 // `[prod]` roster (which tags a host), `etc/reuter.ini` (the `db:<name>`
-// ports), the ZeroTier range (private data) and the cloud-test endpoint.
-// No tag name, port, range or endpoint is hardcoded here. See
-// doc/system/host-hardening.md for the full contract.
+// ports) and the ZeroTier range (private data). No tag name, port or range is
+// hardcoded here, and the cloud gate is observed on the host itself (its
+// virtualization fingerprint) rather than from a configured cloud endpoint.
+// See doc/system/host-hardening.md for the full contract.
 //
 // Desired rule set (order-independent set union of a host's tags):
 //
@@ -21,7 +22,7 @@ declare(strict_types=1);
 //   db:<name> (built-in)   allow <reuter.ini[name].PORT>/tcp from the
 //                          ZeroTier range
 //   <tag> (declared)       allow <PORT>/<PROTO> (public), optionally gated
-//                          on the runtime cloud test
+//                          on the host's own virtualization probe
 //   worker (built-in)      no inbound rule
 //
 // Tags only add allows; the baseline owns the defaults and any denies. The
@@ -65,7 +66,7 @@ function host_hardening_file(string $root): ?string
 }
 
 // Include the declaration file and return the variables it defines. The
-// data file assigns local variables ($zerotierRange, $cloudTest, $tagRules);
+// data file assigns local variables ($zerotierRange, $tagRules);
 // including it inside this function scopes those assignments here, and
 // get_defined_vars() reads them back (PHPStan cannot see through a dynamic
 // include, so the read stays generic).
@@ -84,9 +85,9 @@ function package_vars(string $file): array
 // Load the host-hardening declaration and coerce it into a clean typed shape
 // regardless of what etc/host-hardening.php sets. A rule is either
 // 'PORT/PROTO' (public allow) or array('rule' => 'PORT/PROTO',
-// 'gate' => 'cloud') (applied only when the runtime cloud test passes).
+// 'gate' => 'cloud') (applied only when the host reports as virtualized).
 //
-// @return array{zerotierRange: string, cloudTest: array{endpoint: string, timeout: int}|null, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>}
+// @return array{zerotierRange: string, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>}
 function package_declaration(string $file): array
 {
     $vars = package_vars($file);
@@ -94,16 +95,6 @@ function package_declaration(string $file): array
     $zerotierRange = '';
     if (is_string($vars['zerotierRange'] ?? null)) {
         $zerotierRange = $vars['zerotierRange'];
-    }
-
-    $cloudTest = null;
-    $ct = $vars['cloudTest'] ?? null;
-    if (is_array($ct)) {
-        $endpoint = $ct['endpoint'] ?? null;
-        $timeout = $ct['timeout'] ?? null;
-        if (is_string($endpoint) && $endpoint !== '' && (is_int($timeout) || (is_string($timeout) && ctype_digit($timeout)))) {
-            $cloudTest = ['endpoint' => $endpoint, 'timeout' => (int) $timeout];
-        }
     }
 
     $tagRules = [];
@@ -124,7 +115,7 @@ function package_declaration(string $file): array
         }
     }
 
-    return ['zerotierRange' => $zerotierRange, 'cloudTest' => $cloudTest, 'tagRules' => $tagRules];
+    return ['zerotierRange' => $zerotierRange, 'tagRules' => $tagRules];
 }
 
 // @param mixed $entry
@@ -274,14 +265,21 @@ function reuter_sections(string $path): array
     return $out;
 }
 
-// @param array{endpoint: string, timeout: int} $cloudTest
-function probe_cloud(string $host, array $cloudTest): bool
+// Does the host report itself as virtualized? The cloud gate asks whether a
+// host is a cloud/NAT'd instance rather than a plain LAN machine, and the
+// host's own virtualization fingerprint is the one provider-agnostic,
+// endpoint-free way to observe it: a hypervisor (or container) means the path
+// to its ZeroTier peers is not a plain LAN path. Nothing cloud-specific is
+// configured or hardcoded, so the gate cannot break when a provider moves or
+// drops its metadata service.
+//
+// Fail-safe: any error (systemd absent, ssh unreachable, no answer) reads as
+// not virtualized, so a gated rule is skipped rather than applied on a guess.
+//
+// @param string $host ZeroTier IP of the target host.
+function host_is_virtualized(string $host): bool
 {
-    $endpoint = escapeshellarg($cloudTest['endpoint']);
-    $timeout = $cloudTest['timeout'];
-    // Any HTTP response (even a 404) means the metadata service answered ->
-    // cloud. No response/timeout means not cloud (fail-safe).
-    $remote = 'curl -sS --connect-timeout ' . $timeout . ' --max-time ' . $timeout . ' ' . $endpoint . ' -o /dev/null 2>/dev/null';
+    $remote = 'systemd-detect-virt --quiet';
     $cmd = 'ssh -o ConnectTimeout=5 ' . escapeshellarg('root@' . $host) . ' ' . escapeshellarg($remote);
     $output = [];
     $code = 0;
@@ -292,12 +290,11 @@ function probe_cloud(string $host, array $cloudTest): bool
 // Compute one host's desired ufw steps. Returns null on a config error
 // (message already written to stderr).
 //
-// @param array{zerotierRange: string, cloudTest: array{endpoint: string, timeout: int}|null, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>} $declaration
+// @param array{zerotierRange: string, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>} $declaration
 // @param array<string, array<string, string>> $reuter
 // @return array{host: string, tags: array<int,string>, steps: array<int, array{cmd: string, gated: bool}>}|null
 function build_host_plan(string $host, string $rawTags, array $declaration, array $reuter, string $range): ?array
 {
-    $cloudTest = $declaration['cloudTest'];
     $tagRules = $declaration['tagRules'];
 
     $steps = [];
@@ -335,10 +332,6 @@ function build_host_plan(string $host, string $rawTags, array $declaration, arra
             if ($rule['gate'] === null) {
                 $steps[] = ['cmd' => 'ufw allow ' . $rule['rule'], 'gated' => false];
             } elseif ($rule['gate'] === 'cloud') {
-                if ($cloudTest === null) {
-                    fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}' rule '{$rule['rule']}' is gated on the cloud test but no \$cloudTest is declared\n");
-                    return null;
-                }
                 $steps[] = ['cmd' => 'ufw allow ' . $rule['rule'], 'gated' => true];
             } else {
                 fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}' rule '{$rule['rule']}' has unknown gate '{$rule['gate']}' (only 'cloud' is supported)\n");
@@ -353,15 +346,13 @@ function build_host_plan(string $host, string $rawTags, array $declaration, arra
 }
 
 // @param array{host: string, tags: array<int,string>, steps: array<int, array{cmd: string, gated: bool}>} $plan
-// @param array{endpoint: string, timeout: int}|null $cloudTest
-function print_plan(array $plan, ?array $cloudTest): void
+function print_plan(array $plan): void
 {
     $tagLabel = implode(', ', $plan['tags']);
     fwrite(STDOUT, '# host ' . $plan['host'] . ($tagLabel === '' ? '' : ' (' . $tagLabel . ')') . PHP_EOL);
     foreach ($plan['steps'] as $step) {
         if ($step['gated']) {
-            $endpoint = $cloudTest !== null ? $cloudTest['endpoint'] : 'cloud test';
-            fwrite(STDOUT, '# [cloud-gated: ' . $endpoint . '] ' . $step['cmd'] . PHP_EOL);
+            fwrite(STDOUT, '# [cloud-gated: systemd-detect-virt] ' . $step['cmd'] . PHP_EOL);
         } else {
             fwrite(STDOUT, $step['cmd'] . PHP_EOL);
         }
@@ -370,12 +361,11 @@ function print_plan(array $plan, ?array $cloudTest): void
 }
 
 // @param array{host: string, tags: array<int,string>, steps: array<int, array{cmd: string, gated: bool}>} $plan
-// @param array{endpoint: string, timeout: int}|null $cloudTest
-function apply_plan(array $plan, ?array $cloudTest): int
+function apply_plan(array $plan): int
 {
     $host = $plan['host'];
 
-    // Resolve the cloud gate once per host (fail-safe: not-cloud -> skip).
+    // Resolve the cloud gate once per host (fail-safe: not virtualized -> skip).
     $hasGated = false;
     foreach ($plan['steps'] as $step) {
         if ($step['gated']) {
@@ -383,15 +373,11 @@ function apply_plan(array $plan, ?array $cloudTest): int
             break;
         }
     }
-    $cloudPassed = false;
+    $gatePassed = false;
     if ($hasGated) {
-        if ($cloudTest === null) {
-            fwrite(STDERR, "gen-firewall: host {$host} has cloud-gated rules but no \$cloudTest is declared\n");
-            return 1;
-        }
-        $cloudPassed = probe_cloud($host, $cloudTest);
-        if (!$cloudPassed) {
-            fwrite(STDERR, "gen-firewall: host {$host} cloud test failed; skipping cloud-gated rules\n");
+        $gatePassed = host_is_virtualized($host);
+        if (!$gatePassed) {
+            fwrite(STDERR, "gen-firewall: host {$host} does not report as virtualized; skipping cloud-gated rules\n");
         }
     }
 
@@ -400,7 +386,7 @@ function apply_plan(array $plan, ?array $cloudTest): int
         'set -e',
     ];
     foreach ($plan['steps'] as $step) {
-        if ($step['gated'] && !$cloudPassed) {
+        if ($step['gated'] && !$gatePassed) {
             continue;
         }
         $lines[] = $step['cmd'];
@@ -492,9 +478,9 @@ function main(array $argv): int
 
     foreach ($plans as $plan) {
         if (!$apply) {
-            print_plan($plan, $declaration['cloudTest']);
+            print_plan($plan);
         } else {
-            $code = apply_plan($plan, $declaration['cloudTest']);
+            $code = apply_plan($plan);
             if ($code !== 0) {
                 fwrite(STDERR, "gen-firewall: host {$plan['host']} apply failed (exit {$code})\n");
                 return 1;
