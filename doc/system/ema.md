@@ -127,7 +127,8 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
   2. `db-check` → warn-only verification (never repairs): enumerates the
      host's own `mariadb@*` units (unit active, socket pings, schema exists)
      and TCP-checks each reuter.ini section;
-  3. on `worker`-tagged hosts: `cron-manifest` → `CRON_FILE`, restart cron.
+  3. on every host: `cron-manifest --host-tags <host's tokens>` → `CRON_FILE`,
+     restart cron (scope-filtered; `host`-scoped jobs run everywhere).
 - `vendor/bin/pf-provision.sh` (`pf-deploy.sh`, root) asserts the `PROD_USER`
   account and creates the permanent system dirs. It never provisions MariaDB
   and never creates databases or users — instances are owned by `ema create`.

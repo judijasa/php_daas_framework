@@ -5,7 +5,8 @@
 # Ships a consumer repo to a remote production server with a near-atomic
 # swap, then copies the nix closure, installs composer dependencies, runs
 # idempotent provisioning, regenerates the per-host runtime env (.env +
-# /etc/<instance>/reuter.ini), and installs cron on `worker`-tagged hosts.
+# /etc/<instance>/reuter.ini), and installs cron on every host, filtered by
+# that host's tag list (cron `scope`).
 #
 # Configuration is loaded from the consumer repo root: `.env` (machine
 # settings, same contract as `phprun`) for REPO_PATH, the git-ignored
@@ -43,8 +44,8 @@
 #            token names a database and enforces the one-to-one server mapping
 #            — the instance itself is provisioned by `ema create`, not by
 #            deploy, and db-check verifies it via the host's own `mariadb@*`
-#            units, not this roster; a host carrying the bare `worker` token
-#            gets the cron manifest installed; empty entries are code-only
+#            units, not this roster; every token doubles as a cron scope and
+#            `host`-scoped jobs run on every host; empty entries are code-only
 #            servers; each named token maps to exactly one server)
 #
 # Usage:
@@ -99,8 +100,9 @@ unset _v
 
 # Load the machine registry (git-ignored; template committed, consumer-owned).
 # [prod] lists every prod deploy target by ZeroTier IP; the host whose
-# `tag[:name]` list carries a `db:` token is the database host, and one that
-# carries the bare `worker` token gets the cron manifest installed.
+# `tag[:name]` list carries a `db:` token is the database host. Every token is
+# also a cron scope (`host`-scoped jobs run on every host), passed as
+# HOST_TAGS to the server steps for scope filtering.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
   echo "pf-deploy: $PWD/etc/machines.ini not found" >&2
   echo "  Copy etc/machines.ini.template to etc/machines.ini and fill in the [prod] roster." >&2
@@ -391,26 +393,17 @@ main() {
 # Per-host deploy pipeline. A database host (its tag list carries a `db:`
 # token) names a database — the instance itself is provisioned by `ema
 # create`, not here (db-check verifies it via the host's own `mariadb@*`
-# units); a host carrying the bare `worker` token gets the cron manifest
-# installed after the server steps. Other hosts skip both.
+# units). The host's own tag list is passed as HOST_TAGS to the server steps
+# for scope-filtered cron install, which runs on every host.
 deploy_to_host() {
   local HOST="$1"
   local TAGLIST="$2"
-  local IS_WORKER_HOST=0
-  local _tok
-  if [ -n "$TAGLIST" ]; then
-    for _tok in ${TAGLIST//,/ }; do
-      if [[ "$_tok" == worker ]]; then
-        IS_WORKER_HOST=1
-      fi
-    done
-  fi
 
-  # Fail fast (before shipping): a `worker` host must declare CRON_FILE in
-  # etc/deploy.conf. The same file is deployed to every host, so this also
-  # mirrors the remote guard in the server steps below.
-  if [ "$IS_WORKER_HOST" = "1" ] && [ -z "${CRON_FILE:-}" ]; then
-    echo "pf-deploy: host $HOST carries the 'worker' tag but etc/deploy.conf sets no CRON_FILE." >&2
+  # Fail fast (before shipping): a repo that declares #[CronJob] jobs must set
+  # CRON_FILE in etc/deploy.conf. The same file is deployed to every host, so
+  # this also mirrors the remote guard in the server steps below.
+  if grep -Rqs '#\[CronJob' src/ && [ -z "${CRON_FILE:-}" ]; then
+    echo "pf-deploy: this repo declares #[CronJob] attributes but etc/deploy.conf sets no CRON_FILE." >&2
     echo "  Add CRON_FILE (and optionally CRON_USER) to etc/deploy.conf — see deploy.conf.template." >&2
     exit 1
   fi
@@ -488,12 +481,12 @@ EOF
   fi
 
   # Framework server steps (run on every host): gen-env regenerates .env;
-  # db-check verifies DB connectivity (warn-only, never repairs); the cron
-  # install is gated on the bare `worker` token (detected above). The steps run
-  # from the deployed repo root with the replayed deploy.conf environment; the
-  # private etc/ files were shipped above.
+  # db-check verifies DB connectivity (warn-only, never repairs); cron install
+  # runs on every host, scope-filtered by this host's own tag list (HOST_TAGS).
+  # The steps run from the deployed repo root with the replayed deploy.conf
+  # environment; the private etc/ files were shipped above.
   echo "Running framework server steps (gen-env, db-check, cron install) on remote..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && IS_WORKER_HOST=$IS_WORKER_HOST bash -s" <<EOF
+  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && HOST_TAGS='$TAGLIST' bash -s" <<EOF
 set -euo pipefail
 $DEPLOY_CONF_ENV
 vendor/bin/pf-server-steps.sh

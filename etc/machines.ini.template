@@ -10,19 +10,21 @@
 #        address `pf-deploy.sh` uses for SSH). The value is a comma-separated
 #        list of `tag[:name]` tokens:
 #          bare tag    `web`       -> boolean flag (a deploy step on this host)
-#          bare tag    `worker`    -> boolean flag (framework built-in: installs
-#                                     the cron manifest on every deploy)
+#          bare tag    `worker`    -> a bare tag data jobs use as their cron
+#                                     scope
 #          named tag   `db:mydb`   -> a `db` resource named `mydb`
-#        `db` and `worker` are the framework's built-in tags: `db:<name>`
-#        names a database and enforces the one-to-one server mapping (the
-#        instance itself is provisioned by `ema create`; db-check verifies it
-#        via the host's own `mariadb@*` units, not this roster), and bare
-#        `worker` installs the
-#        `cron-manifest` output into CRON_FILE (etc/deploy.conf) on every
-#        deploy. Every other tag is consumer-owned and carried through
-#        generically. A host with a `db:<name>` token is a database host; an
-#        empty value is a code-only server (it deploys the codebase but runs
-#        no tagged step).
+#        `db` is the framework's built-in tag: `db:<name>` names a database
+#        and enforces the one-to-one server mapping (the instance itself is
+#        provisioned by `ema create`; db-check verifies it via the host's own
+#        `mariadb@*` units, not this roster). Every tag doubles as a cron
+#        scope: a `#[CronJob]` declares `scope: <tag[:name]>` (or `scope:
+#        host` to run on every host), and `cron-manifest --host-tags
+#        <tokens>` installs only jobs whose scope matches this host's tokens
+#        — a `host`-scoped job runs on every host. `worker` is an ordinary
+#        bare tag in that matcher, nothing special-cases it. Every other tag
+#        is consumer-owned and carried through generically. A host with a
+#        `db:<name>` token is a database host; an empty value is a code-only
+#        server (it deploys the codebase but runs no tagged step).
 #
 #        Constraint: a named token may appear on exactly ONE server
 #        (`db:mydb` and `web:mysite` are independent). Bare flags carry no

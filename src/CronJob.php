@@ -7,5 +7,8 @@ namespace Utils;
 #[\Attribute]
 class CronJob
 {
-    public function __construct(public readonly string $schedule) {}
+    public function __construct(
+        public readonly string $schedule,
+        public readonly string $scope,
+    ) {}
 }

@@ -71,11 +71,12 @@ export DEPLOY_NIX_GCROOT=/nix/var/nix/gcroots/<app>
 # export DEPLOY_INIT_CMD="make prod-init"
 
 # Optional cron config, consumed by the framework's built-in server steps: on
-# every host whose etc/machines.ini [prod] entry carries the `worker` tag,
-# pf-deploy installs the `cron-manifest` output into CRON_FILE and restarts
-# cron (after gen-env, so the manifest is never written against a stale or
-# missing .env). Omit if the project has no cron; REQUIRED on `worker` hosts
-# — pf-deploy fails loudly when unset there.
+# every host, pf-deploy installs the `cron-manifest` output (filtered by that
+# host's tags — a job runs only where its `scope` matches, and `host`-scoped
+# jobs run everywhere) into CRON_FILE and restarts cron (after gen-env, so
+# the manifest is never written against a stale or missing .env). Omit if the
+# project has no cron; REQUIRED whenever the repo declares a `#[CronJob]`
+# attribute — pf-deploy fails loudly when unset there.
 # CRON_FILE: remote crontab file the manifest is installed to.
 # export CRON_FILE=/etc/cron.d/<app>-orchestrator
 # CRON_USER: user the cron entries run as (default: root).

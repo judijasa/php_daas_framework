@@ -5,8 +5,9 @@ It bundles a small application framework for scheduled,
 database-backed data-processing agents:
 
 - **`#[Agent]` / `#[CronJob]` attributes** — declare which functions are
-  runnable agents and their schedules; consumed by `phprun`, the cron-manifest
-  generator, and the pre-commit attribute check.
+  runnable agents, their schedules, and (via `#[CronJob]`'s `scope`) where they
+  run; consumed by `phprun`, the cron-manifest generator, and the pre-commit
+  attribute check. See `doc/system/agents.md` for the argument reference.
 - **`phprun` CLI** — executes an `#[Agent]`-annotated function from any PHP
   file, injecting a DB connection when the agent declares a `dbTarget`,
   with cron-friendly logging.
@@ -105,9 +106,9 @@ before doing anything else — no manual exports needed. `make dev-init`
 writes `.env` with the repo paths, `REUTER_INI`, `EMA_TARGET=sandbox` and,
 when `etc/team.ini` includes the local hostname, `DBUSER` (the member's team
 DB username). `etc/machines.ini` is a prod-server-only roster (`[prod]` only):
-each ZeroTier IP maps to comma-separated `tag[:name]` tokens (`db` and
-`worker` are the built-in tags, other tags are consumer-owned; each named
-token maps to exactly one server).
+each ZeroTier IP maps to comma-separated `tag[:name]` tokens (`db` is the
+built-in tag; every tag doubles as a cron `scope`, other tags are
+consumer-owned; each named token maps to exactly one server).
 
 In template mode the classes are autoloaded from the framework's **own**
 `vendor/autoload.php`, and `etc/reuter.ini` is resolved from the repo root.
@@ -346,21 +347,20 @@ pf-deploy.sh <target_host> # deploy to a single prod host (must be in [prod])
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional: consumer-specific provisioning command run after the framework's generic `bin/pf-provision.sh`. |
-| `CRON_FILE` | Required on `worker`-tagged hosts: remote crontab file `pf-deploy.sh` installs the `cron-manifest` output into on every deploy. |
+| `CRON_FILE` | Required whenever the repo declares a `#[CronJob]` attribute: remote crontab file `pf-deploy.sh` installs the scope-filtered `cron-manifest` output into on every host. |
 | `CRON_USER` | Optional: user the cron entries run as (default `root`). |
 | `CRON_NIX_BIN` | Optional: `PATH` override for the cron entries (default `$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin`, so both `phprun` and `php` resolve). |
 
 - **`etc/machines.ini`** (git-ignored; template committed) - the prod-server
   registry: `[prod]` ZeroTier-IP→`tag[:name]` tokens (comma-separated per
-  server; `db` and `worker` are the built-in tags — `db:<name>` names a
-  database, bare `worker` marks a cron host — and other
-  tags are consumer-owned). `pf-deploy.sh` (default mode) targets every
-  `[prod]` host; a host carrying a `db:<name>` token is a database host (its
-  per-database MariaDB instance is provisioned by `ema create`, not by
-  deploy), and a host carrying bare `worker` gets the cron manifest
-  installed. Each named token maps to exactly one server; a server may host
-  several databases. The shared `pf-roster` CLI parses this roster for
-  `pf-deploy.sh` and the consumer's deploy wrapper.
+  server; `db:<name>` names a database, and every tag doubles as a cron
+  `scope` — other tags are consumer-owned). `pf-deploy.sh` (default mode)
+  targets every `[prod]` host; a host carrying a `db:<name>` token is a
+  database host (its per-database MariaDB instance is provisioned by `ema
+  create`, not by deploy), and cron installs on every host, scope-filtered by
+  that host's tokens. Each named token maps to exactly one server; a server
+  may host several databases. The shared `pf-roster` CLI parses this roster
+  for `pf-deploy.sh` and the consumer's deploy wrapper.
   This file is private data: keep it in a separate private config repo and
   place it at `etc/machines.ini` (`doc/system/consumer-config.md`).
 
@@ -418,8 +418,8 @@ the freshly swapped `etc/` before anything sources them), the idempotent
 provisioning via the framework's generic `bin/pf-provision.sh` plus the
 optional consumer-specific `DEPLOY_INIT_CMD`, and — on every host — the built-in
 server steps that regenerate `.env` (`gen-env`) and verify DB connectivity
-(`db-check`, warn-only), then install the cron manifest on
-`worker`-tagged hosts. A consumer wrapper is only needed
+(`db-check`, warn-only), then install the scope-filtered cron manifest
+(where the repo declares `#[CronJob]`). A consumer wrapper is only needed
 for its own consumer-owned tag steps (see "Deploying a consumer project").
 
 ### Database instances are owned by ema
@@ -447,7 +447,8 @@ the nix closure, installs composer deps, ships the private files named in
 `DEPLOY_PRIVATE_FILES`, runs the optional `DEPLOY_INIT_CMD` hook (consumer
 provisioning) around the idempotent provisioning, then runs the built-in
 server steps (regenerate `.env`, verify
-DB connectivity via `db-check`, install cron on `worker`-tagged hosts).
+DB connectivity via `db-check`, install the scope-filtered cron manifest on
+every host).
 Consumer-owned tag steps (restart
 services, restore website traversal, ...) are added by wrapping
 `vendor/bin/pf-deploy.sh` in the consumer's own deploy entrypoint (its
@@ -459,7 +460,7 @@ shared `pf-roster` CLI and loops over it:
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-vendor/bin/pf-deploy.sh "$@"   # framework: swap, nix, composer, provisioning, .env/db-check, cron (worker hosts)
+vendor/bin/pf-deploy.sh "$@"   # framework: swap, nix, composer, provisioning, .env/db-check, cron (every host, scope-filtered)
 # ... then, per prod host, the consumer-owned tag steps:
 #   ssh root@<host> 'cd /srv/apps/<app> && DEPLOY_TAGS="<tags>" bin/deploy/server-side-step.sh'
 ```
@@ -490,11 +491,13 @@ The framework ships three more CLIs run by pf-deploy as built-in server steps
   TCP-connects each `reuter.ini` section's `SERVER:PORT`. It never repairs —
   misses are warnings, and the deploy proceeds.
 - **`cron-manifest`** — scans the consumer's `src/` for functions decorated
-  with both `#[CronJob]` and `#[Agent]` and prints a crontab to stdout
-  (`CRON_USER`, and `CRON_NIX_BIN` — pf-deploy defaults it to
+  with both `#[CronJob]` and `#[Agent]` and prints a crontab to stdout,
+  emitting only jobs whose `scope` is `host` or an exact element of the
+  `--host-tags <comma-list>` (with no flag, every job). `CRON_USER`, and
+  `CRON_NIX_BIN` — pf-deploy defaults it to
   `$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin` so both
   `phprun` and `php` resolve — come from `etc/deploy.conf`). pf-deploy
-  redirects it into `CRON_FILE` and restarts cron on `worker`-tagged hosts.
+  redirects it into `CRON_FILE` and restarts cron on every host.
 
 ## Using in a consumer project
 

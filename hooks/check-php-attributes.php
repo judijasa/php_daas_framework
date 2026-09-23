@@ -13,6 +13,7 @@ foreach ($files as $file) {
     $n = count($tokens);
     $i = 0;
     $pendingAttrs = [];
+    $cronBody = null;
 
     while ($i < $n) {
         $tok = $tokens[$i];
@@ -25,15 +26,44 @@ foreach ($files as $file) {
             $i++;
             $parenDepth = 0;
             $expectName = true;
+            $body = '';
+            $isCron = false;
             while ($i < $n) {
                 $t = $tokens[$i];
-                if ($t === '(')                                         { $parenDepth++; $i++; continue; }
-                if ($t === ')')                                         { $parenDepth--; $i++; continue; }
-                if ($t === ']' && $parenDepth === 0)                   { $i++; break; }
-                if ($t === ',' && $parenDepth === 0)                   { $expectName = true; $i++; continue; }
-                if (is_array($t) && $t[0] === T_WHITESPACE)            { $i++; continue; }
-                if (is_array($t) && $t[0] === T_STRING && $expectName) { $pendingAttrs[] = $t[1]; $expectName = false; }
+                if ($t === '(') {
+                    $parenDepth++;
+                    $body .= '(';
+                    $i++; continue;
+                }
+                if ($t === ')') {
+                    $parenDepth--;
+                    $body .= ')';
+                    $i++; continue;
+                }
+                if ($t === ']' && $parenDepth === 0) {
+                    $i++; break;
+                }
+                if ($t === ',' && $parenDepth === 0) {
+                    $expectName = true;
+                    $body .= ',';
+                    $i++; continue;
+                }
+                if (is_array($t) && $t[0] === T_WHITESPACE) {
+                    $body .= $t[1];
+                    $i++; continue;
+                }
+                if (is_array($t) && $t[0] === T_STRING && $expectName) {
+                    $pendingAttrs[] = $t[1];
+                    if ($t[1] === 'CronJob') {
+                        $isCron = true;
+                    }
+                    $expectName = false;
+                }
+                $body .= is_array($t) ? $t[1] : $t;
                 $i++;
+            }
+            if ($isCron) {
+                $cronBody = $body;
             }
             continue;
         }
@@ -50,15 +80,21 @@ foreach ($files as $file) {
                 $exitCode = 1;
             }
 
+            if (in_array('CronJob', $pendingAttrs) && ($cronBody === null || !preg_match('/\bscope\s*:/', $cronBody))) {
+                fwrite(STDERR, "Error: {$file}:{$line}: '{$funcName}' has #[CronJob] without a scope (e.g. #[CronJob(schedule: 'hourly', scope: 'worker')])\n");
+                $exitCode = 1;
+            }
+
             $pendingAttrs = [];
+            $cronBody = null;
             $i = $j + 1;
             continue;
         }
 
         $pendingAttrs = [];
+        $cronBody = null;
         $i++;
     }
 }
 
 exit($exitCode);
-

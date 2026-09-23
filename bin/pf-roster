@@ -12,16 +12,19 @@ declare(strict_types=1);
 //
 // [prod] value grammar (comma-separated tokens):
 //   bare tag     `web`       -> boolean flag (a deploy step on this host)
-//   bare tag     `worker`    -> boolean flag (framework built-in: cron install)
+//   bare tag     `worker`    -> a bare tag data jobs use as their cron scope
 //   named tag    `db:simo`   -> a `db` resource named `simo`
 //   empty value              -> code-only host (no tagged step)
 //
-// `db` and `worker` are the framework's built-in tags: `db:<name>` names a
-// database and enforces the one-to-one server mapping (the instance itself is
-// provisioned by `ema create`, and db-check verifies it via the host's own
-// `mariadb@*` units — not via this roster), and bare `worker` installs the
-// cron-manifest output (pf-deploy's server steps). Every other tag is
-// consumer-owned and carried through generically.
+// `db` is the framework's built-in tag: `db:<name>` names a database and
+// enforces the one-to-one server mapping (the instance itself is provisioned
+// by `ema create`, and db-check verifies it via the host's own `mariadb@*`
+// units — not via this roster). Every tag doubles as a cron scope: a
+// #[CronJob] declares `scope: <tag[:name]>` (or `scope: host` to run on
+// every host), and `cron-manifest --host-tags <tokens>` emits only jobs whose
+// scope matches this host's tokens. `worker` is an ordinary bare tag in that
+// matcher — nothing special-cases it. Every other tag is consumer-owned and
+// carried through generically.
 //
 // Usage (from the consumer repo root):
 //   pf-roster              print "host=tags" per line (default)
