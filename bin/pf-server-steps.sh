@@ -43,6 +43,21 @@ if grep -Rqs '#\[CronJob' "$DEPLOY_TARGET_DIR/src"; then
     echo "    Updating cron jobs from #[CronJob]/#[Agent] attributes..." >&2
     cron-manifest --host-tags "${HOST_TAGS:-}" > "$CRON_FILE"
     chmod 644 "$CRON_FILE"
-    systemctl restart cron 2>/dev/null || systemctl restart crond
+    # Restart the cron daemon so the freshly written crontab is picked up. The
+    # unit name is distro-specific (Debian/Ubuntu: cron, RHEL/Fedora: crond,
+    # Arch/Alpine: cronie); detect the installed one instead of hardcoding it.
+    cron_svc=""
+    for candidate in cron crond cronie; do
+        if systemctl list-unit-files "$candidate.service" >/dev/null 2>&1; then
+            cron_svc="$candidate.service"
+            break
+        fi
+    done
+    if [ -z "$cron_svc" ]; then
+        echo "pf-deploy: no cron daemon found (tried cron/crond/cronie.service)." >&2
+        echo "pf-deploy: install a cron daemon on this host, then re-run the deploy." >&2
+        exit 1
+    fi
+    systemctl restart "$cron_svc"
     echo "    Cron jobs installed to $CRON_FILE."
 fi

@@ -254,6 +254,9 @@ install_nix_remotely() {
   echo "Installing Nix (multi-user) on $REMOTE_HOST..."
   if ! ssh "root@$REMOTE_HOST" "
     set -e
+    # The multi-user install requires systemd (nix-daemon.service) and curl.
+    [ -d /run/systemd/system ] || { echo 'nix install requires a systemd host' >&2; exit 1; }
+    command -v curl >/dev/null 2>&1 || { echo 'nix install requires curl' >&2; exit 1; }
     curl -L https://nixos.org/nix/install | sh -s -- --daemon --yes
     mkdir -p /etc/nix
     echo 'trusted-users = root $PROD_USER' >> /etc/nix/nix.conf

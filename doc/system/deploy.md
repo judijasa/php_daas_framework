@@ -81,6 +81,15 @@ The remote host must have the app user in place before the first
    `pf-deploy.sh` SSHes in as both `root` and `<PROD_USER>` — the nix closure
    copy and `composer install` run as the app user.
 
+3. Install a cron daemon — required only when the consumer declares
+   `#[CronJob]` jobs (the deploy's cron step writes the crontab and restarts
+   the daemon). The unit name is distro-specific (`cron` on Debian/Ubuntu,
+   `crond` on RHEL/Fedora, `cronie` on Arch/Alpine); the deploy detects the
+   installed one and fails with an actionable message when none is present.
+
+The multi-user nix install (performed automatically when absent) assumes a
+systemd host with `curl` available.
+
 ## The pipeline
 
 ```bash
