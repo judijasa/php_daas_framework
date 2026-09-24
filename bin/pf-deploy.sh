@@ -326,7 +326,7 @@ deploy_composer_dependencies() {
   echo "Running composer install on remote host..."
       ssh "$PROD_USER@$REMOTE_HOST" "
           export PATH='$DEPLOY_NIX_RESULT_DIR/result/bin':\$PATH
-          cd \\\"$REMOTE_TARGET_DIR\\\" && composer install
+          cd '$REMOTE_TARGET_DIR' && composer install
       "
 }
 
