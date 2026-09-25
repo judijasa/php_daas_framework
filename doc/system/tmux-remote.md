@@ -71,6 +71,13 @@ production host should not be mistaken for a local session; the legacy
 the bar. Do not edit the copy on a host — the deployed repo directory is
 replaced on every deploy.
 
+The config also forces the shell to run **non-login** (`default-command 'exec
+"$SHELL"'`). tmux's default is to start a login shell, and a login shell sources
+`/etc/profile`; on a root shell `/etc/profile` hard-resets `PATH` to the bare
+system path, discarding the `vendor/bin` and nix `result/bin` that `tmux-remote`
+exported into the session. A non-login shell inherits that `PATH` untouched, so
+`ema` and the rest of the consumer's `vendor/bin` stay resolvable.
+
 ## Guards
 
 Both fail loudly instead of half-working:
