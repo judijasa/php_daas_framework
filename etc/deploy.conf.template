@@ -44,7 +44,7 @@ export DEPLOY_TARGET_DIR=/srv/apps/<app>
 export DEPLOY_LOG_DIR=/var/log/<app>
 
 # DEPLOY_REUTER_INI: path to the consumer's manual reuter.ini — one
-# [<dbname>] section per database (SERVER/PORT/DBMS/MYSQL_UNIX_PORT plus the
+# [<dbname>] section per database (SERVER/PORT/MYSQL_UNIX_PORT plus the
 # consumer's <ACCOUNT>_PASSWORD keys), recorded from `ema create`'s output.
 # gen-env writes it into .env as REUTER_INI; pf-deploy's db-check reads it to
 # verify reachability. The file is the consumer's private data, and the repo

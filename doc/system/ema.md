@@ -82,7 +82,6 @@ section header IS the dbname:
     [mydb]
     SERVER=10.147.x.x
     PORT=3306
-    DBMS=mariadb
     <ACCOUNT>_PASSWORD=...
     MYSQL_UNIX_PORT=/path/to/mysql.sock
 
