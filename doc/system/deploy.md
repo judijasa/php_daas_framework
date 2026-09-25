@@ -99,8 +99,9 @@ pf-deploy.sh <target_host>   # a single prod host (must be in [prod])
 
 The fixed pipeline: swap the repo (as `root`), copy the nix closure,
 `composer install` (the archive wipes `vendor/`), ship the private files named
-in `DEPLOY_PRIVATE_FILES`, run `pf-provision.sh` + the optional
-`DEPLOY_INIT_CMD`, then the built-in server steps:
+in `DEPLOY_PRIVATE_FILES`, run `pf-provision.sh` (which installs the shared
+`mariadb@.service` unit) + the optional `DEPLOY_INIT_CMD`, then the built-in
+server steps:
 
 1. **`gen-env`** — regenerate `.env` as a deterministic projection of
    `etc/deploy.conf` (`REPO_PATH`/`REPO_LOG`/`REUTER_INI`/`EMA_TARGET=prod`;
@@ -127,4 +128,6 @@ vendor/bin/pf-deploy.sh "$@"   # framework pipeline (every host, scope-filtered)
 
 Database instances are not part of deploy: each database's own MariaDB instance
 is provisioned at creation time by `ema create srv/<name>-<GUID>` (see
-`doc/system/ema.md`).
+`doc/system/ema.md`). Deploy does install the shared `mariadb@.service`
+template unit (via `pf-provision.sh`), which `ema create` asserts before
+provisioning any instance.

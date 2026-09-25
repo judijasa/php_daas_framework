@@ -16,10 +16,13 @@ remote `composer install` that delivers the framework's own CLIs
 
 ema provisions **the instance and the schema**: `ema create` provisions a
 dedicated MariaDB instance per database (datadir, `/etc/<instance>/my.cnf`,
-`mariadb@<instance>` systemd unit, an auto-picked TCP port) before creating
-the database and applying its schema packages in dependency order. It does
-**not** create users or grants — the service accounts and their per-object
-grants are consumer policy, owned by the consumer's own provisioning.
+an auto-picked TCP port, started under the framework-installed
+`mariadb@<instance>` systemd unit) before creating the database and applying
+its schema packages in dependency order. The `mariadb@.service` unit itself is
+a static file installed by `pf-provision.sh`, not authored by ema — ema asserts
+it exists before provisioning. It does **not** create users or grants — the
+service accounts and their per-object grants are consumer policy, owned by the
+consumer's own provisioning.
 
 ## Command surface
 
@@ -130,19 +133,23 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
   3. on every host: `cron-manifest --host-tags <host's tokens>` → `CRON_FILE`,
      restart cron (scope-filtered; `host`-scoped jobs run everywhere).
 - `vendor/bin/pf-provision.sh` (`pf-deploy.sh`, root) asserts the `PROD_USER`
-  account and creates the permanent system dirs. It never provisions MariaDB
-  and never creates databases or users — instances are owned by `ema create`.
+  account, creates the permanent system dirs, and installs the framework-owned
+  `mariadb@.service` template unit. It never creates databases or users —
+  instances are provisioned by `ema create` (which asserts the unit exists and
+  starts `mariadb@<db>`).
 - Consumer repos git-ignore `/var/`, `/etc/reuter.ini`, `/etc/machines.ini`,
   and `.env` (reuter.ini/machines.ini are consumer-owned private data).
 
 ## Creating databases on prod
 
 `ema create srv/<name>-<GUID>` provisions the database's own MariaDB instance
-(datadir, `/etc/<db>/my.cnf`, `mariadb@<db>` systemd unit, auto-picked TCP
-port), creates the database, applies its schema packages, then prints the
-`[<dbname>]` connectivity values (`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname)
-for the operator to record in the manual reuter.ini. The deployed `.env` must
-be in scope for the session:
+(datadir, `/etc/<db>/my.cnf`, auto-picked TCP port, started under the
+framework-installed `mariadb@<db>` systemd unit), creates the database, applies
+its schema packages, then prints the `[<dbname>]` connectivity values
+(`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) for the operator to record in the
+manual reuter.ini. The unit is installed by deploy (`pf-provision.sh`), so run
+a deploy before the first `ema create`. The deployed `.env` must be in scope
+for the session:
 
     ssh root@<db-host> 'cd <deploy-dir> && set -a && . .env && ema create srv/<name>-<GUID>'
 
