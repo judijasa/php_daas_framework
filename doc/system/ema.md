@@ -67,7 +67,8 @@ Prod machines run `prod` mode **only because** the deploy chain writes
 `EMA_TARGET=prod` and `REUTER_INI=$DEPLOY_REUTER_INI` (the consumer's manual
 reuter.ini path) into the deployed `.env` (gen-env). ema never reads `.env`
 itself, so the session that runs it must have those values in scope
-(e.g. `set -a; . .env`).
+(e.g. `set -a; . .env`, or a `tmux-remote` shell — see
+`doc/system/tmux-remote.md`).
 
 ## The reuter.ini contract
 
@@ -147,10 +148,13 @@ framework-installed `mariadb@<db>` systemd unit), creates the database, applies
 its schema packages, then prints the `[<dbname>]` connectivity values
 (`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) for the operator to record in the
 manual reuter.ini. The unit is installed by deploy (`pf-provision.sh`), so run
-a deploy before the first `ema create`. The deployed `.env` must be in scope
-for the session:
+a deploy before the first `ema create`. The session must be on the DB host with
+the deployed `.env` in scope — exactly the shell `tmux-remote` opens from the
+repo root (it `cd`s to `DEPLOY_TARGET_DIR`, sources `.env` under `set -a`, and
+puts `vendor/bin` first on `PATH`; see `doc/system/tmux-remote.md`):
 
-    ssh root@<db-host> 'cd <deploy-dir> && set -a && . .env && ema create srv/<name>-<GUID>'
+    tmux-remote <db-host> <session>      # from the repo root
+    ema create srv/<name>-<GUID>         # inside the session
 
 `ema create` refuses when the database already exists. After creation, record
 the printed section in the consumer's manual reuter.ini and provision the
