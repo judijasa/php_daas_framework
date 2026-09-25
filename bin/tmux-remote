@@ -10,29 +10,30 @@
 #
 # The app prefix is never typed. <app> is `basename "$PWD"` — the repo
 # directory you are standing in, the same derivation gen-ssh-config uses — so
-# `tmux-remote <name>` resolves the ssh alias `<app>-<name>`. To touch another
-# app you open that app's own shell; there is no override flag.
+# `tmux-remote <host> <session>` resolves the ssh alias `<app>-<host>`. To
+# touch another app you open that app's own shell; there is no override flag.
 #
-# Plain `ssh <app>-<name>` stays the untouched non-nix path: this CLI only adds
+# Plain `ssh <app>-<host>` stays the untouched non-nix path: this CLI only adds
 # the nix-enabled convenience shell. On the host it runs (reusing only the PATH
 # formula from bin/pf-server-steps.sh, not that deploy script):
 #
 #   cd "$DEPLOY_TARGET_DIR" && source .env \
 #     && export PATH="$PWD/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin:$PATH" \
-#     && tmux -f "<framework package>/etc/tmux-remote.conf" new-session -A -s <name>
+#     && tmux -f "<framework package>/etc/tmux-remote.conf" new-session -A -s <session>
 #
-# The tmux session name is <name> (the short host name): the app context is
-# already carried by the local tmux session the operator launches from. The
+# The tmux session name is the explicit <session> (not the host name or the
+# app) — one host can hold several named sessions, re-attached by name. The
 # remote config — red status bar, prefix C-a — is the framework's own
 # etc/tmux-remote.conf, resolved on the host from the package's path relative
 # to the repo root (no package name is hardcoded). See doc/system/tmux-remote.md.
 #
-# Usage: tmux-remote <name>   (run from the repo root)
+# Usage: tmux-remote <host> <session>   (run from the repo root)
 
 set -euo pipefail
 
-# A host name becomes an alias component and the remote session name; keep it
-# to what the consumer's `hosts` mapping allows (same rule as gen-ssh-config).
+# A host name becomes an alias component, and a session name becomes the remote
+# tmux session name; keep both to what the consumer's `hosts` mapping allows
+# (same rule as gen-ssh-config) so they round-trip through ssh and tmux cleanly.
 SAFE_RE='^[A-Za-z0-9._-]+$'
 MAX_LINKS=16
 
@@ -40,41 +41,55 @@ die() { echo "tmux-remote: ERROR: $*" >&2; exit 1; }
 
 usage() {
     cat <<'EOF'
-Usage: tmux-remote <name>
+Usage: tmux-remote <host> <session>
 
 Open (or re-attach to) an interactive tmux session on a consumer host, with
 the consumer's nix-built runtime on PATH. Run from the repo root: <app> is
-`basename "$PWD"`, so the ssh alias resolved is <app>-<name> — the alias
-gen-ssh-config writes. The remote session is named <name> and configured by
+`basename "$PWD"`, so the ssh alias resolved is <app>-<host> — the alias
+gen-ssh-config writes. The remote session is named <session> and configured by
 the framework's etc/tmux-remote.conf (red status bar, prefix C-a, so it never
 clashes with a local tmux's C-b).
 
-  <name>          short host name from the consumer's `hosts` mapping.
+  <host>           short host name from the consumer's `hosts` mapping.
+  <session>        tmux session name on the host (letters, digits, '.', '_', '-').
+
+Inside the session:
+  tmux ls          list every session on the host (attached and detached).
+  C-a d            detach — leave the session running; re-attach with
+                   `tmux-remote <host> <session>`.
+  C-a :kill-session   delete the session (or `exit` every pane).
 EOF
 }
 
 main() {
-    local name=""
+    local host="" session=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help) usage; return 0 ;;
             -*)        usage >&2; return 1 ;;
             *)
-                if [[ -n "$name" ]]; then
+                if [[ -z "$host" ]]; then
+                    host="$1"
+                elif [[ -z "$session" ]]; then
+                    session="$1"
+                else
                     usage >&2
                     return 1
                 fi
-                name="$1"; shift
+                shift
                 ;;
         esac
     done
 
-    if [[ -z "$name" ]]; then
+    if [[ -z "$host" || -z "$session" ]]; then
         usage >&2
         return 1
     fi
-    if ! [[ "$name" =~ $SAFE_RE ]]; then
-        die "invalid host name '$name' (allowed: letters, digits, '.', '_', '-')"
+    if ! [[ "$host" =~ $SAFE_RE ]]; then
+        die "invalid host name '$host' (allowed: letters, digits, '.', '_', '-')"
+    fi
+    if ! [[ "$session" =~ $SAFE_RE ]]; then
+        die "invalid session name '$session' (allowed: letters, digits, '.', '_', '-')"
     fi
 
     local app
@@ -138,7 +153,7 @@ main() {
         conf_rel="$pkg_rel/$conf_rel"
     fi
     local remote_conf="$DEPLOY_TARGET_DIR/$conf_rel"
-    local alias="$app-$name"
+    local alias="$app-$host"
 
     # Preflight the alias: `ssh -G` prints the config ssh would use, and an
     # alias nothing matches resolves to itself. Failing here beats a cryptic
@@ -154,11 +169,11 @@ main() {
     # Remote command. $PWD and $PATH expand on the host (after the cd, so $PWD
     # is the deployed repo root); every locally-known path is quoted with
     # printf %q, so a consumer path with spaces survives the round trip.
-    local target_q nix_q conf_q name_q remote_cmd
+    local target_q nix_q conf_q session_q remote_cmd
     printf -v target_q '%q' "$DEPLOY_TARGET_DIR"
     printf -v nix_q '%q' "$DEPLOY_NIX_RESULT_DIR"
     printf -v conf_q '%q' "$remote_conf"
-    printf -v name_q '%q' "$name"
+    printf -v session_q '%q' "$session"
 
     printf -v remote_cmd '%s\n' \
         "cd $target_q || exit 1" \
@@ -169,9 +184,9 @@ main() {
         '  echo "tmux-remote: $conf is missing on the host — deploy the repo (composer install delivers the framework package) before opening a remote shell." >&2' \
         '  exit 1' \
         'fi' \
-        "exec tmux -f \"\$conf\" new-session -A -s $name_q"
+        "exec tmux -f \"\$conf\" new-session -A -s $session_q"
 
-    echo "tmux-remote: ssh $alias -> tmux session '$name'" >&2
+    echo "tmux-remote: ssh $alias -> tmux session '$session'" >&2
     # -t: tmux needs a terminal; ssh would only allocate one implicitly.
     ssh -t "$alias" "$remote_cmd"
 }

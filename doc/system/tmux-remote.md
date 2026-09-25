@@ -9,20 +9,32 @@ the remote session's tmux config); the consumer owns the data (the
 ## Usage
 
 ```bash
-tmux-remote <name>     # from the repo root
+tmux-remote <host> <session>     # from the repo root
 ```
 
-`<name>` is the short host name from the consumer's private `hosts` mapping
-(the same one `gen-ssh-config` reads — see `doc/system/ssh-config.md`). Nothing
-else is passed: `<app>` is `basename "$PWD"`, the repo directory you are
-standing in, so the ssh alias resolved is `<app>-<name>` — exactly the alias
-`gen-ssh-config` writes, with that alias's `User` and `IdentityFile`. To reach
-another app you open that app's own shell; there is no override flag.
+`<host>` is the short host name from the consumer's private `hosts` mapping
+(the same one `gen-ssh-config` reads — see `doc/system/ssh-config.md`); the
+ssh alias resolved is `<app>-<host>`, where `<app>` is `basename "$PWD"` — the
+repo directory you are standing in — exactly the alias `gen-ssh-config` writes,
+with that alias's `User` and `IdentityFile`. `<session>` is the tmux session
+name on the host (letters, digits, `.`, `_`, `-`); it is explicit, so one host
+can hold several named sessions and you re-attach by that name. To reach another
+app you open that app's own shell; there is no override flag.
 
 The CLI is client-side and dev-only: it runs on the operator's machine and hands
-the session to the host over `ssh -t <app>-<name>`. Plain `ssh <app>-<name>`
+the session to the host over `ssh -t <app>-<host>`. Plain `ssh <app>-<host>`
 stays the untouched non-nix path — this CLI only adds the nix-enabled
 convenience shell.
+
+## Inside the session
+
+- **List sessions** — `tmux ls` lists every session on the host (attached and
+  detached); `C-a s` opens tmux's interactive session picker.
+- **Detach (keep the session)** — `C-a d`. The session keeps running on the
+  host; re-attach later with `tmux-remote <host> <session>`.
+- **Delete (destroy the session)** — `C-a :` then `kill-session` + Enter (or
+  `exit` every pane/window). Once the last session is gone, the host's tmux
+  server stops and nothing is left running.
 
 ## What runs on the host
 
@@ -33,7 +45,7 @@ convenience shell.
 ```text
 cd "$DEPLOY_TARGET_DIR" && source .env \
   && export PATH="$PWD/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin:$PATH" \
-  && tmux -f "<framework package>/etc/tmux-remote.conf" new-session -A -s <name>
+  && tmux -f "<framework package>/etc/tmux-remote.conf" new-session -A -s <session>
 ```
 
 - **`source .env`** — the deployed repo directory is replaced on every deploy,
@@ -45,10 +57,10 @@ cd "$DEPLOY_TARGET_DIR" && source .env \
   `phprun`/`ema`) first, then the nix result bin `$DEPLOY_NIX_RESULT_DIR/result/bin`
   (php, composer, mariadb, jq, tmux). `$PWD` and `$PATH` expand on the host,
   after the `cd`.
-- **`new-session -A -s <name>`** — attach to the session if it exists, create it
-  otherwise. The session name is `<name>` (the short host name), not the app:
-  the app context is already carried by the local tmux session the operator
-  launches from.
+- **`new-session -A -s <session>`** — attach to the session if it exists, create
+  it otherwise. The session name is the explicit `<session>` (not the host name
+  or the app): `-A` makes re-attaching idempotent, so `tmux-remote <host>
+  <session>` either attaches to or creates that named session.
 
 ## The remote config file
 
@@ -82,7 +94,7 @@ exported into the session. A non-login shell inherits that `PATH` untouched, so
 
 Both fail loudly instead of half-working:
 
-- **The ssh alias must be configured.** `ssh -G <app>-<name>` must resolve to a
+- **The ssh alias must be configured.** `ssh -G <app>-<host>` must resolve to a
   real `HostName`; an alias nothing matches resolves to itself, which is how the
   CLI detects it. The error points at `gen-ssh-config`.
 - **The remote config file must exist.** Checked on the host, right before tmux
