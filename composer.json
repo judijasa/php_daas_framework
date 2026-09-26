@@ -35,6 +35,7 @@
     "bin/gen-service-accounts",
     "bin/gen-cert",
     "bin/pf-roster",
+    "bin/pf-host",
     "bin/cron-manifest",
     "bin/dev/pf-shell-enter.sh",
     "bin/dev/init-local-env.sh",

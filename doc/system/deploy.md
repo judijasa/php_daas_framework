@@ -36,8 +36,9 @@ as a cron `scope`; other tags are consumer-owned. `pf-deploy.sh` (default mode)
 targets every `[prod]` host; a host carrying a `db:<name>` token is a database
 host (its instance is provisioned by `ema create`, not deploy). Each named
 token maps to exactly one server; a server may host several databases. The
-shared `pf-roster` CLI parses this roster. This file is private data (see
-`doc/system/consumer-config.md`).
+shared `pf-roster` CLI parses this roster, and the shared host lookup resolves
+a host's short name to this key (see `doc/system/host-resolution.md`). This
+file is private data (see `doc/system/consumer-config.md`).
 
 ### `.env`
 

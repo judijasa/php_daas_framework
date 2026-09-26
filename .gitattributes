@@ -11,6 +11,7 @@
 /.pre-commit-config.yaml export-ignore
 /phpstan.dist.neon export-ignore
 /hooks/ export-ignore
+/tests/ export-ignore
 /.gitignore export-ignore
 
 # Dev-only build and environment plumbing

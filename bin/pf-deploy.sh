@@ -50,7 +50,10 @@
 #
 # Usage:
 #   pf-deploy.sh                # deploy to every [prod] host in etc/machines.ini
-#   pf-deploy.sh <target_host>  # deploy to a single prod host (must be in [prod])
+#   pf-deploy.sh <target_host>  # deploy to a single prod host, by its short
+#                               # name or its ZeroTier IP (both spellings
+#                               # resolve to the same [prod] host; see
+#                               # doc/system/host-resolution.md)
 #   .env  (git-ignored, machine-specific) - same contract as `phprun`:
 #     REPO_PATH              consumer repo root (set by the consumer's dev-init)
 #
@@ -109,9 +112,10 @@ if [[ ! -f "$PWD/etc/machines.ini" ]]; then
   exit 1
 fi
 
-# Locate the shared roster parser next to this script (resolves vendor/bin
-# symlinks, same pattern as bin/phprun).
+# Locate the shared roster parser and host resolver next to this script
+# (resolves vendor/bin symlinks, same pattern as bin/phprun).
 ROSTER_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-roster"
+HOST_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-host"
 
 # Print each [prod] entry as "zerotier-ip=<comma-separated tag list>" (the
 # host's `tag[:name]` tokens). `main` parses this to build the deploy roster.
@@ -376,14 +380,20 @@ main() {
       echo "pf-deploy: at most one target host may be given (got: ${ARGS[*]})" >&2
       exit 1
     fi
-    local wanted="${ARGS[0]}"
+    # Either spelling: the shared host lookup (bin/pf-host) turns a short name
+    # or a ZeroTier IP into the canonical host the roster is keyed by, and
+    # reports the reason itself when the host is unknown or not in [prod].
+    local wanted
+    if ! wanted="$("$HOST_BIN" "${ARGS[0]}")"; then
+      exit 1
+    fi
     for i in "${!hosts[@]}"; do
       if [ "${hosts[$i]}" = "$wanted" ]; then
         deploy_to_host "${hosts[$i]}" "${taglists[$i]}"
         return 0
       fi
     done
-    echo "pf-deploy: host '$wanted' is not in the [prod] roster of etc/machines.ini." >&2
+    echo "pf-deploy: host '${ARGS[0]}' ($wanted) is not in the [prod] roster of etc/machines.ini." >&2
     exit 1
   fi
 

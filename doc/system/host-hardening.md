@@ -26,7 +26,7 @@ The CLI runs from the consumer checkout that holds `etc/machines.ini` and
 
 | Argument | Meaning |
 |---|---|
-| `host` | ZeroTier IP of one `[prod]` host. |
+| `host` | one `[prod]` host, as its short name or its ZeroTier IP (see `doc/system/host-resolution.md`). |
 | `all` | reconcile every `[prod]` host (the default). |
 | `-a`, `--apply` | actually apply over `ssh root@<host>` (default is dry-run). |
 | `-n`, `--dry-run` | print the computed rules without applying (the default). |

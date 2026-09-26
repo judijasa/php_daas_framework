@@ -3,12 +3,16 @@
 
 declare(strict_types=1);
 
-// pf-roster — shared [prod] roster parser for the deploy toolchain.
+require_once __DIR__ . '/../src/host_resolver.php';
+
+// pf-roster — [prod] roster queries for the deploy toolchain.
 //
 // Reads etc/machines.ini [prod] from the consumer repo root (the current
 // working directory) and answers generic tag queries, so pf-deploy.sh and
 // the consumer deploy wrapper share one parse of the `tag[:name]` token
-// list.
+// list. The parse itself is the shared host lookup (src/host_resolver.php),
+// which also pairs a host's short name with its ZeroTier IP for bin/pf-host,
+// bin/gen-firewall and bin/pf-deploy.sh (see doc/system/host-resolution.md).
 //
 // [prod] value grammar (comma-separated tokens):
 //   bare tag     `web`       -> boolean flag (a deploy step on this host)
@@ -35,42 +39,6 @@ declare(strict_types=1);
 function machines_file(): string
 {
     return (getcwd() ?: '.') . '/etc/machines.ini';
-}
-
-/** @return array<string, string> host => raw tag value */
-function prod_roster(string $path): array
-{
-    if (!is_file($path)) {
-        return [];
-    }
-    $cnf = parse_ini_file($path, true, INI_SCANNER_RAW);
-    if ($cnf === false || !isset($cnf['prod']) || !is_array($cnf['prod'])) {
-        return [];
-    }
-    $out = [];
-    foreach ($cnf['prod'] as $host => $value) {
-        $host = (string) $host;
-        // PHP's parse_ini_file skips `;` comments only; `#`-prefixed lines
-        // (the templates' comment style) would parse as bogus keys - drop them.
-        if ($host === '' || $host[0] === '#') {
-            continue;
-        }
-        $out[$host] = is_string($value) ? trim($value) : '';
-    }
-    return $out;
-}
-
-/** @return string[] trimmed tokens, empties dropped */
-function tokens(string $raw): array
-{
-    $out = [];
-    foreach (explode(',', $raw) as $rawTok) {
-        $tok = trim($rawTok);
-        if ($tok !== '') {
-            $out[] = $tok;
-        }
-    }
-    return $out;
 }
 
 function normalize(string $raw): string

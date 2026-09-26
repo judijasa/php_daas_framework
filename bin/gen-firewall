@@ -3,6 +3,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../src/host_resolver.php';
+
 // gen-firewall — reconcile the tag-driven ufw firewall for prod hosts.
 //
 // The framework owns the mechanism: reading a consumer host-hardening
@@ -44,7 +46,7 @@ Usage: gen-firewall [host|all] [-a|--apply] [-n|--dry-run] [-h|--help]
 Reconcile the tag-driven ufw firewall for prod hosts, from the shared
 etc/host-hardening.php declaration and the etc/machines.ini [prod] roster.
 
-  host              ZeroTier IP of one [prod] host.
+  host              one [prod] host, as its short name or its ZeroTier IP.
   all               reconcile every [prod] host (the default).
   -a, --apply       actually apply over `ssh root@<host>` (default is dry-run).
   -n, --dry-run     print the computed rules without applying (the default).
@@ -149,44 +151,6 @@ function normalize_rule(mixed $entry): ?array
     }
 
     return ['rule' => $rule, 'gate' => $gate];
-}
-
-// etc/machines.ini [prod] roster: host => raw tag string. Mirrors the
-// pf-roster parse (same token grammar) so the deploy chain and this CLI share
-// one reading of the roster.
-//
-// @return array<string,string>
-function prod_roster(string $path): array
-{
-    if (!is_file($path)) {
-        return [];
-    }
-    $cnf = parse_ini_file($path, true, INI_SCANNER_RAW);
-    if ($cnf === false || !isset($cnf['prod']) || !is_array($cnf['prod'])) {
-        return [];
-    }
-    $out = [];
-    foreach ($cnf['prod'] as $host => $value) {
-        $host = (string) $host;
-        if ($host === '' || $host[0] === '#') {
-            continue;
-        }
-        $out[$host] = is_string($value) ? trim($value) : '';
-    }
-    return $out;
-}
-
-// @return array<int,string> trimmed tokens, empties dropped
-function tokens(string $raw): array
-{
-    $out = [];
-    foreach (explode(',', $raw) as $rawTok) {
-        $tok = trim($rawTok);
-        if ($tok !== '') {
-            $out[] = $tok;
-        }
-    }
-    return $out;
 }
 
 // Resolve the ZeroTier range the baseline SSH and `db:<name>` rules are
@@ -446,11 +410,16 @@ function main(array $argv): int
     $targets = [];
     if ($target === 'all') {
         $targets = array_keys($roster);
-    } elseif (array_key_exists($target, $roster)) {
-        $targets = [$target];
     } else {
-        fwrite(STDERR, "gen-firewall: host '{$target}' is not in the [prod] roster of etc/machines.ini\n");
-        return 1;
+        // Either spelling: the shared host lookup turns a short name or a
+        // ZeroTier IP into the canonical host and enforces [prod] membership.
+        $error = null;
+        $host = resolve_host($target, $root, $error);
+        if ($host === null) {
+            fwrite(STDERR, "gen-firewall: {$error}\n");
+            return 1;
+        }
+        $targets = [$host['ip']];
     }
 
     $declFile = host_hardening_file($root);

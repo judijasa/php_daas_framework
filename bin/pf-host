@@ -1,0 +1,94 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/../src/host_resolver.php';
+
+// pf-host — resolve a host's two spellings, for the bash CLIs.
+//
+// A bash CLI cannot read the consumer's private etc/hosts / etc/machines.ini
+// mapping itself without duplicating the lookup, so it asks this CLI — the
+// shared src/host_resolver.php — and reads back the half it needs:
+//
+//   the ZeroTier IP   the host's identity: the [prod] roster key, the
+//                     `ssh root@<host>` target (pf-deploy.sh)
+//   the short name    the ssh-alias component gen-ssh-config prefixes
+//                     (`<app>-<name>`, what tmux-remote resolves)
+//
+// Either spelling is accepted on input. Run from the repo root: both private
+// files are read from the working directory, and an unknown spelling or a
+// non-[prod] host exits 1 with the reason on stderr. See
+// doc/system/host-resolution.md.
+//
+// Usage: pf-host <name|ip>         print the host's ZeroTier IP
+//        pf-host --name <name|ip>  print the host's short name
+
+const HELP = <<<'TXT'
+Usage: pf-host <name|ip>         print the host's ZeroTier IP
+       pf-host --name <name|ip>  print the host's short name
+
+Resolve either spelling of a [prod] host — the short name from the consumer's
+private etc/hosts, or the ZeroTier IP the etc/machines.ini [prod] roster is
+keyed by — and print the half the caller needs.
+
+  --name        print the host's short name (the ssh-alias component
+                gen-ssh-config prefixes, `<app>-<name>`) instead of its
+                ZeroTier IP.
+  -h, --help    show this help.
+
+Run from the repo root: etc/hosts and etc/machines.ini are read from the
+working directory.
+TXT;
+
+function main(array $argv): int
+{
+    $want_name = false;
+    $positional = [];
+    foreach (array_slice($argv, 1) as $arg) {
+        if ($arg === '--name') {
+            $want_name = true;
+        } elseif ($arg === '-h' || $arg === '--help') {
+            fwrite(STDOUT, HELP . PHP_EOL);
+            return 0;
+        } elseif ($arg !== '' && $arg[0] === '-') {
+            fwrite(STDERR, "pf-host: unknown flag: {$arg}" . PHP_EOL);
+            return 1;
+        } else {
+            $positional[] = $arg;
+        }
+    }
+
+    if (count($positional) !== 1) {
+        fwrite(STDERR, 'pf-host: exactly one host (a short name or a ZeroTier IP) is required' . PHP_EOL);
+        fwrite(STDERR, HELP . PHP_EOL);
+        return 1;
+    }
+
+    $root = getcwd();
+    if ($root === false) {
+        $root = '.';
+    }
+
+    $error = null;
+    $host = resolve_host($positional[0], $root, $error);
+    if ($host === null) {
+        fwrite(STDERR, "pf-host: {$error}" . PHP_EOL);
+        return 1;
+    }
+
+    if (!$want_name) {
+        fwrite(STDOUT, $host['ip'] . PHP_EOL);
+        return 0;
+    }
+
+    if ($host['name'] === null) {
+        fwrite(STDERR, "pf-host: no name for {$host['ip']} in {$root}/etc/hosts — the ssh alias is keyed by the short name (see doc/system/host-resolution.md)" . PHP_EOL);
+        return 1;
+    }
+
+    fwrite(STDOUT, $host['name'] . PHP_EOL);
+    return 0;
+}
+
+exit(main($argv));

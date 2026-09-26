@@ -12,11 +12,12 @@ the remote session's tmux config); the consumer owns the data (the
 tmux-remote <host> <session>     # from the repo root
 ```
 
-`<host>` is the short host name from the consumer's private `hosts` mapping
-(the same one `gen-ssh-config` reads — see `doc/system/ssh-config.md`); the
-ssh alias resolved is `<app>-<host>`, where `<app>` is `basename "$PWD"` — the
-repo directory you are standing in — exactly the alias `gen-ssh-config` writes,
-with that alias's `User` and `IdentityFile`. `<session>` is the tmux session
+`<host>` is a `[prod]` host, given as its short name or its ZeroTier IP — the
+shared host lookup resolves either spelling, and the name is what the alias is
+keyed by (see `doc/system/host-resolution.md`); the ssh alias resolved is
+`<app>-<host>`, where `<app>` is `basename "$PWD"` — the repo directory you are
+standing in — exactly the alias `gen-ssh-config` writes, with that alias's
+`User` and `IdentityFile`. `<session>` is the tmux session
 name on the host (letters, digits, `.`, `_`, `-`); it is explicit, so one host
 can hold several named sessions and you re-attach by that name. To reach another
 app you open that app's own shell; there is no override flag.

@@ -10,7 +10,9 @@
 #
 # The app prefix is never typed. <app> is `basename "$PWD"` — the repo
 # directory you are standing in, the same derivation gen-ssh-config uses — so
-# `tmux-remote <host> <session>` resolves the ssh alias `<app>-<host>`. To
+# `tmux-remote <host> <session>` resolves the ssh alias `<app>-<host>`. <host>
+# is either spelling — the short name or the ZeroTier IP — resolved by the
+# shared host lookup (bin/pf-host); the alias itself is keyed by the name. To
 # touch another app you open that app's own shell; there is no override flag.
 #
 # Plain `ssh <app>-<host>` stays the untouched non-nix path: this CLI only adds
@@ -50,7 +52,9 @@ gen-ssh-config writes. The remote session is named <session> and configured by
 the framework's etc/tmux-remote.conf (red status bar, prefix C-a, so it never
 clashes with a local tmux's C-b).
 
-  <host>           short host name from the consumer's `hosts` mapping.
+  <host>           a [prod] host: its short name or its ZeroTier IP (both
+                   spellings resolve to the same host; see
+                   doc/system/host-resolution.md).
   <session>        tmux session name on the host (letters, digits, '.', '_', '-').
 
 Inside the session:
@@ -147,6 +151,19 @@ main() {
         "$PWD"/*) pkg_rel="${pkg_root#"$PWD"/}" ;;
         *) die "cannot place the framework package inside this checkout: $0 resolves to $pkg_root, outside the repo root $PWD — run tmux-remote from the consumer repo root (vendor/bin/tmux-remote)." ;;
     esac
+
+    # Either spelling: the shared host lookup (the package's own bin/pf-host,
+    # run from this repo root) turns the short name or the ZeroTier IP into the
+    # canonical host, and the alias gen-ssh-config wrote is keyed by the name —
+    # `<app>-<name>`. pf-host has already reported why when it fails.
+    local host_out
+    if ! host_out="$("$pkg_root/bin/pf-host" --name "$host")"; then
+        exit 1
+    fi
+    host="$host_out"
+    if ! [[ "$host" =~ $SAFE_RE ]]; then
+        die "the resolved host name '$host' is not usable as an ssh alias component (allowed: letters, digits, '.', '_', '-')"
+    fi
 
     local conf_rel='etc/tmux-remote.conf'
     if [[ -n "$pkg_rel" ]]; then

@@ -57,7 +57,10 @@ _dev-ssh-config:
 ## The `hosts` contract
 
 `hosts` is private data and the single source for both the `/etc/hosts` merge
-and the generated aliases: one entry per line, `ip name`.
+and the generated aliases: one entry per line, `ip name`. The same mapping is
+what the host-taking CLIs pair a host's short name with its ZeroTier IP through
+(see `doc/system/host-resolution.md`), so the name typed at those CLIs is the
+name written here.
 
 ```text
 <ip> <name>
