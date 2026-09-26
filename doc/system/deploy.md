@@ -50,8 +50,8 @@ the consumer's dev-init); the remote `.env` is regenerated on every deploy by
 |---|---|
 | `REPO_PATH` | Repo root. `phprun` must be run from here (from cron it cds here automatically). |
 | `REPO_LOG` | Directory where per-script logs are appended. |
-| `REUTER_INI` | Path to the DB config ini consumed by `Utils\Connectivity\Database`; falls back to `$PWD/etc/reuter.ini`. |
-| `EMA_TARGET` | Operation-mode flag for the `ema` CLI only (`sandbox` / `prod`). The app layer ignores it; a database is always resolved to its `[<dbname>]` section. |
+| `REUTER_INI` | Path to the DB config ini consumed in prod by `Utils\Connectivity\Database` and by the `ema` CLI's prod-side verbs; falls back to `$PWD/etc/reuter.ini`. Prod-only: the dev `.env` carries no `REUTER_INI` — under `EMA_TARGET=sandbox` the app layer resolves its config itself, from `var/sandbox/<name>-<GUID>/reuter.ini`. |
+| `EMA_TARGET` | Binary mode flag. The app layer (`Database::connectTo`) dispatches on it for every connection it opens; the `ema` CLI consults it only for its dbname-addressed verb (`ema mariadb <db>`) — `create`/`values` are prod by construction and the lifecycle verbs address instances by `var/sandbox/<name>-<GUID>` path. `sandbox` resolves the local `var/sandbox/<dbname>-<GUID>/reuter.ini` instance and connects as `root` over its socket; `prod` (also unset/empty) uses `REUTER_INI` plus the agent's service account over TCP. `gen-env` writes `prod`. |
 
 ## Before the first deploy
 

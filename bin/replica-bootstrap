@@ -187,7 +187,7 @@ REMOTE
         echo "replica-bootstrap: dry-run complete (nothing executed)." >&2
     else
         echo "replica-bootstrap: done — snapshot shipped to root@$REPLICA_HOST:$dest." >&2
-        echo "  Next: provision the replica with 'ema create --from-snapshot $dest'." >&2
+        echo "  Next: provision the replica with 'ema create srv/<name>-<GUID> --from-snapshot $dest'." >&2
     fi
 }
 

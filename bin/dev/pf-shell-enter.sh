@@ -11,7 +11,9 @@
 # doc/system/consumer-config.md). It does NOT start or resume a MariaDB
 # daemon: the dev database instance lifecycle is owned by ema
 # (`ema sandbox srv/<name>-<GUID>` builds + starts a per-instance sandbox;
-# `ema start` / `ema stop` / `ema status` manage it).
+# `ema status` lists the instances and the lifecycle verbs
+# `ema start|stop|restart|gc` take the `var/sandbox/<name>-<GUID>` path it
+# prints).
 
 if ! (return 0 2>/dev/null); then
     echo "pf-shell-enter.sh must be sourced, not executed" >&2

@@ -21,11 +21,15 @@ connectivity. `#[Agent]` is for DB connectivity only — where a job runs is
 
 | Argument    | Type      | Required             | Meaning |
 |-------------|-----------|----------------------|---------|
-| `dbTarget`  | `?string` | no                   | The database name (`[<dbname>]` section in `reuter.ini`). When set, `phprun` opens a connection and injects it as the call's first argument. |
-| `dbAccount` | `?string` | when `dbTarget` is set | The service-account name whose `<ACCOUNT>_PASSWORD` key `Database::connectAs` reads from that `reuter.ini` section. |
+| `dbTarget`  | `?string` | no                   | The database name. `phprun` resolves it through `Database::connectTo` and injects the connection as the call's first argument: under `EMA_TARGET=sandbox` it is the local `var/sandbox/<dbname>-<GUID>/reuter.ini` instance, under `EMA_TARGET=prod` (also unset/empty) the `[<dbname>]` section of the resolved `reuter.ini`. |
+| `dbAccount` | `?string` | under `EMA_TARGET=prod` | The service-account name whose `<ACCOUNT>_PASSWORD` key `Database::connectAs` reads from that `reuter.ini` section. Prod-only: sandbox mode ignores it and connects as `root` over the instance's socket. |
 
 An agent with no database (e.g. a host-maintenance job) uses
-`#[Agent(dbTarget: null)]`.
+`#[Agent(dbTarget: null)]`. A bare `dbTarget` without a `dbAccount` is
+therefore valid in dev — the dev `.env` sets `EMA_TARGET=sandbox`, so the
+target resolves to the local sandbox instance — while prod rejects the
+missing account. The mode switch and the sandbox resolution contract are in
+[ema.md](ema.md).
 
 ## `#[CronJob]`
 

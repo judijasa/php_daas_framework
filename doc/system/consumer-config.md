@@ -37,6 +37,13 @@ inputs: `machines.ini` feeds the local deploy roster, `team.ini` feeds
 aliases (`gen-ssh-config`), and `host-hardening.php` feeds `gen-firewall`.
 None of them belong on a host.
 
+The dev sandbox's per-instance `var/sandbox/<name>-<GUID>/reuter.ini` is read
+by the app layer as well: under `EMA_TARGET=sandbox`, `Database::connectTo`
+resolves it from the database name. It is generated, machine-local data (ema
+writes it; the consumer git-ignores it), not a private config file — which is
+why the dev `.env` carries no `REUTER_INI` and no credentials: the sandbox is
+reached as `root` over its own socket.
+
 ## The private repo
 
 The recommended home for the real files is a small access-controlled git

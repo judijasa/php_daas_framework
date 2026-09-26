@@ -32,43 +32,87 @@ consumer's own provisioning.
   instead.
 - `ema sandbox pkg/<pkg>-<GUID>` — synthesized default database (no bootstrap
   SQL) plus that package's dependency graph.
-- `ema create srv/<name>-<GUID>` — prod-only (requires `EMA_TARGET=prod`):
-  provision the per-database instance (when absent) and create the database
-  + apply its dependencies. It is **create-only**: it refuses when the
-  database already exists. On success it prints the `[<dbname>]` connectivity
-  values (`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) to record in the manual
-  reuter.ini. `--dry-run` prints the SQL without applying. A `type=replica`
-  package (`$db['type']='replica'` + `$db['replica_of']=<primary>`) instead
-  takes `--from-snapshot <path>`: ema restores the shipped snapshot and
-  attaches replication (no schema apply); see
+- `ema create srv/<name>-<GUID>` — always on prod (one-sided: it does not read
+  `EMA_TARGET`): provision the per-database instance (when absent) and create
+  the database + apply its dependencies. It is **create-only**: it refuses
+  when the database already exists. On success it prints the `[<dbname>]`
+  connectivity values (`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) to record in
+  the manual reuter.ini. `--dry-run` prints the SQL without applying. A
+  `type=replica` package (`$db['type']='replica'` + `$db['replica_of']=<primary>`)
+  instead takes `--from-snapshot <path>`: ema restores the shipped snapshot
+  and attaches replication (no schema apply); see
   `doc/system/replica-bootstrap.md`.
 - `ema values <db>` — print the same connectivity values for an existing
-  database (recovery when the record is lost).
+  database (recovery when the record is lost). Prod-side as well: no flag.
 - `ema mariadb <db> < file.sql` — apply raw SQL over stdin as the section's
-  client user. There is no `apply` verb (it is rejected).
-- `ema drop/start/stop/restart/status/gc` — instance lifecycle. Sandbox
-  deletion is the whole `var/sandbox/<name>-<guid>/` directory.
+  client user. There is no `apply` verb (it is rejected). This is ema's only
+  **dbname-addressed** verb, so it is the only one that consults `EMA_TARGET`
+  (see below).
+- `ema start|stop|restart|gc [<path>]` — sandbox-only lifecycle, addressed by
+  instance **path** (`var/sandbox/<name>-<guid>`), never by name: a bare name
+  or `srv/<key>` is refused with a hint to copy the path from `ema status`.
+  `gc` removes stopped instance(s) — with a path, that one only, with no
+  argument the whole sweep. Sandbox deletion is the whole
+  `var/sandbox/<name>-<guid>/` directory; sandboxes are create-only, so a
+  rebuild is `ema gc var/sandbox/<name>-<guid>` followed by
+  `ema sandbox <target>`.
+- `ema status` — the discovery surface: two labelled tables (sandbox
+  instances, prod sections) with state, endpoint, age and the instance
+  **path** as the trailing column (for prod, `$EMA_PROD_BASE/<db>` — default
+  `/var/lib/mariadb/<db>` — when it exists on the host, `-` otherwise). Those
+  printed paths are what the lifecycle verbs take.
+- `ema drop` is retired: deleting a prod database is a deliberate
+  `DROP DATABASE` over `ema mariadb`.
 
 The old `ema init db <name>` / `ema init tables <root> <db>` verbs no longer
 exist.
 
 ## EMA_TARGET
 
-`EMA_TARGET` is a binary operation-mode flag, not a path selector:
+`EMA_TARGET` is a binary sandbox/prod **mode** flag — not a path or
+connection-file selector. Both sides read the same variable, but each consults
+it narrowly:
 
-- unset or `sandbox` (default) — per-instance sandbox (`ema sandbox ...`);
-- `prod` — prod target via `$REUTER_INI` (fallback `etc/reuter.ini`).
+- the app layer (`Utils\Connectivity\Database`) dispatches on it for every
+  connection it opens;
+- the `ema` CLI consults it only for its one **dbname-addressed** verb,
+  `ema mariadb <db>`: a database name alone is ambiguous (the same name exists
+  on both sides), which is exactly what lets the app layer point at a sandbox
+  without changing dbname or user. Everything else resolves its own side —
+  `ema sandbox` loads its instance's ini, `create`/`values` always act on prod,
+  and `start`/`stop`/`restart`/`gc` act on `var/sandbox/` by construction; when
+  those are addressed by path, the side falls out of the path.
+
+The values:
+
+- `sandbox` — per-instance sandbox: the app layer resolves a database name to
+  its `var/sandbox/<dbname>-<GUID>/reuter.ini` instance (exactly one match,
+  otherwise an error naming the full `<name>-<GUID>` form), connecting as
+  `root` over that instance's `MYSQL_UNIX_PORT` with an empty password — the
+  same root/socket auth ema applies its DDL with. A sandbox has no
+  credentials, so an agent's `dbAccount` is ignored; `ema mariadb <db>`
+  likewise connects as `root` over the sandbox instance;
+- `prod` — prod target via `$REUTER_INI` (fallback `etc/reuter.ini`), with the
+  app layer on the service-account path (`connectAs` over TCP) and
+  `ema mariadb <db>` connecting as `DBUSER`/`$USER`.
 
 Any other value is an error. The connection-file path stays a separate env
 var (`REUTER_INI`); `EMA_TARGET` only picks the mode. The old `EMA_MODE` is
-gone.
+gone. `Database::connectTo` treats unset/empty as `prod` (the app layer's
+behavior before this flag existed), and ema's `_target()` uses the same
+default, so a missing flag never means different things on the two sides.
 
 Prod machines run `prod` mode **only because** the deploy chain writes
 `EMA_TARGET=prod` and `REUTER_INI=$DEPLOY_REUTER_INI` (the consumer's manual
 reuter.ini path) into the deployed `.env` (gen-env). ema never reads `.env`
 itself, so the session that runs it must have those values in scope
 (e.g. `set -a; . .env`, or a `tmux-remote` shell — see
-`doc/system/tmux-remote.md`).
+`doc/system/tmux-remote.md`). The dev `.env` (init-local-env.sh) writes
+`EMA_TARGET=sandbox` and no `REUTER_INI`: `phprun` sources that `.env` before
+running an agent, which is how the app layer picks up the mode — and the dev
+shell (`pf-shell-enter.sh`) sources it too, which is how `ema mariadb <db>`
+picks the sandbox instance there. The lifecycle verbs need neither the flag
+nor the `.env`.
 
 ## The reuter.ini contract
 
@@ -89,8 +133,9 @@ section header IS the dbname:
 ema's connectivity is read from the section: it connects via
 `--socket=$MYSQL_UNIX_PORT` when the key is present, otherwise
 `-h $SERVER -P $PORT` (TCP). The `<ACCOUNT>_PASSWORD` keys are consumer-side:
-read by `Database::connectAs($dbname, $account)` and written by the consumer's
-own service-user provisioning; ema itself does not read them.
+read by `Database::connectTo($dbname, $account)` on its prod path and written
+by the consumer's own service-user provisioning; ema itself does not read
+them.
 
 ## Service accounts are consumer policy
 
@@ -164,11 +209,14 @@ as root over the socket), which is not shipped by this framework. `ema values
 
 ## Notes / open items
 
-- Dev app-layer resolution is still being wired: the dev sandbox writes its
-  own `var/sandbox/<name>-<guid>/reuter.ini` (endpoint keys only, no
-  passwords), while the framework's `Database` class reads the
-  `<ACCOUNT>_PASSWORD` key from the resolved section. Pointing dev
-  `REUTER_INI` at the sandbox file and applying the consumer's service-user
-  provisioning there is the pending piece.
-- `Database.php` resolves sections by dbname alone and does not read
-  `EMA_TARGET`.
+- The flag's reach is deliberately narrow: `EMA_TARGET` picks a side for
+  **name-addressed** lookups only. The two namespaces are
+  `var/sandbox/<name>-<GUID>` for sandboxes and `$EMA_PROD_BASE/<db>` (default
+  `/var/lib/mariadb/<db>`) for prod instances — the paths `ema status` prints
+  and the lifecycle verbs take.
+- The sandbox path needs no consumer-side service-user provisioning: the app
+  layer reaches an instance as `root` over its own socket, and the sandbox
+  ini carries endpoint keys only (no passwords).
+- Prod `connectAs` keeps reading `MYSQL_UNIX_PORT` from `.env` rather than
+  from the section, so prod stays TCP-only; a socket-based prod transport is
+  not wired.

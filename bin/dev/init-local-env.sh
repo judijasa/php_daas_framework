@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 # Create .env (git-ignored) with the machine configuration:
-#   - REPO_PATH/REPO_LOG/REUTER_INI: runtime config consumed by phprun and
-#     the framework's Database class;
-#   - EMA_TARGET=sandbox: machine-mode signal for the ema CLI only;
+#   - REPO_PATH/REPO_LOG: runtime paths consumed by phprun and the
+#     framework's Database class;
+#   - EMA_TARGET=sandbox: mode signal for the Database class (the app layer
+#     resolves the local sandbox instance instead of a prod reuter.ini) and
+#     for ema's dbname-addressed verb (`ema mariadb <db>` picks the sandbox
+#     instance in this shell);
 #   - DBUSER: this machine's team member name, resolved from etc/team.ini
 #     (the section whose entries include the local hostname; skipped with a
 #     warning when no mapping exists). Needed for remote access to prod only.
 #
 # The dev MariaDB instance is NOT initialized or started here: ema owns the
 # per-instance sandbox lifecycle (`ema sandbox` / `ema start` / `ema stop`),
-# so no MYSQL_* paths are written to .env anymore.
+# so no MYSQL_* paths are written to .env anymore — and no REUTER_INI either:
+# under EMA_TARGET=sandbox the app layer resolves its config itself, from
+# var/sandbox/<name>-<GUID>/reuter.ini in the working directory.
 #
 # Backend for the Makefile target _dev-init-local-env (make dev-init) in
 # this repo and in consumer repos (shipped in the nix package, on PATH).
@@ -31,7 +36,6 @@ REPO_LOG="$REPO_VAR/log"
 {
     printf 'export REPO_PATH=%s\n' "$REPO_PATH"
     printf 'export REPO_LOG=%s\n' "$REPO_LOG"
-    printf 'export REUTER_INI=%s/var/reuter.local.ini\n' "$REPO_PATH"
     printf 'export EMA_TARGET=sandbox\n'
 
     if [ ! -f "$REPO_PATH/etc/team.ini" ]; then

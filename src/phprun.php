@@ -24,11 +24,10 @@ $agent = $attrs[0]->newInstance();
 
 $conn_arg = '';
 if ($agent->dbTarget !== null) {
-    if ($agent->dbAccount === null || $agent->dbAccount === '') {
-        fwrite(STDERR, "Error: '$func' declares a dbTarget but no dbAccount.\n");
-        exit(1);
-    }
-    $conn     = Database::connectAs($agent->dbTarget, $agent->dbAccount);
+    // The connection mode is EMA_TARGET's call: a sandbox target resolves the
+    // local instance (no account), prod needs the declared service account —
+    // Database::connectTo enforces that.
+    $conn     = Database::connectTo($agent->dbTarget, $agent->dbAccount ?? '');
     $conn_arg = '$conn' . ($func_args !== '' ? ', ' : '');
 }
 

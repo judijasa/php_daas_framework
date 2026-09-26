@@ -114,12 +114,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/judijasa/ema.git",
-                "reference": "5c4dbf68cac170f030697db3d4fcdd2fcde13b1c"
+                "reference": "0d45c95c4f3b86f8f4fd05a73a8a275d0248c0c4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/judijasa/ema/zipball/5c4dbf68cac170f030697db3d4fcdd2fcde13b1c",
-                "reference": "5c4dbf68cac170f030697db3d4fcdd2fcde13b1c",
+                "url": "https://api.github.com/repos/judijasa/ema/zipball/0d45c95c4f3b86f8f4fd05a73a8a275d0248c0c4",
+                "reference": "0d45c95c4f3b86f8f4fd05a73a8a275d0248c0c4",
                 "shasum": ""
             },
             "require": {
@@ -139,7 +139,7 @@
                 "source": "https://github.com/judijasa/ema/tree/main",
                 "issues": "https://github.com/judijasa/ema/issues"
             },
-            "time": "2026-09-11T19:58:40+00:00"
+            "time": "2026-09-26T23:12:28+00:00"
         },
         {
             "name": "phpcasperjs/phpcasperjs",

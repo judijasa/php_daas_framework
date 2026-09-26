@@ -61,6 +61,3 @@ pf-host --name <name|ip>  # print the host's short name
 - **One reading of the roster.** `prod_roster()` and the `tag[:name]` token
   splitter live in the resolver, so `pf-roster`, `gen-firewall` and
   `pf-deploy.sh` share one parse.
-- **Tests.** `php tests/host_resolver.php` (or `make test`) builds both files in
-  a throwaway directory and asserts the answers: a name, an IP, an unknown
-  spelling, and a host outside `[prod]`.

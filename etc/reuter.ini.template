@@ -3,7 +3,7 @@
 ; Sections are keyed by database name (the section header IS the database
 ; name), and the connector resolves a database to its [<dbname>] section:
 ;
-;   $conn = Database::connectAs($dbname, $account)
+;   $conn = Database::connectTo($dbname, $account)
 ;
 ; `$account` is a service-account name owned by the consumer (this framework
 ; does not name any account). The connector reads its password from the
@@ -26,9 +26,13 @@
 ;
 ; Transport: the section is authoritative for the 'ema' CLI. When
 ; MYSQL_UNIX_PORT is set, ema connects via that socket (root/unix_socket
-; auth); otherwise it uses SERVER/PORT over TCP. The app layer
-; (Utils\Connectivity\Database) reads MYSQL_UNIX_PORT from .env, not from
-; this file, so in prod it stays TCP-only (.env is MYSQL_*-free).
+; auth); otherwise it uses SERVER/PORT over TCP. In prod the app layer
+; (Utils\Connectivity\Database) stays TCP-only: it reads SERVER/PORT and
+; MYSQL_UNIX_PORT from .env, never from this file (.env is MYSQL_*-free).
+; Its socket transport is the sandbox path instead — under
+; EMA_TARGET=sandbox it reads MYSQL_UNIX_PORT from the sandbox instance's own
+; var/sandbox/<name>-<GUID>/reuter.ini section (written by 'ema sandbox') and
+; connects as root over that socket.
 
 [mydb]
 SERVER=10.147.x.10

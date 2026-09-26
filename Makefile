@@ -17,18 +17,12 @@ REPO_LOG = $(REPO_VAR)/log
 
 _dev-init: DEV_LOG_DIR = $(REPO_LOG)
 
-.PHONY: help test dev-init _dev-assert-nix _dev-init _dev-init-git-hooks _dev-create-dirs \
+.PHONY: help dev-init _dev-assert-nix _dev-init _dev-init-git-hooks _dev-create-dirs \
     _dev-init-composer _dev-init-local-env
 
 help:
 	@echo "Available targets:"
 	@echo "  dev-init   - Run ONCE after cloning locally to prepare the dev sandbox"
-	@echo "  test       - Run the framework's unit tests (standalone PHP)"
-
-# Unit tests (tests/*.php) are standalone PHP over throwaway fixtures, so they
-# need no nix shell — only `php` on PATH.
-test:
-	@php tests/host_resolver.php
 
 dev-init: _dev-assert-nix _dev-init
 
