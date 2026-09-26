@@ -72,15 +72,17 @@ everything else. What the framework guarantees on the reading side:
   loudly when either is missing. It replays the sourced `deploy.conf`
   environment to every remote step and ships the files named in
   `DEPLOY_PRIVATE_FILES` into the freshly swapped `etc/`.
-- `bin/pf-provision.sh`, `bin/gen-env`, `bin/cron-manifest`, `bin/db-check`
-  and `bin/replica-bootstrap` read the real files the same way: `deploy.conf`
-  is sourced only when present (otherwise the replayed environment supplies the
-  values); no fetching, no symlink creation, no "shadowed file" warnings.
-- `bin/gen-cert`, `bin/gen-grants`, `bin/gen-ssh-config`, `bin/gen-firewall`
-  and `bin/tmux-remote` read their private inputs from `etc/` and fail loudly
-  when one is absent (`gen-ssh-config` takes `--hosts <path>` for a mapping kept
-  elsewhere; `tmux-remote` needs the deploy machine's `etc/deploy.conf` for the
-  remote-shell paths).
+- `bin/pf-provision.sh`, `bin/gen-env`, `bin/cron-manifest` and `bin/db-check`
+  read the real files the same way: `deploy.conf` is sourced only when present
+  (otherwise the replayed environment supplies the values); no fetching, no
+  symlink creation, no "shadowed file" warnings.
+- `bin/gen-cert`, `bin/gen-grants`, `bin/gen-ssh-config`, `bin/gen-firewall`,
+  `bin/replica-bootstrap` and `bin/tmux-remote` read their private inputs from
+  `etc/` and fail loudly when one is absent (`gen-ssh-config` takes
+  `--hosts <path>` for a mapping kept elsewhere; `tmux-remote` needs the deploy
+  machine's `etc/deploy.conf` for the remote-shell paths; `replica-bootstrap`
+  reads `etc/reuter.ini` from the working directory and takes no environment
+  override).
 
 ### A consumer-side convention: `.private-source`
 

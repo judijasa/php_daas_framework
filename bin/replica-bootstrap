@@ -24,24 +24,30 @@
 #                    SSH target) and MYSQL_UNIX_PORT (the primary instance's
 #                    root/unix_socket). The replica's own section is not
 #                    needed yet: its instance is created later by
-#                    `ema create`.
+#                    `ema create`. Read from the working directory (run
+#                    from the consumer's repo root).
 #
-# Snapshot provenance: mariabackup's `xtrabackup_binlog_info` records the
-# binlog/GTID coordinate, and the copied datadir retains the source's
-# `server_uuid` (auto.cnf) — the contract the consumer's replica build checks
-# at restore so a foreign/stale snapshot fails loudly there, not here.
+#   REUTER_INI is deliberately not consulted: it is mode-scoped (a dev shell
+#   points it at a sandbox ini holding no prod section) while this CLI always
+#   targets prod connectivity, so the repo-root file is the only source.
+#
+# Snapshot provenance: the backup metadata in the snapshot
+# (`mariadb_backup_info`, or `xtrabackup_info` on older tooling) records the
+# binlog file/position the replica resumes from, and the consumer's replica
+# build reads that coordinate at restore — a snapshot without it fails loudly
+# there, not here. A wrong-source snapshot is not detectable at restore
+# (MariaDB records no server_uuid in a snapshot); it surfaces when the recorded
+# file/pos does not reconcile with the real primary.
 #
 # Usage:
 #   replica-bootstrap --primary <db> --replica-host <zerotier-ip> \
-#       [--dest <remote-dir>] [--reuter-ini <path>] [--dry-run]
+#       [--dest <remote-dir>] [--dry-run]
 #
 #   --primary <db>       primary database name (the [<db>] reuter.ini section).
 #   --replica-host <ip>  replica host ZeroTier IP (the `replication`@<ip> host
 #                        pin and the snapshot destination host).
 #   --dest <dir>         remote directory on the replica host the snapshot
 #                        extracts into (default: /root/replica-snapshot-<db>).
-#   --reuter-ini <path>  reuter.ini to read (default: $REUTER_INI or
-#                        etc/reuter.ini).
 #   --dry-run            print the commands without executing them.
 
 set -euo pipefail
@@ -99,19 +105,21 @@ One-time transport bootstrap for a read-only replica: create the
 passwordless `replication` account on the primary and ship a consistent
 snapshot to the replica host (before `ema create` provisions the replica).
 
+Reads the primary's [<db>] section from ./etc/reuter.ini (run from the
+consumer's repo root); REUTER_INI is not consulted.
+
   --primary <db>       primary database name (the [<db>] etc/reuter.ini section).
   --replica-host <ip>  replica host ZeroTier IP (the `replication`@<ip> pin
                        and the snapshot destination host).
   --dest <dir>         remote directory on the replica host the snapshot
                        extracts into (default: /root/replica-snapshot-<db>).
-  --reuter-ini <path>  reuter.ini to read (default: $REUTER_INI or etc/reuter.ini).
   --dry-run            print the commands without executing them.
 EOF
 }
 
 main() {
     local PRIMARY="" REPLICA_HOST="" DEST=""
-    local REUTER_INI_PATH="${REUTER_INI:-$PWD/etc/reuter.ini}"
+    local REUTER_INI_PATH="$PWD/etc/reuter.ini"
     DRY_RUN=0
 
     while [[ $# -gt 0 ]]; do
@@ -119,7 +127,6 @@ main() {
             --primary)      PRIMARY="${2:-}"; shift 2 ;;
             --replica-host) REPLICA_HOST="${2:-}"; shift 2 ;;
             --dest)         DEST="${2:-}"; shift 2 ;;
-            --reuter-ini)   REUTER_INI_PATH="${2:-}"; shift 2 ;;
             --dry-run)      DRY_RUN=1; shift ;;
             -h|--help)      usage; return 0 ;;
             *)              usage >&2; return 1 ;;
@@ -128,7 +135,7 @@ main() {
 
     [[ -n "$PRIMARY" ]] || { usage >&2; return 1; }
     [[ -n "$REPLICA_HOST" ]] || { usage >&2; return 1; }
-    [[ -f "$REUTER_INI_PATH" ]] || die "reuter.ini not found at $REUTER_INI_PATH (consumer-owned private data — see doc/system/consumer-config.md)"
+    [[ -f "$REUTER_INI_PATH" ]] || die "reuter.ini not found at $REUTER_INI_PATH (run from the consumer's repo root; consumer-owned private data — see doc/system/consumer-config.md)"
 
     local primary_host socket
     primary_host="$(reuter_value "$REUTER_INI_PATH" "$PRIMARY" "SERVER")"
