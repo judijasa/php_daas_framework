@@ -6,9 +6,7 @@
 #     resolves the local sandbox instance instead of a prod reuter.ini) and
 #     for ema's dbname-addressed verb (`ema mariadb <db>` picks the sandbox
 #     instance in this shell);
-#   - DBUSER: this machine's team member name, resolved from etc/team.ini
-#     (the section whose entries include the local hostname; skipped with a
-#     warning when no mapping exists). Needed for remote access to prod only.
+#   - DBUSER: consumer policy; deliberately not written here (the consumer owns it).
 #
 # The dev MariaDB instance is NOT initialized or started here: ema owns the
 # per-instance sandbox lifecycle (`ema sandbox` / `ema start` / `ema stop`),
@@ -29,34 +27,10 @@ REPO_PATH="$(cd "$TARGET_DIR" && pwd)"
 REPO_VAR="$REPO_PATH/var"
 REPO_LOG="$REPO_VAR/log"
 
-# Private config is consumer-owned: the framework neither fetches nor injects
-# it, so the real etc/team.ini (read below for DBUSER) must already be in the
-# checkout — see doc/system/consumer-config.md.
-
 {
     printf 'export REPO_PATH=%s\n' "$REPO_PATH"
     printf 'export REPO_LOG=%s\n' "$REPO_LOG"
     printf 'export EMA_TARGET=sandbox\n'
-
-    if [ ! -f "$REPO_PATH/etc/team.ini" ]; then
-        echo "WARNING: $REPO_PATH/etc/team.ini not found. Skipping DBUSER (needed for remote access only)." >&2
-    else
-        _dbuser=$(awk -F= -v h="$(hostname)" '
-            /^[[:space:]]*[;#]/ { next }
-            /^[[:space:]]*$/ { next }
-            /^[[:space:]]*\[/ { gsub(/^[[:space:]]*\[|][[:space:]]*$/, "", $0); sec = $0; next }
-            {
-                key = $1
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
-                if (key != "subject" && key == h) { print sec; exit }
-            }
-        ' "$REPO_PATH/etc/team.ini")
-        if [ -z "$_dbuser" ]; then
-            echo "WARNING: hostname '$(hostname)' not found in $REPO_PATH/etc/team.ini. Skipping DBUSER (needed for remote access only)." >&2
-        else
-            printf 'export DBUSER=%s\n' "$_dbuser"
-        fi
-    fi
 } > "$REPO_PATH/.env"
 
 echo "    Created $REPO_PATH/.env (dev: REPO_PATH=$REPO_PATH, EMA_TARGET=sandbox)"

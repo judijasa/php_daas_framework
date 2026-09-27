@@ -11,8 +11,6 @@
 ; remaining keys are hostname -> ZeroTier IP entries pinning the source
 ; host(s) the member may connect from.
 ;
-;   `init-local-env.sh` finds the section whose entries include the local
-;   `hostname` and exports its name as DBUSER.
 ;   `gen-grants <db>` turns each member@ip into a cert-pinned, passwordless
 ;   DB account (REQUIRE SUBJECT).
 ;   `gen-cert new <member>` reads the `subject` below for the CSR.

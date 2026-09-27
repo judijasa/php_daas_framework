@@ -32,7 +32,7 @@ machine: its values are the deploy parameters, replayed to the host as
 environment rather than shipped as a file.
 `machines.ini`, `team.ini`, `hosts` and `host-hardening.php` are dev/deploy-time
 inputs: `machines.ini` feeds the local deploy roster, `team.ini` feeds
-`gen-cert`/`gen-grants`/`gen-service-accounts`/`init-local-env`, `hosts`
+`gen-cert`/`gen-grants`/`gen-service-accounts`, `hosts`
 (optional) feeds the consumer's dev `/etc/hosts` merge and its generated ssh
 aliases (`gen-ssh-config`), and `host-hardening.php` feeds `gen-firewall`.
 None of them belong on a host.
