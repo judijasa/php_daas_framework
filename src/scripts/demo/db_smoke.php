@@ -18,11 +18,12 @@ use Utils\Logger;
  *   ema sandbox srv/test-D0PR2OGMHXDSCAR3
  *   bin/phprun 'src/scripts/demo/db_smoke.php:main()'
  *
- * The dev `.env` (init-local-env.sh) sets EMA_TARGET=sandbox, so the target
- * `test` resolves to that `test-*` sandbox instance and the connection is
- * root over the instance's socket — the declared `dbAccount` is ignored
- * (prod-only). Against prod the demo would need an `[test]` section with a
- * `DEMO_PASSWORD` key in the prod reuter.ini.
+ * The dev `.env` (init-local-env.sh) leaves EMA_TARGET unset (prod default);
+ * under `EMA_TARGET=sandbox` the target `test` resolves to that `test-*`
+ * sandbox instance and the connection is root over the instance's socket —
+ * the declared `dbAccount` is ignored (prod-only). Against prod the demo
+ * would need an `[test]` section with a `DEMO_PASSWORD` key in the prod
+ * reuter.ini.
  *
  * Re-running is safe: rows accumulate in `items` and BatchScan resumes
  * from its persisted cursor.

@@ -2,11 +2,9 @@
 # Create .env (git-ignored) with the machine configuration:
 #   - REPO_PATH/REPO_LOG: runtime paths consumed by phprun and the
 #     framework's Database class;
-#   - EMA_TARGET=sandbox: mode signal for the Database class (the app layer
-#     resolves the local sandbox instance instead of a prod reuter.ini) and
-#     for ema's dbname-addressed verb (`ema mariadb <db>` picks the sandbox
-#     instance in this shell);
 #   - DBUSER: consumer policy; deliberately not written here (the consumer owns it).
+# EMA_TARGET is deliberately NOT written: unset means prod (the app layer's
+# default), so sandbox stays an explicit opt-in (`EMA_TARGET=sandbox`).
 #
 # The dev MariaDB instance is NOT initialized or started here: ema owns the
 # per-instance sandbox lifecycle (`ema sandbox` / `ema start` / `ema stop`),
@@ -30,7 +28,6 @@ REPO_LOG="$REPO_VAR/log"
 {
     printf 'export REPO_PATH=%s\n' "$REPO_PATH"
     printf 'export REPO_LOG=%s\n' "$REPO_LOG"
-    printf 'export EMA_TARGET=sandbox\n'
 } > "$REPO_PATH/.env"
 
-echo "    Created $REPO_PATH/.env (dev: REPO_PATH=$REPO_PATH, EMA_TARGET=sandbox)"
+echo "    Created $REPO_PATH/.env (dev: REPO_PATH=$REPO_PATH)"

@@ -39,8 +39,14 @@ a consumer).
    ```
 
 A PHP–MariaDB walkthrough exercising the DB layer is in
-`src/scripts/demo/db_smoke.php` (run
-`bin/phprun 'src/scripts/demo/db_smoke.php:main()'`). The ema integration —
+`src/scripts/demo/db_smoke.php`; DB-backed agents default to `prod`, so prefix
+with `EMA_TARGET=sandbox` to hit the `test` sandbox:
+
+   ```bash
+   EMA_TARGET=sandbox bin/phprun 'src/scripts/demo/db_smoke.php:main()'
+   ```
+
+The ema integration —
 sandboxes, per-database instances, and the manual `reuter.ini` — is in
 [doc/system/ema.md](doc/system/ema.md).
 
