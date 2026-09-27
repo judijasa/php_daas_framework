@@ -155,10 +155,14 @@ main() {
 set -euo pipefail
 primary=$1 replica_host=$2 socket=$3 snapshot_tmp=$4 tarball=$5
 
+# Host prerequisites, checked before anything is created or changed: the
+# client runs the account DDL, the backup tool produces the snapshot. A miss
+# aborts the run (nothing is created), so it is safe to repeat after
+# installing the missing tool.
 client="$(command -v mariadb || command -v mysql || true)"
-[ -n "$client" ] || { echo "replica-bootstrap: no mariadb/mysql client on the primary" >&2; exit 1; }
+[ -n "$client" ] || { echo "replica-bootstrap: ERROR: no mariadb/mysql client on the primary — install the MariaDB client (fatal, nothing created or changed)" >&2; exit 1; }
 backup="$(command -v mariabackup || command -v mariadb-backup || true)"
-[ -n "$backup" ] || { echo "replica-bootstrap: no mariabackup/mariadb-backup on the primary" >&2; exit 1; }
+[ -n "$backup" ] || { echo "replica-bootstrap: ERROR: no mariabackup/mariadb-backup on the primary — install the mariadb-backup package (fatal, nothing created or changed)" >&2; exit 1; }
 
 "$client" --socket="$socket" -u root -e \
     "CREATE USER IF NOT EXISTS 'replication'@'$replica_host' IDENTIFIED BY ''; \

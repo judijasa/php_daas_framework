@@ -105,6 +105,22 @@ wrong-source snapshot is not detectable at restore (MariaDB records no
 `server_uuid` in a snapshot), so it fails loudly at the attach step
 (`Slave_IO_Running != Yes`) instead.
 
+## Host requirements
+
+The run checks its host prerequisites over SSH **before** it creates or changes
+anything, so a missing tool aborts with an `ERROR:` line and leaves no partial
+state — the run is safe to repeat once the host is fixed. Neither prerequisite
+is installed by the framework's host provisioning, which only ships the
+`mariadb@.service` template unit.
+
+- **Primary** — a MariaDB client (`mariadb`, or `mysql` on older packaging),
+  which runs the transport-account DDL, and a physical backup tool
+  (`mariabackup`, or `mariadb-backup` on newer packaging), which produces the
+  snapshot. The backup tool must be version-matched to the running server; it
+  ships in the distro's `mariadb-backup` package.
+- **Dev machine** — root SSH to both the primary and the replica host
+  (ZeroTier).
+
 ## Workflow
 
 1. Record the primary's `[<db>]` section in `etc/reuter.ini` (from `ema
