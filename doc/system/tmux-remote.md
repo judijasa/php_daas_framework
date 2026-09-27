@@ -6,6 +6,13 @@ the mechanism (`bin/tmux-remote`, a client-side CLI, and `etc/tmux-remote.conf`,
 the remote session's tmux config); the consumer owns the data (the
 `etc/deploy.conf` values and the ssh aliases its `gen-ssh-config` wrote).
 
+## Quick setup
+
+```bash
+# dev machine, repo root, with the generated <app>-<host> ssh alias in place
+tmux-remote <host> <session>     # creates or re-attaches (new-session -A)
+```
+
 ## Usage
 
 ```bash

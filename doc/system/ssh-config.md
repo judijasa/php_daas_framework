@@ -6,6 +6,13 @@ owns the mechanism (`bin/gen-ssh-config`); the consumer owns the data (its
 `hosts` name→IP mapping, the repo directory name that supplies `<app>`, and the
 user/key choice).
 
+## Quick setup
+
+```bash
+# repo root, with the private hosts mapping in place (one `<ip> <name>` per line)
+vendor/bin/gen-ssh-config --user root --key ~/.ssh/<app>-sshkey
+```
+
 ## What it writes
 
 `gen-ssh-config` reads the consumer's `hosts` mapping — the same private file

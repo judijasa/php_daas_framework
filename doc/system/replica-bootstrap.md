@@ -7,6 +7,19 @@ the mechanism (`bin/replica-bootstrap`); the consumer owns the replica policy
 (the primary/replica database names and host roster, the replica's own
 provisioning, and the read routing).
 
+## Quick setup
+
+```bash
+# primary: install the MariaDB client + a version-matched MariaDB backup package
+# primary: record its [<db>] section in etc/reuter.ini (from ema create, or ema values <db>)
+
+# dev machine, repo root, with root SSH to both hosts
+bin/replica-bootstrap --primary <db> --replica-host <ip>
+
+# replica host: the srv/<name>-<GUID> package (type=replica, replica_of=<db>)
+ema create srv/<name>-<GUID> --from-snapshot <dest>
+```
+
 ## Why it is separate
 
 A read-only replica is seeded from a consistent snapshot of the primary and
@@ -117,7 +130,9 @@ is installed by the framework's host provisioning, which only ships the
   which runs the transport-account DDL, and a physical backup tool
   (`mariabackup`, or `mariadb-backup` on newer packaging), which produces the
   snapshot. The backup tool must be version-matched to the running server; it
-  ships in the distro's `mariadb-backup` package.
+  ships in the MariaDB backup package, so install the one matching the
+  server (a consumer's host-setup docs carry the concrete package for their
+  distro).
 - **Dev machine** — root SSH to both the primary and the replica host
   (ZeroTier).
 
@@ -135,6 +150,12 @@ is installed by the framework's host provisioning, which only ships the
    `ema create srv/<name>-<GUID> --from-snapshot <dest>` — ema restores the
    shipped snapshot and attaches replication from the recorded coordinate
    (`read_only=1`, `replicate-rewrite-db = <primary>-><replica>`).
+
+   The build's own contract — the package keys, the gates it enforces — is
+   ema's
+   [doc/system/replica-bootstrap.md](https://github.com/judijasa/ema/blob/main/doc/system/replica-bootstrap.md),
+   which also carries the hand-run fallback: the same transport account and
+   snapshot, prepared by hand, without this CLI.
 
 The helper is re-runnable: the account creation is idempotent, and the
 snapshot is rebuilt and re-shipped on every run.

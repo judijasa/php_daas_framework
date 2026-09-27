@@ -6,6 +6,25 @@ instance and how the manual `reuter.ini` is recorded — is in
 `doc/system/ema.md`; this document covers the deploy config, the host
 preparation, and the fixed pipeline.
 
+## Quick setup
+
+```bash
+# each prod host, as root: the app user (PROD_USER in etc/deploy.conf)
+useradd --create-home --shell /bin/bash --comment "Production app user" <PROD_USER>
+passwd --lock <PROD_USER>
+
+# each prod host: authorize the same public key root logs in with
+mkdir -p /home/<PROD_USER>/.ssh && chmod 700 /home/<PROD_USER>/.ssh
+echo "<ssh-ed25519 AAAA... your-key>" >> /home/<PROD_USER>/.ssh/authorized_keys
+chmod 600 /home/<PROD_USER>/.ssh/authorized_keys && chown -R <PROD_USER>:<PROD_USER> /home/<PROD_USER>/.ssh
+
+# each prod host: install a cron daemon (only when the repo declares #[CronJob] jobs)
+
+# deploy machine, repo root
+pf-deploy.sh                 # every [prod] host in etc/machines.ini
+pf-deploy.sh <target_host>   # a single prod host (must be in [prod])
+```
+
 ## Config surfaces
 
 `pf-deploy.sh` reads three config surfaces from the repo root and fails loudly

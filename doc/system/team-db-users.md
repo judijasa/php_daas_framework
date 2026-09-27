@@ -7,6 +7,25 @@ certificates. The consumer owns the data (`etc/team.ini`) and the role policy
 (the `srv/` roles packages); this framework owns the `gen-grants` and
 `gen-cert` CLIs.
 
+## Quick setup
+
+```bash
+# DB host, as root
+gen-grants <db> -n                           # review the SQL
+DBUSER=root gen-grants <db>                  # apply (via ema mariadb <db> < file.sql)
+
+# member's machine
+gen-cert new john
+
+# operator, offline machine
+openssl x509 -req -in john.csr -CA team-ca.crt -CAkey team-ca.key \
+  -CAcreateserial -days 365 -out john.crt
+
+# member's machine
+gen-cert install john john.crt
+ema mariadb <db>                             # verify: presents the cert, no password
+```
+
 ## Model
 
 One DB account per team member, host-pinned to the member's machine(s):
