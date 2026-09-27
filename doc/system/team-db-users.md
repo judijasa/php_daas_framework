@@ -12,7 +12,7 @@ certificates. The consumer owns the data (`etc/team.ini`) and the role policy
 ```bash
 # DB host, as root
 gen-grants <db> -n                           # review the SQL
-DBUSER=root gen-grants <db>                  # apply (via ema mariadb <db> < file.sql)
+gen-grants <db>                  # apply (via ema mariadb <db> < file.sql)
 
 # member's machine
 gen-cert new john
@@ -73,8 +73,7 @@ emits transient SQL (never persisted):
     SET DEFAULT ROLE developer FOR 'john'@'10.147.x.20';
 
 `-n/--dry-run` prints the SQL without applying it. Otherwise it applies the
-SQL as root through `ema mariadb <db> < file.sql` (run with `DBUSER=root` so
-the reconcile provisions as root; run it as root on the DB host — root/
+SQL as root through `ema mariadb <db> < file.sql` (the reconcile provisions as root; run it as root on the DB host — root/
 unix_socket auth over the `MYSQL_UNIX_PORT` socket from the manual reuter.ini section). The SQL is
 discarded after apply.
 
