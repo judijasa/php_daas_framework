@@ -10,7 +10,8 @@ provisioning, and the read routing).
 ## Quick setup
 
 ```bash
-# primary: install the MariaDB client + a version-matched MariaDB backup package
+# primary: enable binary logging (log_bin); install the MariaDB client + a
+#          version-matched MariaDB backup package
 # primary: record its [<db>] section in etc/reuter.ini (from ema create, or ema values <db>)
 
 # dev machine, repo root, with root SSH to both hosts
@@ -113,26 +114,30 @@ backup metadata (`mariadb_backup_info`, or `xtrabackup_info` on older
 tooling — the `filename '...'`/`position '...'` fields).
 
 The replica build (`ema create --from-snapshot`) checks that coordinate at
-restore — a missing snapshot, or one with no binlog coordinate, aborts. A
-wrong-source snapshot is not detectable at restore (MariaDB records no
-`server_uuid` in a snapshot), so it fails loudly at the attach step
-(`Slave_IO_Running != Yes`) instead.
+restore — a missing snapshot, or one with no binlog coordinate, aborts. This
+helper refuses a primary with `log_bin` disabled before taking the snapshot, so
+a coordinate-less snapshot cannot be produced by this run. A wrong-source
+snapshot is not detectable at restore (MariaDB records no `server_uuid` in a
+snapshot), so it fails loudly at the attach step (`Slave_IO_Running != Yes`)
+instead.
 
 ## Host requirements
 
 The run checks its host prerequisites over SSH **before** it creates or changes
 anything, so a missing tool aborts with an `ERROR:` line and leaves no partial
-state — the run is safe to repeat once the host is fixed. Neither prerequisite
-is installed by the framework's host provisioning, which only ships the
-`mariadb@.service` template unit.
+state — the run is safe to repeat once the host is fixed. None of the
+prerequisites is installed by the framework's host provisioning, which only
+ships the `mariadb@.service` template unit.
 
 - **Primary** — a MariaDB client (`mariadb`, or `mysql` on older packaging),
-  which runs the transport-account DDL, and a physical backup tool
-  (`mariabackup`, or `mariadb-backup` on newer packaging), which produces the
-  snapshot. The backup tool must be version-matched to the running server; it
-  ships in the MariaDB backup package, so install the one matching the
-  server (a consumer's host-setup docs carry the concrete package for their
-  distro).
+  which runs the transport-account DDL, a physical backup tool (`mariabackup`,
+  or `mariadb-backup` on newer packaging), which produces the snapshot, and
+  **binary logging enabled** (`log_bin`) — the snapshot's replication
+  coordinate is the primary's binlog file/position, so a primary without
+  `log_bin` produces a snapshot the replica build refuses to restore. The
+  backup tool must be version-matched to the running server; it ships in the
+  MariaDB backup package, so install the one matching the server (a
+  consumer's host-setup docs carry the concrete package for their distro).
 - **Dev machine** — root SSH to both the primary and the replica host
   (ZeroTier).
 
