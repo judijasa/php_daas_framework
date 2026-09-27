@@ -171,7 +171,11 @@ ships the `mariadb@.service` template unit.
    `$dependencies`/`upgrade.sql`), built with
    `ema create srv/<name>-<GUID> --from-snapshot <dest>` — ema restores the
    shipped snapshot and attaches replication from the recorded coordinate
-   (`read_only=1`, `replicate-rewrite-db = <primary>-><replica>`).
+   (`read_only=1`, `replicate-rewrite-db = <primary>-><replica>`). A replica
+   may also opt into verifying the primary's server certificate with
+   `$db['replica_ssl_verify_server_cert'] = true` — replica-only and default
+   off (the primary's certificate is the self-signed one until a consumer
+   provisions a CA).
 
    The build's own contract — the package keys, the gates it enforces — is
    ema's

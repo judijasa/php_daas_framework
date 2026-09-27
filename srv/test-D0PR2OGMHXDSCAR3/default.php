@@ -8,6 +8,7 @@ $db = array(
     'collation' => 'utf8_spanish_ci',
     // 'binlog' => true,               // primary only: binary logging (replica source, PITR, CDC)
     // 'binlog_expire_days' => 7,      // retention (days); only applies with 'binlog'
+    // 'replica_ssl_verify_server_cert' => true, // replica only: verify the primary's server certificate
 );
 // Schema packages this database applies (pkg/<name>-<GUID>), dependency order.
 $dependencies = array(
