@@ -21,6 +21,23 @@ bin/replica-bootstrap --primary <db> --replica-host <ip>
 ema create srv/<name>-<GUID> --from-snapshot <dest>
 ```
 
+Hand-run fallback — the same transport account and snapshot, prepared by hand
+without `bin/replica-bootstrap`:
+
+```bash
+# primary: create the transport account (see "The replication account")
+#   CREATE USER IF NOT EXISTS 'replication'@'<ip>' IDENTIFIED BY '';
+#   ALTER USER 'replication'@'<ip>' IDENTIFIED BY '';
+#   GRANT REPLICATION SLAVE ON *.* TO 'replication'@'<ip>';
+
+# primary: take + prepare the snapshot (socket = the primary's MYSQL_UNIX_PORT)
+mariadb-backup --backup --target-dir=<dest> --user=root --socket=<MYSQL_UNIX_PORT>
+mariadb-backup --prepare --target-dir=<dest>
+
+# replica host
+ema create srv/<name>-<GUID> --from-snapshot <dest>
+```
+
 ## Why it is separate
 
 A read-only replica is seeded from a consistent snapshot of the primary and
