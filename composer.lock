@@ -114,16 +114,19 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/judijasa/ema.git",
-                "reference": "16d11d965bbd6bda3b71546946e6af75b0dba18b"
+                "reference": "72ccdcde96a6e7d0a609646191a8f8148e9d3b6d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/judijasa/ema/zipball/16d11d965bbd6bda3b71546946e6af75b0dba18b",
-                "reference": "16d11d965bbd6bda3b71546946e6af75b0dba18b",
+                "url": "https://api.github.com/repos/judijasa/ema/zipball/72ccdcde96a6e7d0a609646191a8f8148e9d3b6d",
+                "reference": "72ccdcde96a6e7d0a609646191a8f8148e9d3b6d",
                 "shasum": ""
             },
             "require": {
                 "php": ">=8.1"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "^2.0"
             },
             "default-branch": true,
             "bin": [
@@ -131,6 +134,11 @@
                 "bin/dev/init-cluster.sh"
             ],
             "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Ema\\Config\\": "src/Config/"
+                }
+            },
             "license": [
                 "MIT"
             ],
@@ -139,7 +147,7 @@
                 "source": "https://github.com/judijasa/ema/tree/main",
                 "issues": "https://github.com/judijasa/ema/issues"
             },
-            "time": "2026-09-28T15:51:42+00:00"
+            "time": "2026-09-28T18:41:02+00:00"
         },
         {
             "name": "phpcasperjs/phpcasperjs",

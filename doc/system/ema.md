@@ -38,7 +38,7 @@ consumer's own provisioning.
   when the database already exists. On success it prints the `[<dbname>]`
   connectivity values (`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) to record in
   the manual reuter.ini. `--dry-run` prints the SQL without applying. A
-  `type=replica` package (`$db['type']='replica'` + `$db['replica_of']=<primary>`)
+  `type=replica` package (`type: 'replica'` + `replica_of: '<primary>'`)
   instead takes `--from-snapshot <path>`: ema restores the shipped snapshot
   and attaches replication (no schema apply); see
   `doc/system/replica-bootstrap.md`.

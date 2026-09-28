@@ -1,3 +1,2 @@
 <?php
-$dependencies = array();
-?>
+return new \Ema\Config\PackageConfig();

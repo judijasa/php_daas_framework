@@ -7,15 +7,18 @@
 // absent = today's gen-grants team-member shape only). Every key is consumer
 // data — no account name, role name or source is hardcoded in the framework:
 //
-//   $sources   = array('member' => 'developer', 'worker' => 'worker');
-//   $accounts  = array('app' => array('member', 'worker', 'db', 'web'));
-//   $allowlist = array('daas');
+//   roles: new \Ema\Config\RolesConfig(
+//       sources:   ['member' => 'developer', 'worker' => 'worker', 'web' => 'webapp'],
+//       accounts:  ['app' => ['member', 'worker', 'web']],
+//       allowlist: ['daas'],
+//   ),
 //
-// $sources maps a source to the role it grants: `member` resolves to the
+// sources maps a source to the role it grants: `member` resolves to the
 // etc/team.ini IPs, any other key is a machines.ini tag (bare or db:<name>).
-// $accounts maps an account name to the sources whose hosts it is pinned to;
-// its per-host roles are the union of those sources' roles. $allowlist adds
+// accounts maps an account name to the sources whose hosts it is pinned to;
+// its per-host roles are the union of those sources' roles. allowlist adds
 // accounts the closed-world drop must never remove (root, mariadb.sys and
 // replication are always protected). See doc/system/service-accounts.md.
-$dependencies = array();
-?>
+return new \Ema\Config\PackageConfig(
+    roles: new \Ema\Config\RolesConfig(),
+);

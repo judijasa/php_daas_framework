@@ -4,9 +4,9 @@
 declare(strict_types=1);
 
 // gen-grants — reconcile team-member DB accounts + roles from etc/team.ini
-// and the srv/<db>.roles-<GUID> package(s). The framework owns the mechanism
+// and the pkg/<db>.roles-<GUID> package(s). The framework owns the mechanism
 // (format + reconcile); the consumer owns the data (etc/team.ini) and the
-// role policy (the srv/ roles packages).
+// role policy (the pkg/ roles packages).
 //
 // It emits transient SQL (never persisted) and, unless -n/--dry-run, applies
 // it as root through `ema mariadb <db> < file.sql`. ema owns the connection:
@@ -29,48 +29,50 @@ const HELP = <<<'TXT'
 Usage: gen-grants <db> [flags]
 
 Reconcile team-member DB accounts (certificate-pinned, no password) and
-roles for one database, from etc/team.ini + srv/<db>.roles-<GUID>.
+roles for one database, from etc/team.ini + pkg/<db>.roles-<GUID>.
 
-  <db>              database name (resolves srv/<db>.roles-<GUID>).
+  <db>              database name (resolves pkg/<db>.roles-<GUID>).
   -n, --dry-run     print the reconcile SQL without applying it.
   -h, --help        show this help.
 
-Role definitions come from the shared srv/roles-<GUID> package (dependency of
+Role definitions come from the shared pkg/roles-<GUID> package (dependency of
 the per-database grant package); member accounts come from etc/team.ini.
 TXT;
 
-function srv_package_dir(string $root, string $name): ?string
+function pkg_package_dir(string $root, string $name): ?string
 {
-    $dir = $root . '/srv/' . $name;
+    $dir = $root . '/pkg/' . $name;
     return is_dir($dir) ? $dir : null;
 }
 
 function find_grants_package(string $root, string $db): ?string
 {
-    $matches = glob($root . '/srv/' . $db . '.roles-*') ?: [];
+    $matches = glob($root . '/pkg/' . $db . '.roles-*') ?: [];
     $matches = array_values(array_filter($matches, 'is_dir'));
     if (count($matches) === 1) {
         return $matches[0];
     }
     if (count($matches) === 0) {
-        fwrite(STDERR, "gen-grants: no srv/{$db}.roles-<GUID> package found\n");
+        fwrite(STDERR, "gen-grants: no pkg/{$db}.roles-<GUID> package found\n");
     } else {
-        fwrite(STDERR, "gen-grants: multiple srv/{$db}.roles-<GUID> packages found; keep one\n");
+        fwrite(STDERR, "gen-grants: multiple pkg/{$db}.roles-<GUID> packages found; keep one\n");
     }
     return null;
 }
 
-// Load a package's default.php and return its $dependencies (array of package
-// directory names). The file assigns a local $dependencies; including it
-// inside this function keeps that assignment scoped here.
+// Load a package's default.php and return its dependencies (list of package
+// directory names) from the returned Ema\Config\PackageConfig. The migrated
+// value file returns a config object; a missing or legacy (variable-assigning)
+// file yields an empty dependency list. PackageConfig types the field as
+// `list<string>`, so it needs no re-indexing here.
 function package_dependencies(string $dir): array
 {
-    $dependencies = null;
     $default = $dir . '/default.php';
-    if (is_file($default)) {
-        include $default;
+    if (!is_file($default)) {
+        return [];
     }
-    return is_array($dependencies) ? array_values($dependencies) : [];
+    $config = include $default;
+    return $config instanceof \Ema\Config\PackageConfig ? $config->dependencies : [];
 }
 
 function read_upgrade_sql(string $dir): string
@@ -100,9 +102,9 @@ function build_reconcile_sql(string $root, string $db, array $team, string $gran
 
     $roleNames = [];
     foreach (package_dependencies($grantsDir) as $dep) {
-        $dir = srv_package_dir($root, $dep);
+        $dir = pkg_package_dir($root, $dep);
         if ($dir === null) {
-            fwrite(STDERR, "gen-grants: dependency package srv/{$dep} not found\n");
+            fwrite(STDERR, "gen-grants: dependency package pkg/{$dep} not found\n");
             exit(1);
         }
         $depSql = read_upgrade_sql($dir);
@@ -165,6 +167,11 @@ function main(array $argv): int
     if ($root === false) {
         $root = '.';
     }
+
+    // default.php files now return Ema\Config\* instances; make the classes
+    // resolvable before the first include (Composer autoloader, at the repo
+    // root where this CLI runs).
+    require $root . '/vendor/autoload.php';
 
     $db = null;
     $dryRun = false;

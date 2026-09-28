@@ -4,7 +4,7 @@ Date: 2026-09-01 (mechanism implemented 2026-09-07)
 Scope: how this framework turns `etc/team.ini` into one certificate-pinned,
 passwordless DB account per team member, and how members obtain their client
 certificates. The consumer owns the data (`etc/team.ini`) and the role policy
-(the `srv/` roles packages); this framework owns the `gen-grants` and
+(the `pkg/` roles packages); this framework owns the `gen-grants` and
 `gen-cert` CLIs.
 
 ## Quick setup
@@ -59,8 +59,8 @@ hosts.
 
     gen-grants <db> [-n|--dry-run]
 
-`gen-grants` reads `etc/team.ini` + the `srv/<db>.roles-<GUID>` package
-(resolving its `$dependencies` to the shared `srv/roles-<GUID>` package) and
+`gen-grants` reads `etc/team.ini` + the `pkg/<db>.roles-<GUID>` package
+(resolving its `dependencies` to the shared `pkg/roles-<GUID>` package) and
 emits transient SQL (never persisted):
 
     -- role definitions (shared roles package first, then per-db grants)
@@ -77,9 +77,9 @@ SQL as root through `ema mariadb <db> < file.sql` (the reconcile provisions as r
 unix_socket auth over the `MYSQL_UNIX_PORT` socket from the manual reuter.ini section). The SQL is
 discarded after apply.
 
-Role definitions live in `srv/` packages (mirroring the `pkg/` convention):
-the shared `srv/roles-<GUID>/` holds the role definitions (instance-level, one
-copy), and each `srv/<db>.roles-<GUID>/` depends on it and holds only that
+Role definitions live in `pkg/` packages, alongside the schema packages:
+the shared `pkg/roles-<GUID>/` holds the role definitions (instance-level, one
+copy), and each `pkg/<db>.roles-<GUID>/` depends on it and holds only that
 database's grants. `gen-grants` never hardcodes role names — it extracts them
 from the shared package's `CREATE ROLE` statements.
 

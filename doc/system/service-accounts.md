@@ -3,7 +3,7 @@
 Date: 2026-09-14
 Scope: how this framework turns a consumer's declaration into a closed-world
 set of passwordless, host-pinned service accounts and roles, from the shared
-`srv/roles-<GUID>` package, `etc/team.ini` and `etc/machines.ini`. The
+`pkg/roles-<GUID>` package, `etc/team.ini` and `etc/machines.ini`. The
 framework owns the mechanism (`bin/gen-service-accounts`); the consumer owns
 the data (role definitions, per-database grants, account/source mapping, team
 roster, host registry, allow-list and role namespace) and the *account model*
@@ -27,40 +27,47 @@ account exists on the read database and is dropped on the write database.
 
 ### Declaration
 
-The shared `srv/roles-<GUID>/default.php` carries the declaration (all
-consumer data — no account name, role name or source is hardcoded):
+The shared `pkg/roles-<GUID>/default.php` carries the declaration as a nested
+`Ema\Config\RolesConfig` on the package's `PackageConfig` (all consumer data —
+no account name, role name or source is hardcoded):
 
-    $sources  = array('member' => 'developer', 'worker' => 'worker'); // source -> role
-    $accounts = array('app' => array('member', 'worker', 'db', 'web')); // account -> sources
-    $allowlist = array('daas'); // accounts the drop pass must never remove
+    return new \Ema\Config\PackageConfig(
+        roles: new \Ema\Config\RolesConfig(
+            sources:   ['member' => 'developer', 'worker' => 'worker', 'web' => 'webapp'],
+            accounts:  ['app' => ['member', 'worker', 'web']],
+            allowlist: ['daas'],
+        ),
+    );
 
-- `$sources` maps a source to the role it grants. `member` resolves to the
+- `sources` maps a source to the role it grants. `member` resolves to the
   `etc/team.ini` IPs; any other key is a `etc/machines.ini` `[prod]` tag
-  (bare, or `db:<name>`), matched exactly.
-- `$accounts` maps an account name to the sources whose hosts it is pinned to.
+  (bare, or `db:<name>`), matched exactly. Every source an account names must
+  itself be declared here.
+- `accounts` maps an account name to the sources whose hosts it is pinned to.
   Its per-host roles are the union of those sources' roles, intersected with
   the roles that hold a `GRANT` on the target database.
-- `$allowlist` (optional) adds accounts the closed-world drop must never
+- `allowlist` (optional) adds accounts the closed-world drop must never
   remove. `root` and `mariadb.sys` are an always-on safety floor: they are
-  never dropped, and a declared `$allowlist` extends (never replaces) them.
+  never dropped, and a declared `allowlist` extends (never replaces) them.
   Accounts the consumer creates itself (e.g. `replication` via
   `replica-bootstrap`) are not covered by the floor and must be declared here.
 
 `upgrade.sql` carries the `CREATE ROLE` and per-database `GRANT … TO <role>`
 DDL exactly as `gen-grants` consumes today; `{{dbname}}` is filled from the
 target database. A role with no `GRANT` on a database means its account is not
-wanted there, which drives the per-instance drop set. Absent declaration
-(`$sources`/`$accounts`) = today's `gen-grants` team-member shape: no service
-accounts are reconciled.
+wanted there, which drives the per-instance drop set. An absent declaration (no
+nested `RolesConfig`, or one with an empty `accounts`) = today's `gen-grants`
+team-member shape: there is nothing to reconcile, and the CLI says so and
+exits non-zero.
 
 ## Reconcile: gen-service-accounts
 
     gen-service-accounts <db> [-n|--dry-run]
 
-`gen-service-accounts` reads the shared roles package (`CREATE ROLE` names,
-`$sources`, `$accounts`, `$allowlist`) and, for the target database, its
-`$dependencies`-resolved per-database grants package, then emits transient SQL
-(never persisted) in four phases:
+`gen-service-accounts` reads the shared roles package (`CREATE ROLE` names and
+its `RolesConfig` fields `sources`, `accounts`, `allowlist`) and, for the
+target database, its `dependencies`-resolved per-database grants package, then
+emits transient SQL (never persisted) in four phases:
 
 1. **role definitions + per-database grants** — the shared `CREATE ROLE`, then
    the per-db `GRANT`, in declaration order;
@@ -85,7 +92,7 @@ prod-only, so an operator shell in sandbox mode must not redirect it. The SQL is
 discarded after apply.
 
 The CLI runs from the **operator machine**: planning reads `etc/team.ini`,
-`etc/machines.ini` and `srv/*` — private roster data that never leaves it — and
+`etc/machines.ini` and `pkg/*.roles-*` — private roster data that never leaves it — and
 only the SQL execution crosses the network. The target is the host carrying the
 database's `db:<name>` `[prod]` token (the framework's one-to-one server
 mapping); the CLI reaches it as `root` over `ssh` and runs the deployed repo's
@@ -101,7 +108,7 @@ run.
 
 The reconcile therefore carries no database identity of its own: no `DBUSER`, no
 password, no privileged account on the TCP port, and nothing to add to
-`$allowlist`. It is a dev-machine verb — a host carries no roster, so a host-side
+`allowlist`. It is a dev-machine verb — a host carries no roster, so a host-side
 run has no `db:<name>` token to resolve and plans nothing.
 
 ## Fail-open ordering
@@ -131,7 +138,7 @@ written to stderr and a non-zero exit.
   db-level grant: on a role-only account — every account on a re-run — they fail
   with `ERROR 1141` (no such grant).
 - **Namespace cleanup** — `DROP ROLE` targets only the declared role namespace
-  (`CREATE ROLE` names plus `$sources` roles) and never the account
+  (`CREATE ROLE` names plus the `sources` roles) and never the account
   allow-list.
 - **`gen-grants` unification** — the cert-pinned team-member flow
   (`gen-grants`, `doc/system/team-db-users.md`) and this passwordless

@@ -120,7 +120,7 @@ replica may connect as it. It is an instance-level grant, not a per-database
 grant, so it belongs to no service-account reconcile file. It is not covered
 by the service-account reconcile's drop floor (`root` and `mariadb.sys`
 only), so a consumer running that reconcile must declare `replication` in its
-`$allowlist` or the next reconcile drops the account.
+`allowlist` or the next reconcile drops the account.
 
 ## The snapshot
 
@@ -167,13 +167,13 @@ ships the `mariadb@.service` template unit.
    to both hosts. It creates the transport account and ships the prepared
    snapshot to the replica host's `--dest`.
 3. Provision the replica: an `srv/<name>-<GUID>` package whose `default.php`
-   declares `$db['type']='replica'` and `$db['replica_of']=<primary>` (no
-   `$dependencies`/`upgrade.sql`), built with
+   returns an `Ema\Config\DatabaseConfig` with `type: 'replica'` and
+   `replica_of: '<primary>'` (no `dependencies`/`upgrade.sql`), built with
    `ema create srv/<name>-<GUID> --from-snapshot <dest>` — ema restores the
    shipped snapshot and attaches replication from the recorded coordinate
    (`read_only=1`, `replicate-rewrite-db = <primary>-><replica>`). A replica
    may also opt into verifying the primary's server certificate with
-   `$db['replica_ssl_verify_server_cert'] = true` — replica-only and default
+   `replica_ssl_verify_server_cert: true` — replica-only and default
    off (the primary's certificate is the self-signed one until a consumer
    provisions a CA).
 
