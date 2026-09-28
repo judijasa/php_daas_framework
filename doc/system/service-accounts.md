@@ -80,26 +80,25 @@ database, which gate the Phase 3 revokes). Accounts are global in `mysql.user`
 is emitted identically on each per-database run — idempotent.
 
 `-n/--dry-run` prints the SQL without applying it. Otherwise it applies the
-SQL through `ema mariadb <db> < file.sql`, with `EMA_TARGET=prod` pinned: the
-reconcile is prod-only, so an operator shell in sandbox mode must not redirect
-it. The SQL is discarded after apply.
+SQL through `ema mariadb <db>`, with `EMA_TARGET=prod` pinned: the reconcile is
+prod-only, so an operator shell in sandbox mode must not redirect it. The SQL is
+discarded after apply.
 
 The CLI runs from the **operator machine**: planning reads `etc/team.ini`,
 `etc/machines.ini` and `srv/*` — private roster data that never leaves it — and
-only the SQL execution crosses the network. ema picks the transport from
-instance presence (`doc/system/ema.md`): on the DB host the section's
-`MYSQL_UNIX_PORT` socket is used as root (unix_socket auth), anywhere else the
-section's `SERVER`/`PORT` over TCP as `DBUSER`, required off-host (`DBPASS`,
-`MYSQL_PWD` or `~/.my.cnf` supplies its password when it has one). Off-host the
-reconcile therefore needs a TCP-capable account of its own, exported as
-`DBUSER` — the operator's, like every other account here, and the same shape
-`replica-bootstrap` gives its `replication` transport account
-(`doc/system/replica-bootstrap.md`): passwordless, host-pinned to the operator
-machine, and holding the reconcile's global privileges (`CREATE USER`,
-`ALTER USER`, `DROP USER`, `CREATE ROLE`, `DROP ROLE`, `GRANT OPTION`, and
-`SELECT` on `mysql.*` for the live-state diff). Declare it in `$allowlist`: the
-closed-world drop pass removes undeclared accounts, and the account the
-reconcile is connected as is no exception.
+only the SQL execution crosses the network. The target is the host carrying the
+database's `db:<name>` `[prod]` token (the framework's one-to-one server
+mapping); the CLI reaches it as `root` over `ssh` and runs the deployed repo's
+own `ema mariadb <db>` there, from the deployed repo root (`DEPLOY_TARGET_DIR`,
+read from the consumer's `etc/deploy.conf` — see `doc/system/consumer-config.md`).
+On its own host that call takes ema's local path: the section's
+`MYSQL_UNIX_PORT` socket as root (unix_socket auth), exactly as in an on-host
+run.
+
+The reconcile therefore carries no database identity of its own: no `DBUSER`, no
+password, no privileged account on the TCP port, and nothing to add to
+`$allowlist`. It is a dev-machine verb — a host carries no roster, so a host-side
+run has no `db:<name>` token to resolve and plans nothing.
 
 ## Fail-open ordering
 
@@ -114,12 +113,12 @@ written to stderr and a non-zero exit.
 
 ## Notes
 
-- **The off-host identity is consumer policy** — `gen-service-accounts` never
-  picks it: `DBUSER` comes from the operator's environment, exactly as for any
-  other `ema mariadb` call. A `DBUSER` that is not in `$allowlist` is dropped by
-  the run that uses it (MariaDB allows dropping the current account, so that run
-  succeeds and the next one cannot connect). On the DB host nothing changes:
-  `DBUSER` unset means `$USER` — root, over the section's socket.
+- **The reconcile carries no database identity of its own** — it picks no
+  `DBUSER` and holds no credentials: it reaches the host as `root` over `ssh` and
+  runs the host's own `ema` there, so there is no privileged TCP account to
+  create, allow-list or rotate. `ema`'s own transport rules (the section's socket
+  as root on its host, `SERVER`/`PORT` as `DBUSER` elsewhere) are unchanged for
+  every other verb that calls it.
 - **Direct-grant drift** — two statements, scoped to the managed database (never
   `*.*`): `REVOKE GRANT OPTION ON <db>.*`, then `REVOKE ALL PRIVILEGES ON
   <db>.*`. `ALL PRIVILEGES, GRANT OPTION` in one statement is not valid MariaDB
