@@ -29,7 +29,7 @@ fi
 
 echo "run-on-clean-tree: stashing dirty working tree before push gate..."
 
-if ! git stash push --include-untracked --message "run-on-clean-tree: auto-stash before pre-push gate"; then
+if ! git stash push --include-untracked --quiet --message "run-on-clean-tree: auto-stash before pre-push gate"; then
     echo "run-on-clean-tree: WARNING — stash failed, running against dirty tree as fallback"
     exec "$@"
 fi
@@ -41,7 +41,7 @@ set -e
 
 echo "run-on-clean-tree: restoring stashed changes..."
 
-if ! git stash pop --index; then
+if ! git stash pop --index --quiet; then
     echo "run-on-clean-tree: ERROR — stash pop failed!"
     echo "   Your changes are safe in 'git stash list'."
     echo "   Recover them with:  git stash pop"
