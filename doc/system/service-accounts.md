@@ -67,20 +67,39 @@ accounts are reconciled.
 2. **service accounts** — per account per host, `CREATE USER IF NOT EXISTS`
    (passwordless, host-pinned), `ALTER USER`, `GRANT <role> TO`, then
    `SET DEFAULT ROLE` (the roles activate on connect);
-3. **revoke** — excess roles, then a blanket `REVOKE ALL PRIVILEGES,
-   GRANT OPTION ON <db>.*` for direct (non-role) grants;
+3. **revoke** — excess roles, then the direct (non-role) grants of the managed
+   database: `REVOKE GRANT OPTION ON <db>.*`, then `REVOKE ALL PRIVILEGES ON
+   <db>.*`;
 4. **drop** — undeclared accounts (instance-wide), declared accounts that hold
    no role on this database, and orphaned roles.
 
-The closed-world diff reads live state from `mysql.user` and
-`mysql.roles_mapping`. Accounts are global in `mysql.user` (only the GRANT is
-per-database), so the user/role drop set is instance-wide and is emitted
-identically on each per-database run — idempotent.
+The closed-world diff reads live state from `mysql.user`,
+`mysql.roles_mapping`, and `mysql.db` (the direct db-level grants on the managed
+database, which gate the Phase 3 revokes). Accounts are global in `mysql.user`
+(only the GRANT is per-database), so the user/role drop set is instance-wide and
+is emitted identically on each per-database run — idempotent.
 
 `-n/--dry-run` prints the SQL without applying it. Otherwise it applies the
-SQL as root through `ema mariadb <db> < file.sql` (the reconcile provisions as root; run it as root on the DB host —
-root/unix_socket auth over the `MYSQL_UNIX_PORT` socket from the manual
-reuter.ini section). The SQL is discarded after apply.
+SQL through `ema mariadb <db> < file.sql`, with `EMA_TARGET=prod` pinned: the
+reconcile is prod-only, so an operator shell in sandbox mode must not redirect
+it. The SQL is discarded after apply.
+
+The CLI runs from the **operator machine**: planning reads `etc/team.ini`,
+`etc/machines.ini` and `srv/*` — private roster data that never leaves it — and
+only the SQL execution crosses the network. ema picks the transport from
+instance presence (`doc/system/ema.md`): on the DB host the section's
+`MYSQL_UNIX_PORT` socket is used as root (unix_socket auth), anywhere else the
+section's `SERVER`/`PORT` over TCP as `DBUSER`, required off-host (`DBPASS`,
+`MYSQL_PWD` or `~/.my.cnf` supplies its password when it has one). Off-host the
+reconcile therefore needs a TCP-capable account of its own, exported as
+`DBUSER` — the operator's, like every other account here, and the same shape
+`replica-bootstrap` gives its `replication` transport account
+(`doc/system/replica-bootstrap.md`): passwordless, host-pinned to the operator
+machine, and holding the reconcile's global privileges (`CREATE USER`,
+`ALTER USER`, `DROP USER`, `CREATE ROLE`, `DROP ROLE`, `GRANT OPTION`, and
+`SELECT` on `mysql.*` for the live-state diff). Declare it in `$allowlist`: the
+closed-world drop pass removes undeclared accounts, and the account the
+reconcile is connected as is no exception.
 
 ## Fail-open ordering
 
@@ -95,9 +114,19 @@ written to stderr and a non-zero exit.
 
 ## Notes
 
-- **Direct-grant drift** — `REVOKE ALL PRIVILEGES, GRANT OPTION ON <db>.*`
-  clears both the privileges and `GRANT OPTION` in one statement, scoped to
-  the managed database (never `*.*`).
+- **The off-host identity is consumer policy** — `gen-service-accounts` never
+  picks it: `DBUSER` comes from the operator's environment, exactly as for any
+  other `ema mariadb` call. A `DBUSER` that is not in `$allowlist` is dropped by
+  the run that uses it (MariaDB allows dropping the current account, so that run
+  succeeds and the next one cannot connect). On the DB host nothing changes:
+  `DBUSER` unset means `$USER` — root, over the section's socket.
+- **Direct-grant drift** — two statements, scoped to the managed database (never
+  `*.*`): `REVOKE GRANT OPTION ON <db>.*`, then `REVOKE ALL PRIVILEGES ON
+  <db>.*`. `ALL PRIVILEGES, GRANT OPTION` in one statement is not valid MariaDB
+  syntax, and `ALL PRIVILEGES` on its own leaves the grant option behind. Both
+  are emitted only for accounts the live `mysql.db` read reports as holding a
+  db-level grant: on a role-only account — every account on a re-run — they fail
+  with `ERROR 1141` (no such grant).
 - **Namespace cleanup** — `DROP ROLE` targets only the declared role namespace
   (`CREATE ROLE` names plus `$sources` roles) and never the account
   allow-list.
