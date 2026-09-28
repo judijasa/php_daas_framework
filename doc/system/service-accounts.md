@@ -36,6 +36,7 @@ no account name, role name or source is hardcoded):
             sources:   ['member' => 'developer', 'worker' => 'worker', 'web' => 'webapp'],
             accounts:  ['app' => ['member', 'worker', 'web']],
             allowlist: ['daas'],
+            require:   'X509',
         ),
     );
 
@@ -51,12 +52,20 @@ no account name, role name or source is hardcoded):
   never dropped, and a declared `allowlist` extends (never replaces) them.
   Accounts the consumer creates itself (e.g. `replication` via
   `replica-bootstrap`) are not covered by the floor and must be declared here.
+- `require` (optional) is a TLS/certificate clause — e.g. `'X509'` — emitted
+  as `REQUIRE <value>` on every `CREATE USER`/`ALTER USER` this reconcile
+  emits. It hardens the passwordless, host-pinned account against a trusted
+  peer spoofing the source IP (the host pin alone is forgeable on the trusted
+  network; a client certificate is not). Absent (or `null`), accounts stay
+  plain `IDENTIFIED BY ''` — the pre-existing shape. Server `ssl-ca`/`ssl-cert`
+  /`ssl-key` must be live before a `require` value can authenticate (see
+  `doc/system/team-db-users.md` follow-ups).
 
 `upgrade.sql` carries the `CREATE ROLE` and per-database `GRANT … TO <role>`
-DDL exactly as `gen-grants` consumes today; `{{dbname}}` is filled from the
+DDL exactly as `gen-team-accounts` consumes today; `{{dbname}}` is filled from the
 target database. A role with no `GRANT` on a database means its account is not
 wanted there, which drives the per-instance drop set. An absent declaration (no
-nested `RolesConfig`, or one with an empty `accounts`) = today's `gen-grants`
+nested `RolesConfig`, or one with an empty `accounts`) = today's `gen-team-accounts`
 team-member shape: there is nothing to reconcile, and the CLI says so and
 exits non-zero.
 
@@ -72,8 +81,9 @@ emits transient SQL (never persisted) in four phases:
 1. **role definitions + per-database grants** — the shared `CREATE ROLE`, then
    the per-db `GRANT`, in declaration order;
 2. **service accounts** — per account per host, `CREATE USER IF NOT EXISTS`
-   (passwordless, host-pinned), `ALTER USER`, `GRANT <role> TO`, then
-   `SET DEFAULT ROLE` (the roles activate on connect);
+   (passwordless, host-pinned; `REQUIRE <value>` when `require` is declared),
+   `ALTER USER`, `GRANT <role> TO`, then `SET DEFAULT ROLE` (the roles
+   activate on connect);
 3. **revoke** — excess roles, then the direct (non-role) grants of the managed
    database: `REVOKE GRANT OPTION ON <db>.*`, then `REVOKE ALL PRIVILEGES ON
    <db>.*`;
@@ -140,9 +150,16 @@ written to stderr and a non-zero exit.
 - **Namespace cleanup** — `DROP ROLE` targets only the declared role namespace
   (`CREATE ROLE` names plus the `sources` roles) and never the account
   allow-list.
-- **`gen-grants` unification** — the cert-pinned team-member flow
-  (`gen-grants`, `doc/system/team-db-users.md`) and this passwordless
-  service-account flow share the reconcile skeleton but differ in auth mode
-  (`REQUIRE SUBJECT` vs passwordless) and population (one-per-member vs
-  declared). Unifying them is deferred until a third account family appears —
-  there is no shared declaration grammar yet.
+- **`gen-team-accounts` unification** — the team-member flow (`gen-team-accounts`,
+  `doc/system/team-db-users.md`) and this service-account flow share the
+  reconcile skeleton but differ in auth mode (`IDENTIFIED BY` password,
+  one-per-member `@'%'`, vs passwordless host-pinned, optionally
+  `REQUIRE <value>`) and population (one-per-member vs declared). Unifying
+  them is deferred until a third account family appears — there is no shared
+  declaration grammar yet.
+- **Instance-wide drop vs member accounts** — Phase 4 drops any account whose
+  name is neither declared (`accounts`) nor allow-listed, instance-wide. A
+  consumer that runs *both* `gen-team-accounts` (member accounts) and
+  `gen-service-accounts` on one instance must allow-list the member names, or
+  the drop will remove them. This surfaces only when the two families are
+  active together.

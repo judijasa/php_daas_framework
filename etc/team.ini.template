@@ -1,28 +1,26 @@
-; Team member registry — one DB account per team member, host-pinned to the
-; member's machine(s). This file is private data: keep it in the consumer's
-; private config repo and place it at etc/team.ini (see
+; Team member registry — one DB account per team member, reachable from any
+; host on the trusted network. This file is private data: keep it in the
+; consumer's private config repo and place it at etc/team.ini (see
 ; doc/system/consumer-config.md).
 ;
 ; Each section is one member and the section name IS that member's DB
-; username. `subject` is the member's client-certificate subject DN, passed
-; verbatim to the account's REQUIRE SUBJECT clause (the CN is
-; `<username>-<guid>`, a short random token: same-named members stay distinct
-; and a leaked cert is rotated by issuing a new cert with a new guid). The
-; remaining keys are hostname -> ZeroTier IP entries pinning the source
-; host(s) the member may connect from.
+; username. `password` is the member's password, passed verbatim to the
+; account's IDENTIFIED BY clause.
 ;
-;   `gen-grants <db>` turns each member@ip into a cert-pinned, passwordless
-;   DB account (REQUIRE SUBJECT).
-;   `gen-cert new <member>` reads the `subject` below for the CSR.
+; The remaining keys are hostname -> ZeroTier IP entries. `gen-grants` no
+; longer reads them (it pins each member to `%`); a consumer keeps them only
+; where it still uses the `member` source for the shared service account
+; (doc/system/service-accounts.md). The former `subject` key (cert DN) is now
+; read only by `gen-cert`.
 ;
-; Generate the CN token with `gen-cert new` (it does not commit it); the
-; resulting certificate's subject must match the account's REQUIRE SUBJECT.
+;   `gen-grants <db>` turns each member into a password-authenticated
+;   `member@'%'` DB account.
 
 [john]
-subject          = /CN=john-a1b2c3d4/O=team
+password = <member password>
 john-workstation = 10.147.x.20
 john-laptop      = 10.147.x.21
 
 [jane]
-subject          = /CN=jane-9f8e7d6c/O=team
+password = <member password>
 jane-workstation = 10.147.x.30

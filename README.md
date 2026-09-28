@@ -93,5 +93,5 @@ and the CLIs installed into `vendor/bin`.
 - [replica-bootstrap.md](doc/system/replica-bootstrap.md) — read-only replica.
 - [service-accounts.md](doc/system/service-accounts.md) — service accounts.
 - [ssh-config.md](doc/system/ssh-config.md) — dev ssh aliases.
-- [team-db-users.md](doc/system/team-db-users.md) — team DB users + certs.
+- [team-db-users.md](doc/system/team-db-users.md) — team DB users + passwords.
 - [tmux-remote.md](doc/system/tmux-remote.md) — remote tmux shell.

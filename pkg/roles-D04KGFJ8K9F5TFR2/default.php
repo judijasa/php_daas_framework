@@ -1,10 +1,10 @@
 <?php
 // Shared team role definitions (instance-level, one copy per team). Consumed
-// by gen-grants before the per-database grant package. Nothing else lives
+// by gen-team-accounts before the per-database grant package. Nothing else lives
 // here: the SQL is in upgrade.sql.
 //
 // Optional service-account declaration (consumed by gen-service-accounts;
-// absent = today's gen-grants team-member shape only). Every key is consumer
+// absent = today's gen-team-accounts team-member shape only). Every key is consumer
 // data — no account name, role name or source is hardcoded in the framework:
 //
 //   roles: new \Ema\Config\RolesConfig(

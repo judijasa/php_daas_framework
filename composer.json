@@ -31,7 +31,7 @@
     "bin/pf-deploy.sh",
     "bin/gen-env",
     "bin/db-check",
-    "bin/gen-grants",
+    "bin/gen-team-accounts",
     "bin/gen-service-accounts",
     "bin/gen-cert",
     "bin/pf-roster",

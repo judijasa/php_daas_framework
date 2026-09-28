@@ -3,32 +3,32 @@
 
 declare(strict_types=1);
 
-// gen-grants — reconcile team-member DB accounts + roles from etc/team.ini
+// gen-team-accounts — reconcile team-member DB accounts + roles from etc/team.ini
 // and the pkg/<db>.roles-<GUID> package(s). The framework owns the mechanism
 // (format + reconcile); the consumer owns the data (etc/team.ini) and the
 // role policy (the pkg/ roles packages).
 //
 // It emits transient SQL (never persisted) and, unless -n/--dry-run, applies
 // it as root through `ema mariadb <db> < file.sql`. ema owns the connection:
-// it connects as root for sandboxes and as DBUSER for prod, so gen-grants
+// it connects as root for sandboxes and as DBUSER for prod, so gen-team-accounts
 // runs `ema mariadb` with DBUSER=root to make the reconcile provision as
 // root. Run it as root on the DB host (root/unix_socket auth over the
 // MYSQL_UNIX_PORT socket from the manual reuter.ini section).
 //
-// Reconcile shape, per member, per hostname->ZeroTier IP:
-//   CREATE USER IF NOT EXISTS 'member'@'ip' REQUIRE SUBJECT '<subject>';
-//   ALTER USER 'member'@'ip' REQUIRE SUBJECT '<subject>';
-//   GRANT <role> TO 'member'@'ip';
-//   SET DEFAULT ROLE <role> FOR 'member'@'ip';
+// Reconcile shape, one account per member, any host:
+//   CREATE USER IF NOT EXISTS 'member'@'%' IDENTIFIED BY '<password>';
+//   ALTER USER 'member'@'%' IDENTIFIED BY '<password>';
+//   GRANT <role> TO 'member'@'%';
+//   SET DEFAULT ROLE <role> FOR 'member'@'%';
 // preceded by the role definitions (shared roles package first, then the
 // per-database grant package), with {{dbname}} filled from <db>.
 //
-// Usage: gen-grants <db> [-n|--dry-run] [--help]
+// Usage: gen-team-accounts <db> [-n|--dry-run] [--help]
 
 const HELP = <<<'TXT'
-Usage: gen-grants <db> [flags]
+Usage: gen-team-accounts <db> [flags]
 
-Reconcile team-member DB accounts (certificate-pinned, no password) and
+Reconcile team-member DB accounts (password, no certificate, any host) and
 roles for one database, from etc/team.ini + pkg/<db>.roles-<GUID>.
 
   <db>              database name (resolves pkg/<db>.roles-<GUID>).
@@ -53,9 +53,9 @@ function find_grants_package(string $root, string $db): ?string
         return $matches[0];
     }
     if (count($matches) === 0) {
-        fwrite(STDERR, "gen-grants: no pkg/{$db}.roles-<GUID> package found\n");
+        fwrite(STDERR, "gen-team-accounts: no pkg/{$db}.roles-<GUID> package found\n");
     } else {
-        fwrite(STDERR, "gen-grants: multiple pkg/{$db}.roles-<GUID> packages found; keep one\n");
+        fwrite(STDERR, "gen-team-accounts: multiple pkg/{$db}.roles-<GUID> packages found; keep one\n");
     }
     return null;
 }
@@ -97,14 +97,14 @@ function sql_quote(string $value): string
 
 function build_reconcile_sql(string $root, string $db, array $team, string $grantsDir): string
 {
-    $sql = '-- gen-grants reconcile for `' . $db . '` (transient; never persisted)' . PHP_EOL;
+    $sql = '-- gen-team-accounts reconcile for `' . $db . '` (transient; never persisted)' . PHP_EOL;
     $sql .= PHP_EOL . '-- Role definitions (shared roles package, then per-database grants)' . PHP_EOL;
 
     $roleNames = [];
     foreach (package_dependencies($grantsDir) as $dep) {
         $dir = pkg_package_dir($root, $dep);
         if ($dir === null) {
-            fwrite(STDERR, "gen-grants: dependency package pkg/{$dep} not found\n");
+            fwrite(STDERR, "gen-team-accounts: dependency package pkg/{$dep} not found\n");
             exit(1);
         }
         $depSql = read_upgrade_sql($dir);
@@ -117,30 +117,24 @@ function build_reconcile_sql(string $root, string $db, array $team, string $gran
     $sql = str_replace('{{dbname}}', $db, $sql);
     $roleNames = array_values(array_unique($roleNames));
     if (count($roleNames) === 0) {
-        fwrite(STDERR, "gen-grants: no CREATE ROLE statement found in the roles packages\n");
+        fwrite(STDERR, "gen-team-accounts: no CREATE ROLE statement found in the roles packages\n");
         exit(1);
     }
 
-    $sql .= PHP_EOL . '-- Member accounts (certificate-pinned, no password)' . PHP_EOL;
+    $sql .= PHP_EOL . '-- Member accounts (password, no certificate, any host)' . PHP_EOL;
     foreach ($team as $member => $entries) {
-        $subject = $entries['subject'] ?? null;
-        if (!is_string($subject) || $subject === '') {
-            fwrite(STDERR, "gen-grants: member '{$member}' has no 'subject' in etc/team.ini\n");
+        $password = $entries['password'] ?? null;
+        if (!is_string($password) || $password === '') {
+            fwrite(STDERR, "gen-team-accounts: member '{$member}' has no 'password' in etc/team.ini\n");
             exit(1);
         }
-        foreach ($entries as $hostname => $ip) {
-            if ($hostname === 'subject' || !is_string($ip) || $ip === '') {
-                continue;
-            }
-            $m = sql_quote((string) $member);
-            $i = sql_quote($ip);
-            $s = sql_quote($subject);
-            $sql .= "CREATE USER IF NOT EXISTS '{$m}'@'{$i}' REQUIRE SUBJECT '{$s}';" . PHP_EOL;
-            $sql .= "ALTER USER '{$m}'@'{$i}' REQUIRE SUBJECT '{$s}';" . PHP_EOL;
-            foreach ($roleNames as $role) {
-                $sql .= 'GRANT ' . $role . " TO '{$m}'@'{$i}';" . PHP_EOL;
-                $sql .= 'SET DEFAULT ROLE ' . $role . " FOR '{$m}'@'{$i}';" . PHP_EOL;
-            }
+        $m = sql_quote((string) $member);
+        $p = sql_quote($password);
+        $sql .= "CREATE USER IF NOT EXISTS '{$m}'@'%' IDENTIFIED BY '{$p}';" . PHP_EOL;
+        $sql .= "ALTER USER '{$m}'@'%' IDENTIFIED BY '{$p}';" . PHP_EOL;
+        foreach ($roleNames as $role) {
+            $sql .= 'GRANT ' . $role . " TO '{$m}'@'%';" . PHP_EOL;
+            $sql .= 'SET DEFAULT ROLE ' . $role . " FOR '{$m}'@'%';" . PHP_EOL;
         }
     }
 
@@ -151,7 +145,7 @@ function apply_sql(string $root, string $db, string $sql): int
 {
     $tmp = tempnam(sys_get_temp_dir(), 'gen_grants_');
     if ($tmp === false || file_put_contents($tmp, $sql) === false) {
-        fwrite(STDERR, "gen-grants: could not write the temporary SQL file\n");
+        fwrite(STDERR, "gen-team-accounts: could not write the temporary SQL file\n");
         return 1;
     }
     $ema = is_executable($root . '/vendor/bin/ema') ? $root . '/vendor/bin/ema' : 'ema';
@@ -184,24 +178,24 @@ function main(array $argv): int
         } elseif ($db === null) {
             $db = $arg;
         } else {
-            fwrite(STDERR, "gen-grants: unexpected argument: {$arg}\n");
+            fwrite(STDERR, "gen-team-accounts: unexpected argument: {$arg}\n");
             return 1;
         }
     }
     if ($db === null) {
-        fwrite(STDERR, "gen-grants: missing <db> argument\n");
+        fwrite(STDERR, "gen-team-accounts: missing <db> argument\n");
         fwrite(STDERR, HELP);
         return 1;
     }
 
     $teamIni = $root . '/etc/team.ini';
     if (!is_file($teamIni)) {
-        fwrite(STDERR, "gen-grants: {$teamIni} not found (etc/team.ini is consumer-owned private data — see doc/system/consumer-config.md)\n");
+        fwrite(STDERR, "gen-team-accounts: {$teamIni} not found (etc/team.ini is consumer-owned private data — see doc/system/consumer-config.md)\n");
         return 1;
     }
     $team = parse_ini_file($teamIni, true, INI_SCANNER_RAW);
     if (!is_array($team) || count($team) === 0) {
-        fwrite(STDERR, "gen-grants: no members in {$teamIni}\n");
+        fwrite(STDERR, "gen-team-accounts: no members in {$teamIni}\n");
         return 1;
     }
 
@@ -214,7 +208,7 @@ function main(array $argv): int
     fwrite(STDOUT, $sql);
 
     if ($dryRun) {
-        fwrite(STDERR, "gen-grants: dry-run; SQL printed, not applied\n");
+        fwrite(STDERR, "gen-team-accounts: dry-run; SQL printed, not applied\n");
         return 0;
     }
 

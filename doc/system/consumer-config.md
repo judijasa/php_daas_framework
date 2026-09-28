@@ -32,7 +32,7 @@ machine: its values are the deploy parameters, replayed to the host as
 environment rather than shipped as a file.
 `machines.ini`, `team.ini`, `hosts` and `host-hardening.php` are dev/deploy-time
 inputs: `machines.ini` feeds the local deploy roster, `team.ini` feeds
-`gen-cert`/`gen-grants`/`gen-service-accounts`, `hosts`
+`gen-cert`/`gen-team-accounts`/`gen-service-accounts`, `hosts`
 (optional) feeds the consumer's dev `/etc/hosts` merge and its generated ssh
 aliases (`gen-ssh-config`), and `host-hardening.php` feeds `gen-firewall`.
 None of them belong on a host.
@@ -83,7 +83,7 @@ everything else. What the framework guarantees on the reading side:
   read the real files the same way: `deploy.conf` is sourced only when present
   (otherwise the replayed environment supplies the values); no fetching, no
   symlink creation, no "shadowed file" warnings.
-- `bin/gen-cert`, `bin/gen-grants`, `bin/gen-ssh-config`, `bin/gen-firewall`,
+- `bin/gen-cert`, `bin/gen-team-accounts`, `bin/gen-ssh-config`, `bin/gen-firewall`,
   `bin/replica-bootstrap` and `bin/tmux-remote` read their private inputs from
   `etc/` and fail loudly when one is absent (`gen-ssh-config` takes
   `--hosts <path>` for a mapping kept elsewhere; `tmux-remote` needs the deploy

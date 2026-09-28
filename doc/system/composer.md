@@ -41,7 +41,7 @@ consumer's own `doc/system/composer.md`.
     "bin/pf-deploy.sh",
     "bin/gen-env",
     "bin/db-check",
-    "bin/gen-grants",
+    "bin/gen-team-accounts",
     "bin/gen-service-accounts",
     "bin/gen-cert",
     "bin/pf-roster",
@@ -119,7 +119,7 @@ The `bin` array installs these into `vendor/bin` (or the project's configured
   `doc/system/agents.md`).
 - `pf-deploy.sh`, `pf-provision.sh`, `pf-server-steps.sh`, `gen-env`,
   `db-check`, `pf-roster` — the deploy chain (see `doc/system/deploy.md`).
-- `gen-grants`, `gen-cert` — team-member DB users (see
+- `gen-team-accounts`, `gen-cert` — team-member DB users (see
   `doc/system/team-db-users.md`).
 - `gen-service-accounts` — service accounts (see
   `doc/system/service-accounts.md`).
