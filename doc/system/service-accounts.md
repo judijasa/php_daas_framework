@@ -90,7 +90,11 @@ only the SQL execution crosses the network. The target is the host carrying the
 database's `db:<name>` `[prod]` token (the framework's one-to-one server
 mapping); the CLI reaches it as `root` over `ssh` and runs the deployed repo's
 own `ema mariadb <db>` there, from the deployed repo root (`DEPLOY_TARGET_DIR`,
-read from the consumer's `etc/deploy.conf` — see `doc/system/consumer-config.md`).
+read from the consumer's `etc/deploy.conf` — see `doc/system/consumer-config.md`)
+and with the deployed `vendor/bin` plus the nix result bin
+(`$DEPLOY_NIX_RESULT_DIR/result/bin`, see `doc/system/deploy.md`) on the remote
+`PATH`: a host has no `php` on `PATH` — the deploy delivers it as the nix result
+— and `ema`'s wrapper calls a bare `php`.
 On its own host that call takes ema's local path: the section's
 `MYSQL_UNIX_PORT` socket as root (unix_socket auth), exactly as in an on-host
 run.
