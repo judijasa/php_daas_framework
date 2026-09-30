@@ -1,7 +1,9 @@
 /vendor/
 
 /etc/deploy.conf
+/etc/dev.conf
 /etc/reuter.ini
+/etc/ema.conf
 /etc/machines.ini
 /etc/team.ini
 /etc/host-hardening.php

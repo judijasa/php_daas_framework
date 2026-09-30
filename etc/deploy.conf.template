@@ -25,10 +25,14 @@
 #   REPO_LOG       := DEPLOY_LOG_DIR
 #   REUTER_INI     := DEPLOY_REUTER_INI
 #   EMA_TARGET     := prod (constant)
+#   SSL_DIR        := DEPLOY_SSL_DIR (optional — client cert dir)
 #
 # .env stays MYSQL_*-free: the socket lives in
 # the prod reuter.ini section (MYSQL_UNIX_PORT, recorded from `ema create`
-# output). The app layer stays TCP-only.
+# output). The app layer stays TCP-only. SSL_DIR (optional) is the one
+# non-MYSQL transport key: the directory holding the app's TLS client
+# certificate for REQUIRE X509 service accounts (see
+# doc/system/machine-certs.md).
 #
 # PROD_USER: unprivileged app user on the remote host. Choose a short,
 # deliberate name — NOT the repo name (e.g. php_daas_framework -> daas). The
@@ -52,12 +56,25 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 # and the framework ships it into the freshly swapped etc/.
 export DEPLOY_REUTER_INI=/srv/apps/<app>/etc/reuter.ini
 
+# DEPLOY_SSL_DIR: optional directory holding the app's TLS client certificate
+# (client.crt + client.key) for REQUIRE X509 service accounts. gen-env writes
+# it into .env as SSL_DIR; the app layer derives its client.crt/client.key
+# paths from it. Omit when the consumer does not use client-cert auth (the app
+# then connects over plain TCP). The private key stays on the host: only the
+# public cert travels back, so it is NOT a DEPLOY_PRIVATE_FILES entry (see
+# doc/system/machine-certs.md).
+# export DEPLOY_SSL_DIR=/srv/apps/<app>/etc/ssl
+
 # DEPLOY_PRIVATE_FILES: space-separated etc/-relative private file names the
 # framework ships from the deploy machine's etc/ into the freshly swapped
-# etc/ on the host (whole, verbatim) — the only private files a host needs,
-# typically just reuter.ini. Skipped if unset; the consumer must have
-# materialized etc/ first (its own dev-init/fetch step).
-# export DEPLOY_PRIVATE_FILES="reuter.ini"
+# etc/ on the host (whole, verbatim). `reuter.ini` is required on every prod
+# host; add `ema.conf` when the hosts provision instances (the server's
+# `ssl-ca`; see doc/system/ema.md) — a host that provisions nothing ignores it.
+# The list is one for all hosts. Skipped if unset; the consumer must have
+# materialized etc/ first (its own dev-init/fetch step), and every name must
+# exist in etc/ or the deploy fails (pf-deploy tars exactly these names).
+# export DEPLOY_PRIVATE_FILES="reuter.ini"           # the required baseline
+# export DEPLOY_PRIVATE_FILES="reuter.ini ema.conf"  # + the instance hosts' ssl-ca
 
 # DEPLOY_NIX_RESULT_DIR: remote nix result parent.
 export DEPLOY_NIX_RESULT_DIR=/usr/local/<app>

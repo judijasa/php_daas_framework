@@ -19,17 +19,28 @@ public Git history:
 | File | Public template | Private data |
 |---|---|---|
 | `etc/deploy.conf` | `etc/deploy.conf.template` | project deployment target (paths, the app-user name, cron target); deploy machine only — its values are replayed to hosts as env |
+| `etc/dev.conf` | `etc/dev.conf.template` | local dev values (the DB username, the TLS client-cert directory); dev machine only — sourced by `init-local-env.sh` and `gen-cert`, never shipped to a host |
 | `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`); needed on every prod host |
+| `etc/ema.conf` | `etc/ema.conf.template` | host-level `ema` config — the `ssl-ca` the instance verifies client certs against; needed only on a host that provisions instances |
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster (dev/deploy machine only) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs (dev machine only) |
 | `etc/host-hardening.php` | `etc/host-hardening.php.template` | firewall reconcile declaration (`$zerotierRange`, `$tagRules`) for `gen-firewall` (dev/deploy machine only) |
 | `etc/hosts` | — (optional) | dev-only name→IP mapping for the consumer's `/etc/hosts` merge and its generated dev ssh aliases (`gen-ssh-config`) |
 
-`reuter.ini` is the only private file a prod host needs, so it is the only one
-a consumer's deploy pipeline ever has to deliver — and it is delivered **whole**
-(no inner filtering, no section splicing). `deploy.conf` stays on the deploy
-machine: its values are the deploy parameters, replayed to the host as
-environment rather than shipped as a file.
+`reuter.ini` is the only private file **every** prod host needs whatever its
+role, so it is the only one a consumer's deploy pipeline always has to deliver —
+and it is delivered **whole** (no inner filtering, no section splicing).
+`ema.conf` is the second case, and a narrower one: only a host that provisions
+instances needs it, and only a consumer using client-cert auth has one — a
+consumer with no `ssl-ca` leaves the file out entirely. A roster that gives every
+host a `db:` tag (each host provisions its own instance) makes it universal too,
+exactly like `reuter.ini`; `DEPLOY_PRIVATE_FILES` cannot express the difference —
+it is one list shipped to every host — so such a consumer names it there and the
+hosts that provision nothing receive an unused copy. `deploy.conf` stays on the
+deploy machine: its values are the deploy parameters, replayed to the host as
+environment rather than shipped as a file. `dev.conf` stays on the dev machine:
+its values are local dev parameters (sourced by `init-local-env.sh` and
+`gen-cert`), never shipped to a host.
 `machines.ini`, `team.ini`, `hosts` and `host-hardening.php` are dev/deploy-time
 inputs: `machines.ini` feeds the local deploy roster, `team.ini` feeds
 `gen-cert`/`gen-team-accounts`/`gen-service-accounts`, `hosts`
@@ -52,8 +63,10 @@ repository whose tracked files mirror the consumer's `etc/` operational data:
 ```text
 <consumer-config>/
 ├── deploy.conf
+├── dev.conf
 ├── machines.ini
 ├── reuter.ini
+├── ema.conf           (optional — host-level ema config: ssl-ca)
 ├── team.ini
 ├── hosts              (optional — dev-only hostname→IP mapping)
 ├── host-hardening.php (optional — firewall reconcile declaration)
@@ -90,6 +103,9 @@ everything else. What the framework guarantees on the reading side:
   machine's `etc/deploy.conf` for the remote-shell paths; `replica-bootstrap`
   reads `etc/reuter.ini` from the working directory and takes no environment
   override).
+- The DB-layer `ema` CLI (a framework dependency) reads the host-level
+  `etc/ema.conf` from the repo root on a host that provisions instances; an
+  absent file means no `ssl-ca` line, not an error.
 
 ### A consumer-side convention: `.private-source`
 
@@ -110,7 +126,8 @@ the host **before** anything reads them. **`DEPLOY_PRIVATE_FILES`** (see
 the framework ships — tarred from the deploy machine's `etc/` and extracted
 into the freshly swapped `etc/` in one post-swap step, before anything sources
 them. The consumer materializes `etc/` first (its own dev-init/fetch step); for
-a host that only needs `reuter.ini`, that is the whole story.
+a host that only needs `reuter.ini`, that is the whole story; a host that
+provisions instances adds `ema.conf` to the list.
 
 `deploy.conf` is **not** shipped. Its values are replayed as environment to
 every remote step, so the host never needs a copy; a consumer that commits a

@@ -182,8 +182,9 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
   `mariadb@.service` template unit. It never creates databases or users —
   instances are provisioned by `ema create` (which asserts the unit exists and
   starts `mariadb@<db>`).
-- Consumer repos git-ignore `/var/`, `/etc/reuter.ini`, `/etc/machines.ini`,
-  and `.env` (reuter.ini/machines.ini are consumer-owned private data).
+- Consumer repos git-ignore `/var/`, `/etc/reuter.ini`, `/etc/ema.conf`,
+  `/etc/machines.ini`, and `.env` (reuter.ini/ema.conf/machines.ini are
+  consumer-owned private data).
 
 ## Creating databases on prod
 
@@ -206,6 +207,16 @@ the printed section in the consumer's manual reuter.ini and provision the
 service accounts with the consumer's own provisioning step (run on the DB host
 as root over the socket), which is not shipped by this framework. `ema values
 <db>` prints the same section later if the record is lost.
+
+The same shell also carries the host-level `etc/ema.conf` that `ema` reads when
+it provisions an instance: its `[default]` `ssl-ca` (an absolute path on the
+host) is written into that instance's `[mysqld]`, which is the server half of a
+consumer's `REQUIRE X509` service account — the app-layer client half is the
+framework's `SSL_DIR` wiring (see `doc/system/machine-certs.md`). It is private
+data like `reuter.ini`, so it must be named in `DEPLOY_PRIVATE_FILES`: the deploy
+swaps the repo directory, which wipes `etc/` and would drop the host's copy
+silently (see `doc/system/consumer-config.md`; the committed shape is
+`etc/ema.conf.template`).
 
 ## Notes / open items
 

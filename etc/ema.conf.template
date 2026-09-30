@@ -1,0 +1,24 @@
+; Host-level config consumed by the 'ema' CLI (this framework's DB dependency).
+;
+; One [default] section per host. Unlike reuter.ini (one [<dbname>] section per
+; database), this file is host-wide: every instance ema provisions on this host
+; reads it, and the value is written into that instance's [mysqld] when the
+; instance is provisioned.
+;
+; ssl-ca is the CA the instance's server verifies CLIENT certificates against —
+; the server half of a consumer's `REQUIRE X509` service account (the app-layer
+; client half is this framework's SSL_DIR wiring; see
+; doc/system/machine-certs.md). Its value is an absolute path on this host
+; (typically under the system /etc/ssl), chosen by the operator, who installs
+; the CA out of band: ema records the path only and never copies certificate
+; bytes. Unset (or no file at all) emits no ssl-ca line, leaving the instance on
+; plain TCP. EMA_SSL_CA overrides the key.
+;
+; This file is private data, kept in the consumer's own private config repo and
+; placed at this path on the host that provisions instances — the DB host, in
+; the shell tmux-remote opens from the deployed repo root (see
+; doc/system/ema.md). Name it in DEPLOY_PRIVATE_FILES: the deploy swaps the repo
+; directory, which wipes etc/ (see doc/system/consumer-config.md).
+
+[default]
+; ssl-ca = /etc/ssl/ema-ca.pem

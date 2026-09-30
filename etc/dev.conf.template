@@ -1,0 +1,25 @@
+# Dev machine configuration template — the consumer's local dev values,
+# exported as shell and sourced by bin/dev/init-local-env.sh (which relays
+# them into .env) and by bin/gen-cert (which reads SSL_DIR).
+#
+# The real file is consumer-owned private data: keep it in the consumer's
+# private config repo (never in the public history) and place it at
+# etc/dev.conf — copy this template and fill in the values. Unlike
+# etc/deploy.conf (deploy-machine-only, its values replayed to hosts), this
+# file lives on the DEV machine only and is never shipped to a host.
+#
+# It holds only non-derived, consumer-chosen dev values; derived values
+# (REPO_PATH/REPO_LOG) stay derived by init-local-env.sh and never appear here.
+
+# DBUSER: the DB username `ema mariadb <db>` connects as in prod (consumer
+# policy — see doc/system/team-db-users.md). Relayed verbatim into .env.
+export DBUSER=<member>
+
+# SSL_DIR: directory holding the machine's TLS client certificate
+# (client.crt + client.key) for REQUIRE X509 service accounts (see
+# doc/system/machine-certs.md). gen-cert mints/installs into it; the prod app
+# layer derives its client.crt/client.key paths from the same SSL_DIR name
+# (via DEPLOY_SSL_DIR in etc/deploy.conf). Use an absolute path — or an
+# unquoted `~`/`$HOME`, which the sourcing shell expands; a quoted `~` is not
+# expanded and will break gen-cert and the ~/.my.cnf.d drop-in.
+export SSL_DIR=/home/<user>/.<app>/ssl

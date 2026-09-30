@@ -127,11 +127,23 @@ class Database extends PDO
                 "Account '$account' has no '$key' key in section [$dbname]."
             );
         }
+        // The prod path is TCP: when the consumer supplies an SSL dir, present
+        // the machine's TLS client certificate (REQUIRE X509 membership). The
+        // cert + key paths are derived from the single SSL_DIR value. Unset ->
+        // plain TCP, exactly as before. The sandbox path never applies TLS (it
+        // connects as root over the local unix socket), so these attributes are
+        // added here in connectAs rather than in baseOptions().
+        $options = self::baseOptions();
+        $sslDir = getenv('SSL_DIR');
+        if ($sslDir !== false && $sslDir !== '') {
+            $options[PDO::MYSQL_ATTR_SSL_CERT] = $sslDir . '/client.crt';
+            $options[PDO::MYSQL_ATTR_SSL_KEY] = $sslDir . '/client.key';
+        }
         return new self(
             self::buildDsn($dbname, $cnf),
             $account,
             (string) $cnf[$key],
-            self::baseOptions()
+            $options
         );
     }
 

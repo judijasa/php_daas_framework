@@ -40,6 +40,7 @@ The deployment target (consumer-owned; template at `etc/deploy.conf.template`).
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
 | `DEPLOY_REUTER_INI` | Path to the consumer's manual reuter.ini. `gen-env` writes it into `.env` as `REUTER_INI`; `db-check` reads it to verify reachability. |
+| `DEPLOY_SSL_DIR` | Optional directory holding the app's TLS client certificate (`client.crt` + `client.key`). `gen-env` writes it into `.env` as `SSL_DIR`. |
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional consumer-specific provisioning command run after the framework's `pf-provision.sh`. |
@@ -70,6 +71,7 @@ the consumer's dev-init); the remote `.env` is regenerated on every deploy by
 | `REPO_PATH` | Repo root. `phprun` must be run from here (from cron it cds here automatically). |
 | `REPO_LOG` | Directory where per-script logs are appended. |
 | `REUTER_INI` | Path to the DB config ini consumed in prod by `Utils\Connectivity\Database` and by the `ema` CLI's prod-side verbs; falls back to `$PWD/etc/reuter.ini`. Prod-only: the dev `.env` carries no `REUTER_INI` — under `EMA_TARGET=sandbox` the app layer resolves its config itself, from `var/sandbox/<name>-<GUID>/reuter.ini`. |
+| `SSL_DIR` | Optional directory holding the app's TLS client certificate (`client.crt` + `client.key`) for `REQUIRE X509` service accounts; written by `gen-env` from `DEPLOY_SSL_DIR`. Unset → plain TCP. See `doc/system/machine-certs.md`. |
 | `EMA_TARGET` | Binary mode flag. The app layer (`Database::connectTo`) dispatches on it for every connection it opens; the `ema` CLI consults it only for its dbname-addressed verb (`ema mariadb <db>`) — `create`/`values` are prod by construction and the lifecycle verbs address instances by `var/sandbox/<name>-<GUID>` path. `sandbox` resolves the local `var/sandbox/<dbname>-<GUID>/reuter.ini` instance and connects as `root` over its socket; `prod` (also unset/empty) uses `REUTER_INI` plus the agent's service account over TCP. `gen-env` writes `prod`. |
 
 ## Before the first deploy

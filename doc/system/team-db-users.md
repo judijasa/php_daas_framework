@@ -43,8 +43,9 @@ member's password (passed verbatim to `IDENTIFIED BY`).
 
 Hostname -> IP entries are no longer read by `gen-team-accounts`; a consumer keeps
 them only where it still uses the `member` source for the shared service
-account (`doc/system/service-accounts.md`). The old `subject` key (cert DN) is
-now only read by `gen-cert`, which this flow no longer needs.
+account (`doc/system/service-accounts.md`) and for `gen-cert` (which matches
+this machine's IP against them to derive the machine cert's CN — see
+`doc/system/machine-certs.md`). There is no `subject` key anymore.
 
 ## Reconcile: gen-team-accounts
 
@@ -102,6 +103,6 @@ subject to revoke.
   REQUIRE SUBJECT` accounts are separate `mysql.user` rows from the new
   `'member'@'%'`; a consumer switching over must drop the old rows itself (and
   may then remove `subject` from `etc/team.ini`).
-- **`gen-cert`** — the member-side certificate helper is now orphaned by this
-  flow; kept for manual/machine cert issuance (see
-  `doc/system/service-accounts.md` for the `require` path).
+- **`gen-cert`** — repurposed as the machine-cert CLI
+  (`doc/system/machine-certs.md`); the member `subject` flow described here
+  moved to passwords (`doc/system/service-accounts.md`).

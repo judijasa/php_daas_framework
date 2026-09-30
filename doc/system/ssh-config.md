@@ -130,3 +130,6 @@ without its matching end tag aborts instead of truncating the file.
   reaches the drop-in and fails at `ssh` time, not at generation time.
 - Prod is untouched: `reuter.ini` keeps direct IPs, and nothing generated here
   is deployed to a host.
+- The same tagged-region + atomic-rename drop-in idiom backs `gen-cert`, which
+  writes the `~/.my.cnf.d/<app>.cnf` client-SSL drop-in (see
+  `doc/system/machine-certs.md`).

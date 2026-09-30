@@ -1,134 +1,254 @@
 #!/usr/bin/env bash
-# gen-cert — member-side client-certificate helper for the team-DB-user flow.
-# The framework owns the mechanism; the consumer owns etc/team.ini (the
-# subject per member). The CA private key is OFFLINE and never touched here:
-# the only signing step is an openssl command run by the operator on the
-# offline machine (see doc/system/team-db-users.md).
+# gen-cert — machine-side TLS client certificate helper for REQUIRE X509
+# service accounts.
+#
+# The framework owns the mechanism; the consumer owns the data (etc/team.ini's
+# hostname -> ZeroTier IP entries and etc/dev.conf's SSL_DIR value). The CA
+# private key is OFFLINE and never touched here: gen-cert only mints the key +
+# CSR and installs the operator-returned cert; the signing step is an openssl
+# command the operator runs on the offline CA machine (see
+# doc/system/machine-certs.md).
 #
 # Usage:
-#   gen-cert new <member>              Generate a private key + CSR for
-#                                      <member> (subject from etc/team.ini).
-#   gen-cert install <member> <cert>   Install the operator-returned cert +
-#                                      the local key at ~/.mariadb/ (key mode
-#                                      0600) and point ~/.my.cnf [client] at
-#                                      them.
+#   gen-cert                        Mint client.key + client.csr. The CN is the
+#                                   machine's pinned name, derived by matching
+#                                   this machine's local IPv4 addresses
+#                                   against etc/team.ini's hostname -> IP
+#                                   entries — no argument, no GUID. The machine
+#                                   must be on ZeroTier to use the cert anyway.
+#   gen-cert install <client.crt>   Place the signed cert + local key into
+#                                   $SSL_DIR/ (key mode 0600) and point
+#                                   ~/.my.cnf.d/<app>.cnf [client] at them.
+#
+# <app> is never typed: it is `basename "$PWD"` (the repo directory the CLI is
+# run from) and names the drop-in (~/.my.cnf.d/<app>.cnf). The SSL dir is read
+# from the consumer's dev value (etc/dev.conf's SSL_DIR), never hardcoded. The
+# drop-in region is tagged and replaced in place on every run — the same idiom
+# as bin/gen-ssh-config — so it is idempotent and anything outside the tags is
+# left untouched; the write is atomic (temp file + rename).
 
 set -euo pipefail
+
+INCLUDE_NOTE='# Per-project client SSL drop-ins (added by gen-cert).'
+# An equivalent includedir line counts as present (absolute or `~`/`$HOME`
+# spellings). `!includedir` does not expand `~`, so gen-cert writes the
+# absolute path itself.
+INCLUDE_RE='^[[:space:]]*!includedir[[:space:]]+.*\.my\.cnf\.d/?[[:space:]]*$'
+# <app> names the drop-in; a name must not carry whitespace or glob characters.
+SAFE_RE='^[A-Za-z0-9._-]+$'
+
+TMP_FILES=()
+
+cleanup() {
+    local f
+    for f in "${TMP_FILES[@]}"; do
+        [[ -n "$f" ]] && rm -f "$f"
+    done
+    :
+}
+trap cleanup EXIT
+
+die() { echo "gen-cert: ERROR: $*" >&2; exit 1; }
+
+# mktmp <dir> <name> — 0600 temp file next to its target (atomic rename), and
+# register it for removal on exit. Returns the path in MKTMP_RESULT (a command
+# substitution would run in a subshell and lose the registration).
+mktmp() {
+    MKTMP_RESULT="$(mktemp "$1/.$2.XXXXXX")" || die "cannot create a temp file in $1"
+    TMP_FILES+=("$MKTMP_RESULT")
+}
+
+# ensure_dir <dir> — create it (0700, like ~/.ssh itself) when missing.
+ensure_dir() {
+    [[ -d "$1" ]] && return 0
+    mkdir -p "$1"
+    chmod 700 "$1"
+}
 
 usage() {
     cat <<'EOF'
 Usage:
-  gen-cert new <member>              Generate a private key + CSR (subject
-                                     from etc/team.ini).
-  gen-cert install <member> <cert>   Install the returned cert + local key at
-                                     ~/.mariadb/ (key mode 0600) and point
-                                     ~/.my.cnf [client] at them.
+  gen-cert                        Mint client.key + client.csr (CN = this
+                                  machine's pinned name, matched by its local
+                                  IPv4 against etc/team.ini).
+  gen-cert install <client.crt>   Place the signed cert + local key into
+                                  $SSL_DIR/ (key mode 0600) and point
+                                  ~/.my.cnf.d/<app>.cnf [client] at them.
 The CA private key is offline and never touched by this helper.
 EOF
 }
 
-# Read the `subject` for <member> from etc/team.ini (the [member] section).
-subject_for() {
-    local member="$1"
-    local ini="${TEAM_INI:-$PWD/etc/team.ini}"
-    if [[ ! -f "$ini" ]]; then
-        echo "gen-cert: $ini not found (etc/team.ini is consumer-owned private data — see doc/system/consumer-config.md)" >&2
-        exit 1
-    fi
-    awk -F= -v m="$member" '
+# local_ipv4s — this machine's non-loopback IPv4 addresses (includes its
+# ZeroTier IP). `ip` is the standard Linux tool ZeroTier itself depends on.
+local_ipv4s() {
+    ip -4 -o addr show 2>/dev/null | awk '{ sub(/\/.*/, "", $4); print $4 }'
+}
+
+# machine_name_for <team.ini> <ip> — the hostname whose value in <team.ini> is
+# <ip> (skipping the non-address keys `subject`/`password`); empty if none.
+machine_name_for() {
+    local ini="$1" want="$2"
+    awk -F= -v want="$want" '
         /^[[:space:]]*[;#]/ { next }
         /^[[:space:]]*$/ { next }
-        /^[[:space:]]*\[/ { gsub(/^[[:space:]]*\[|\][[:space:]]*$/, "", $0); sec = $0; next }
+        /^[[:space:]]*\[/ { next }
         {
             key = $1
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
-            if (sec == m && key == "subject") {
-                v = substr($0, index($0, "=") + 1)
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
-                print v
-                exit
-            }
+            if (key == "subject" || key == "password" || key == "") next
+            val = substr($0, index($0, "=") + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+            if (val == want) { print key; exit }
         }
     ' "$ini"
 }
 
-cmd_new() {
-    local member="$1" subject
-    subject="$(subject_for "$member")"
-    if [[ -z "$subject" ]]; then
-        echo "gen-cert: member '$member' has no 'subject' in etc/team.ini" >&2
-        exit 1
-    fi
+cmd_mint() {
+    local ini="$PWD/etc/team.ini"
+    [[ -f "$ini" ]] || die "$ini not found — etc/team.ini is consumer-owned private data (see doc/system/consumer-config.md)."
+
+    # CN = the team.ini hostname whose IP is this machine's own local IPv4.
+    # No argument, no GUID: the name is the machine's pinned identity on the
+    # ZeroTier network (REQUIRE X509 never matches the subject — it is a
+    # membership gate — so the CN is audit identity, not an authorization
+    # check).
+    local ip name=""
+    for ip in $(local_ipv4s); do
+        name="$(machine_name_for "$ini" "$ip")"
+        [[ -n "$name" ]] && break
+    done
+
+    [[ -n "$name" ]] || die "none of this machine's local IPv4 addresses match a hostname -> IP entry in $ini; the machine must be on ZeroTier (and its IP recorded in etc/team.ini) to use a client cert."
+    [[ "$name" =~ $SAFE_RE ]] || die "the matched machine name '$name' is not a valid CN (allowed: letters, digits, '.', '_', '-')"
+
     openssl req -new -newkey rsa:2048 -nodes \
-        -keyout "$member.key" -out "$member.csr" -subj "$subject"
-    echo "Created $member.key (private — keep it on this machine) and $member.csr."
-    echo "Send $member.csr to the operator for signing. Never send $member.key."
+        -keyout client.key -out client.csr -subj "/CN=$name"
+
+    echo "gen-cert: minted client.key (private — keep it on this machine) and client.csr (CN=$name)."
+    echo "Send client.csr to the operator for offline signing; never send client.key."
+    echo "When the signed cert returns, run: gen-cert install <client.crt>"
 }
 
-# Upsert ssl-cert / ssl-key into the [client] section of ~/.my.cnf.
-my_cnf_upsert() {
-    local mycnf="$1" crt="$2" key="$3"
-    if [[ ! -f "$mycnf" ]]; then
-        printf '[client]\nssl-cert=%s\nssl-key=%s\n' "$crt" "$key" > "$mycnf"
+# ssl_dir — the SSL dir from the consumer's dev value (etc/dev.conf's SSL_DIR),
+# never hardcoded. gen-cert runs from the repo root, so etc/dev.conf is
+# $PWD/etc/dev.conf.
+ssl_dir() {
+    local conf="$PWD/etc/dev.conf"
+    if [[ -f "$conf" ]]; then
+        set -a
+        # shellcheck disable=SC1090
+        . "$conf"
+        set +a
+    fi
+    [[ -n "${SSL_DIR:-}" ]] || die "SSL_DIR is not set — add it to etc/dev.conf (see doc/system/machine-certs.md); the SSL dir is consumer data, never hardcoded."
+
+    # Expand a leading `~/` (a quoted ~ in dev.conf survives the source; neither
+    # `install` nor MariaDB expands ~), and drop any trailing slash.
+    local dir="${SSL_DIR%/}"
+    dir="${dir/#\~/$HOME}"
+    printf '%s\n' "$dir"
+}
+
+# ensure_include <my.cnf> — ensure the canonical `!includedir <home>/.my.cnf.d/`
+# line is present, exactly once and at the top, without touching other content.
+ensure_include() {
+    local cfg="$1" line first tmp mode
+    line="!includedir $HOME/.my.cnf.d/"
+
+    if [[ -f "$cfg" ]] && grep -qE "$INCLUDE_RE" "$cfg"; then
+        first="$(grep -vE '^[[:space:]]*(#|$)' "$cfg" | head -n1 || true)"
+        if [[ -n "$first" ]] && ! [[ "$first" =~ $INCLUDE_RE ]]; then
+            echo "gen-cert: WARNING: $cfg includes .my.cnf.d/ but not as its first active line; the entries above it take precedence over the generated drop-in." >&2
+        fi
         return 0
     fi
-    awk -v crt="$crt" -v key="$key" '
-        /^[[:space:]]*\[/ {
-            if ($0 ~ /^[[:space:]]*\[[[:space:]]*client[[:space:]]*\]/) {
-                in_client = 1
-                seen_client = 1
-                print $0
-                print "ssl-cert=" crt
-                print "ssl-key=" key
-            } else {
-                in_client = 0
-                print $0
-            }
-            next
-        }
-        in_client && /^[[:space:]]*ssl-cert[[:space:]]*=/ { next }
-        in_client && /^[[:space:]]*ssl-key[[:space:]]*=/ { next }
-        { print }
-        END {
-            if (!seen_client) {
-                print ""
-                print "[client]"
-                print "ssl-cert=" crt
-                print "ssl-key=" key
-            }
-        }
-    ' "$mycnf" > "$mycnf.tmp"
-    mv "$mycnf.tmp" "$mycnf"
+
+    mktmp "$(dirname "$cfg")" "$(basename "$cfg")"
+    tmp="$MKTMP_RESULT"
+    if [[ -f "$cfg" ]]; then
+        mode="$(stat -c '%a' "$cfg")"
+        {
+            printf '%s\n' "$INCLUDE_NOTE"
+            printf '%s\n\n' "$line"
+            cat "$cfg"
+        } > "$tmp"
+        chmod "$mode" "$tmp"
+    else
+        printf '%s\n%s\n' "$INCLUDE_NOTE" "$line" > "$tmp"
+    fi
+    mv -f "$tmp" "$cfg"
+    echo "gen-cert: added '$line' to $cfg"
+}
+
+# write_dropin <ssl_dir> <app> — (re)write ~/.my.cnf.d/<app>.cnf's [client]
+# ssl-cert/ssl-key pointing at <ssl_dir>/client.{crt,key}, inside a tagged
+# region replaced in place on every run (atomic).
+write_dropin() {
+    local ssl_dir="$1" app="$2" tag_begin tag_end conf_dir conf tmp
+    tag_begin="# generated: $app-client-ssl"
+    tag_end="# end: $app-client-ssl"
+    conf_dir="$HOME/.my.cnf.d"
+    conf="$conf_dir/$app.cnf"
+
+    ensure_dir "$conf_dir"
+
+    mktmp "$conf_dir" "$app.cnf"
+    tmp="$MKTMP_RESULT"
+    if [[ -f "$conf" ]]; then
+        awk -v begin="$tag_begin" -v end="$tag_end" '
+            $0 == begin { if (inblock) exit 2; inblock = 1; next }
+            inblock && $0 == end { inblock = 0; next }
+            !inblock { print }
+            END { if (inblock) exit 2 }
+        ' "$conf" > "$tmp" \
+            || die "$conf has a malformed managed region ($tag_begin without a matching $tag_end); fix or delete the file."
+    fi
+
+    {
+        printf '%s\n' "$tag_begin"
+        printf '# Managed by gen-cert - do not edit; re-run the generator instead.\n'
+        printf '[client]\n'
+        printf 'ssl-cert=%s\n' "$ssl_dir/client.crt"
+        printf 'ssl-key=%s\n' "$ssl_dir/client.key"
+        printf '%s\n' "$tag_end"
+    } >> "$tmp"
+
+    mv -f "$tmp" "$conf"
+    echo "gen-cert: wrote $conf"
 }
 
 cmd_install() {
-    local member="$1" cert="$2"
-    [[ -n "$member" && -n "$cert" ]] || { usage; exit 1; }
-    [[ -f "$member.key" ]] || {
-        echo "gen-cert: $member.key not found here (run 'gen-cert new $member' first)" >&2
-        exit 1
-    }
-    [[ -f "$cert" ]] || {
-        echo "gen-cert: certificate file $cert not found" >&2
-        exit 1
-    }
-    local dir="$HOME/.mariadb"
-    mkdir -p "$dir"
-    install -m 644 "$cert" "$dir/$member.crt"
-    install -m 600 "$member.key" "$dir/$member.key"
-    my_cnf_upsert "$HOME/.my.cnf" "$dir/$member.crt" "$dir/$member.key"
-    echo "Installed $dir/$member.crt and $dir/$member.key (key mode 0600)."
-    echo "Pointed ~/.my.cnf [client] ssl-cert/ssl-key at them."
-    echo "Verify with: ema mariadb <db>"
+    local cert="$1" ssl_dir
+    [[ -n "$cert" ]] || { usage; exit 1; }
+    [[ -f "$cert" ]] || die "certificate file $cert not found"
+    [[ -f client.key ]] || die "client.key not found here (run 'gen-cert' first to mint it)"
+
+    ssl_dir="$(ssl_dir)"
+
+    ensure_dir "$ssl_dir"
+    install -m 644 "$cert" "$ssl_dir/client.crt"
+    install -m 600 client.key "$ssl_dir/client.key"
+
+    write_dropin "$ssl_dir" "$app"
+    ensure_include "$HOME/.my.cnf"
+
+    echo "gen-cert: installed $ssl_dir/client.crt and $ssl_dir/client.key (key mode 0600)."
+    echo "Pointed ~/.my.cnf.d/$app.cnf [client] ssl-cert/ssl-key at them."
+    echo "Verify with: mariadb --ssl --user <account> -h <server> -P <port>"
 }
 
 main() {
+    # <app> is derived, never typed: the repo directory the CLI is run from.
+    app="$(basename "$PWD")"
+    [[ "$app" =~ $SAFE_RE ]] || die "the repo directory name '$app' is not a valid app name (allowed: letters, digits, '.', '_', '-')"
+    [[ -n "${HOME:-}" ]] || die "HOME is not set; the drop-in location (~/.my.cnf.d) cannot be resolved"
+
     local cmd="${1:-}"
     case "$cmd" in
-        new)      [[ -n "${2:-}" ]] || { usage; exit 1; }; cmd_new "$2" ;;
-        install)  [[ -n "${2:-}" && -n "${3:-}" ]] || { usage; exit 1; }; cmd_install "$2" "$3" ;;
+        install) [[ -n "${2:-}" ]] || { usage; exit 1; }; cmd_install "$2" ;;
         -h|--help|help) usage; exit 0 ;;
-        *) usage; exit 1 ;;
+        '') cmd_mint ;;
+        *) usage >&2; exit 1 ;;
     esac
 }
 

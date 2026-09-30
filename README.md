@@ -90,6 +90,7 @@ and the CLIs installed into `vendor/bin`.
 - [ema.md](doc/system/ema.md) — ema integration.
 - [host-hardening.md](doc/system/host-hardening.md) — tag-driven ufw firewall.
 - [host-resolution.md](doc/system/host-resolution.md) — host names and ZeroTier IPs.
+- [machine-certs.md](doc/system/machine-certs.md) — machine certs + client SSL.
 - [replica-bootstrap.md](doc/system/replica-bootstrap.md) — read-only replica.
 - [service-accounts.md](doc/system/service-accounts.md) — service accounts.
 - [ssh-config.md](doc/system/ssh-config.md) — dev ssh aliases.

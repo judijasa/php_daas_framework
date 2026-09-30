@@ -10,8 +10,9 @@
 ; The remaining keys are hostname -> ZeroTier IP entries. `gen-grants` no
 ; longer reads them (it pins each member to `%`); a consumer keeps them only
 ; where it still uses the `member` source for the shared service account
-; (doc/system/service-accounts.md). The former `subject` key (cert DN) is now
-; read only by `gen-cert`.
+; (doc/system/service-accounts.md), and for `gen-cert` (which matches this
+; machine's IP against them to derive the machine cert's CN — see
+; doc/system/machine-certs.md). There is no `subject` key anymore.
 ;
 ;   `gen-grants <db>` turns each member into a password-authenticated
 ;   `member@'%'` DB account.

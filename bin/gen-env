@@ -10,12 +10,16 @@
 #   REPO_LOG         := DEPLOY_LOG_DIR
 #   REUTER_INI       := DEPLOY_REUTER_INI
 #   EMA_TARGET         := prod                        (constant)
+#   SSL_DIR          := DEPLOY_SSL_DIR                (optional — client cert dir)
 #
 # The .env is deliberately MYSQL_*-free: the app layer (Database.php) must
 # stay on TCP. REUTER_INI points at the consumer's manual reuter.ini (the
 # [<dbname>] sections recorded from `ema create` output) via the
 # DEPLOY_REUTER_INI deploy.conf key — it is no longer derived from a
-# DEPLOY_DB_INSTANCE unit name.
+# DEPLOY_DB_INSTANCE unit name. SSL_DIR (optional) names the directory holding
+# the app's TLS client certificate (client.crt + client.key) for REQUIRE X509
+# service accounts; when DEPLOY_SSL_DIR is unset, SSL_DIR is omitted and the
+# app connects over plain TCP.
 #
 # Why this exists: the deployed repo directory is replaced on every deploy,
 # so the gitignored .env must be regenerated every time — and it MUST be
@@ -59,6 +63,9 @@ done
     printf 'export REPO_LOG=%s\n' "$DEPLOY_LOG_DIR"
     printf 'export REUTER_INI=%s\n' "$DEPLOY_REUTER_INI"
     printf 'export EMA_TARGET=prod\n'
+    if [ -n "${DEPLOY_SSL_DIR:-}" ]; then
+        printf 'export SSL_DIR=%s\n' "$DEPLOY_SSL_DIR"
+    fi
 } > "$ENV_FILE"
 
 # Fail-fast guard: every projected key must be present in the written file.
