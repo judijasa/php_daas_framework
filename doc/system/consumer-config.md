@@ -1,27 +1,29 @@
 # Consumer configuration
 
-Date: 2026-09-20
+Date: 2026-09-20 (committed defaults 2026-10-01)
 Scope: how this framework separates public code from private operational data.
-The framework owns the mechanism and ships committed templates; the consumer
-owns the private files, keeps them in its own private repository, and declares
-which of them the framework must ship to prod (`DEPLOY_PRIVATE_FILES`). Deploy
-config (`etc/deploy.conf`) is deploy-machine-only: the framework sources it
-locally and replays its environment to the host, so prod never holds a copy.
-The framework sources whatever real `etc/` files it finds and fails loudly when
-one it needs is missing.
+The framework owns the mechanism and ships committed templates and consumed
+defaults; the consumer owns the private files, keeps them in its own private
+repository, and declares which of them the framework must ship to prod
+(`DEPLOY_PRIVATE_FILES`). Deploy config (`etc/deploy.conf`) is
+deploy-machine-only: the framework sources it locally and replays its
+environment to the host, so prod never holds a copy. The framework sources
+whatever real `etc/` files it finds and fails loudly when one it needs is
+missing.
 
 ## What is private data
 
-The public repo ships the mechanism and committed templates for every
-operational data file. The real values are private and must not enter the
-public Git history:
+The public repo ships the mechanism and, for every operational data file,
+either a committed template (a copy-me shape) or a committed default (a real
+value read as a fallback). The real, machine-specific values are private and
+must not enter the public Git history:
 
-| File | Public template | Private data |
+| File | Committed in public repo | Private data |
 |---|---|---|
 | `etc/deploy.conf` | `etc/deploy.conf.template` | project deployment target (paths, the app-user name, cron target); deploy machine only — its values are replayed to hosts as env |
-| `etc/dev.conf` | `etc/dev.conf.template` | local dev values (the DB username, the TLS client-cert directory); dev machine only — sourced by `init-local-env.sh` and `gen-cert`, never shipped to a host |
+| `etc/dev.conf` | `etc/dev.default.conf` (consumed default) + optional `etc/dev.conf` override | local dev values (the DB username, the TLS client-cert directory); dev machine only — sourced by `init-local-env.sh` and `gen-cert`, never shipped to a host |
 | `etc/reuter.ini` | `etc/reuter.ini.template` | per-database connectivity sections (recorded from `ema create`); needed on every prod host |
-| `etc/ema.conf` | `etc/ema.conf.template` | host-level `ema` config — the `ssl-ca` the instance verifies client certs against; needed only on a host that provisions instances |
+| `etc/ema.conf` | `etc/ema.default.conf` (consumed default) + optional `etc/ema.conf` override | host-level `ema` config — the `ssl-ca` the instance verifies client certs against; needed only on a host that provisions instances |
 | `etc/machines.ini` | `etc/machines.ini.template` | prod ZeroTier IPs + `tag[:name]` roster (dev/deploy machine only) |
 | `etc/team.ini` | `etc/team.ini.template` | member identities, hostnames, ZeroTier IPs (dev machine only) |
 | `etc/host-hardening.php` | `etc/host-hardening.php.template` | firewall reconcile declaration (`$zerotierRange`, `$tagRules`) for `gen-firewall` (dev/deploy machine only) |
@@ -31,22 +33,29 @@ public Git history:
 role, so it is the only one a consumer's deploy pipeline always has to deliver —
 and it is delivered **whole** (no inner filtering, no section splicing).
 `ema.conf` is the second case, and a narrower one: only a host that provisions
-instances needs it, and only a consumer using client-cert auth has one — a
-consumer with no `ssl-ca` leaves the file out entirely. A roster that gives every
-host a `db:` tag (each host provisions its own instance) makes it universal too,
-exactly like `reuter.ini`; `DEPLOY_PRIVATE_FILES` cannot express the difference —
-it is one list shipped to every host — so such a consumer names it there and the
-hosts that provision nothing receive an unused copy. `deploy.conf` stays on the
-deploy machine: its values are the deploy parameters, replayed to the host as
-environment rather than shipped as a file. `dev.conf` stays on the dev machine:
-its values are local dev parameters (sourced by `init-local-env.sh` and
-`gen-cert`), never shipped to a host.
+instances needs its `ssl-ca`. A consumer using client-cert auth ships the value
+as its committed `etc/ema.default.conf` (so it rides with the repo on every
+host) and keeps `etc/ema.conf` only for a host that diverges from it; a
+consumer with no `ssl-ca` leaves the default's key out entirely. Because
+`DEPLOY_PRIVATE_FILES` is one list shipped to every host, a committed default is
+the natural home for a host-wide value like `ssl-ca` — it needs no ship step and
+no per-host filtering. `deploy.conf` stays on the deploy machine: its values are
+the deploy parameters, replayed to the host as environment rather than shipped
+as a file. `dev.conf` stays on the dev machine: its values are local dev
+parameters (sourced by `init-local-env.sh` and `gen-cert`), never shipped to a
+host.
 `machines.ini`, `team.ini`, `hosts` and `host-hardening.php` are dev/deploy-time
 inputs: `machines.ini` feeds the local deploy roster, `team.ini` feeds
 `gen-cert`/`gen-team-accounts`/`gen-service-accounts`, `hosts`
 (optional) feeds the consumer's dev `/etc/hosts` merge and its generated ssh
 aliases (`gen-ssh-config`), and `host-hardening.php` feeds `gen-firewall`.
 None of them belong on a host.
+
+`etc/dev.default.conf` and `etc/ema.default.conf` are **consumed defaults**, not
+templates: `init-local-env.sh` sources `etc/dev.default.conf` then the optional
+`etc/dev.conf` override, and the DB-layer `ema` CLI reads
+`etc/ema.default.conf` then the optional `etc/ema.conf` override. `.template`
+stays reserved for the copy-me files.
 
 The dev sandbox's per-instance `var/sandbox/<name>-<GUID>/reuter.ini` is read
 by the app layer as well: under `EMA_TARGET=sandbox`, `Database::connectTo`
@@ -63,10 +72,10 @@ repository whose tracked files mirror the consumer's `etc/` operational data:
 ```text
 <consumer-config>/
 ├── deploy.conf
-├── dev.conf
+├── dev.conf           (optional — override over etc/dev.default.conf)
 ├── machines.ini
 ├── reuter.ini
-├── ema.conf           (optional — host-level ema config: ssl-ca)
+├── ema.conf           (optional — override over etc/ema.default.conf: ssl-ca)
 ├── team.ini
 ├── hosts              (optional — dev-only hostname→IP mapping)
 ├── host-hardening.php (optional — firewall reconcile declaration)
@@ -104,8 +113,9 @@ everything else. What the framework guarantees on the reading side:
   reads `etc/reuter.ini` from the working directory and takes no environment
   override).
 - The DB-layer `ema` CLI (a framework dependency) reads the host-level
-  `etc/ema.conf` from the repo root on a host that provisions instances; an
-  absent file means no `ssl-ca` line, not an error.
+  `etc/ema.default.conf` (then the optional `etc/ema.conf` override) from the
+  repo root on a host that provisions instances; an absent key means no
+  `ssl-ca` line, not an error.
 
 ### A consumer-side convention: `.private-source`
 
@@ -126,8 +136,10 @@ the host **before** anything reads them. **`DEPLOY_PRIVATE_FILES`** (see
 the framework ships — tarred from the deploy machine's `etc/` and extracted
 into the freshly swapped `etc/` in one post-swap step, before anything sources
 them. The consumer materializes `etc/` first (its own dev-init/fetch step); for
-a host that only needs `reuter.ini`, that is the whole story; a host that
-provisions instances adds `ema.conf` to the list.
+a host that only needs `reuter.ini`, that is the whole story. A host-wide value
+such as `ema.conf`'s `ssl-ca` does not need shipping at all when the consumer
+commits it as `etc/ema.default.conf` — the swap carries it along with the rest
+of the repo.
 
 `deploy.conf` is **not** shipped. Its values are replayed as environment to
 every remote step, so the host never needs a copy; a consumer that commits a

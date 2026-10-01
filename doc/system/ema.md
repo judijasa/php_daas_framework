@@ -208,15 +208,15 @@ service accounts with the consumer's own provisioning step (run on the DB host
 as root over the socket), which is not shipped by this framework. `ema values
 <db>` prints the same section later if the record is lost.
 
-The same shell also carries the host-level `etc/ema.conf` that `ema` reads when
-it provisions an instance: its `[default]` `ssl-ca` (an absolute path on the
-host) is written into that instance's `[mysqld]`, which is the server half of a
-consumer's `REQUIRE X509` service account — the app-layer client half is the
-framework's `SSL_DIR` wiring (see `doc/system/machine-certs.md`). It is private
-data like `reuter.ini`, so it must be named in `DEPLOY_PRIVATE_FILES`: the deploy
-swaps the repo directory, which wipes `etc/` and would drop the host's copy
-silently (see `doc/system/consumer-config.md`; the committed shape is
-`etc/ema.conf.template`).
+The same shell also carries the host-level `etc/ema.default.conf` that `ema`
+reads when it provisions an instance (overridden by the optional `etc/ema.conf`):
+its `[default]` `ssl-ca` (an absolute path on the host) is written into that
+instance's `[mysqld]`, which is the server half of a consumer's `REQUIRE X509`
+service account — the app-layer client half is the framework's `SSL_DIR` wiring
+(see `doc/system/machine-certs.md`). The default is committed, so it rides with
+the swapped repo and needs no `DEPLOY_PRIVATE_FILES` entry — unlike `reuter.ini`,
+which remains private and must ship (see `doc/system/consumer-config.md`; the
+committed shape is `etc/ema.default.conf`).
 
 ## Notes / open items
 

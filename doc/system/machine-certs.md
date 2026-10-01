@@ -14,10 +14,11 @@ declaration are consumer/sibling-repo concerns, out of scope here.
 
 ```bash
 # 1. dev machine, once: record this machine's hostname -> ZeroTier IP in
-#    etc/team.ini (private, git-ignored) and the SSL dir in etc/dev.conf
-#    (also private). Example etc/team.ini entry inside any [member] section:
+#    etc/team.ini (private, git-ignored). SSL_DIR defaults to the committed
+#    etc/dev.default.conf; set it in the optional etc/dev.conf override only to
+#    diverge. Example etc/team.ini entry inside any [member] section:
 #      <hostname> = <ZeroTier IP>
-#    Example etc/dev.conf:
+#    Example etc/dev.conf override:
 #      export SSL_DIR=/home/<user>/.<app>/ssl
 
 # 2. dev machine, repo root: mint a key + CSR (CN = this machine's pinned name,
@@ -103,8 +104,8 @@ The drop-in is written with the same tagged-region + atomic-rename idiom as
 replaced in place on every run, anything outside the tags is left untouched,
 and a begin tag without its matching end tag aborts instead of truncating.
 
-The SSL dir is read from `etc/dev.conf`'s `SSL_DIR` (sourced), never
-hardcoded.
+The SSL dir is read from `etc/dev.default.conf`'s `SSL_DIR` (overridden by
+`etc/dev.conf`; sourced), never hardcoded.
 
 ## The offline CA step
 
@@ -127,14 +128,15 @@ connects as `root` over the local unix socket and never applies TLS.
 | Machine | Value | Source | Consumer |
 |---|---|---|---|
 | prod host | `SSL_DIR` | `etc/deploy.conf` `DEPLOY_SSL_DIR` → `gen-env` → `.env` | the PHP app layer |
-| dev machine | `SSL_DIR` | `etc/dev.conf` `SSL_DIR` → sourced by `gen-cert` | `gen-cert` |
+| dev machine | `SSL_DIR` | `etc/dev.default.conf` `SSL_DIR` (overridden by `etc/dev.conf`) → sourced by `gen-cert` | `gen-cert` |
 
 The name is the same on both sides — `SSL_DIR` — because it is the same
 mechanism (one cert directory) with different consumer data on different
 machines and different config sources. `DEPLOY_SSL_DIR` is optional: a
 consumer without client-cert auth omits it, and `gen-env` omits `SSL_DIR`, so
-the app stays on plain TCP. `gen-cert` reads `SSL_DIR` from `etc/dev.conf`
-directly (see `doc/system/consumer-config.md`).
+the app stays on plain TCP. `gen-cert` reads `SSL_DIR` from
+`etc/dev.default.conf` (overridden by `etc/dev.conf`) directly (see
+`doc/system/consumer-config.md`).
 
 The private key is never shipped via config or `DEPLOY_PRIVATE_FILES`; only the
 public cert travels back to the host.
@@ -144,11 +146,11 @@ public cert travels back to the host.
 - The `REQUIRE X509` declaration and the CA are consumer/sibling-repo data, not
   this framework's mechanism.
 - Server-side `ssl-ca` emission (the `[mysqld]` half) lives in the sibling
-  `ema` repo: the host-level `etc/ema.conf` it reads (`ssl-ca`, an absolute path
-  on the host) has its consumer-facing shape in this repo's
-  `etc/ema.conf.template` — private data, and named in `DEPLOY_PRIVATE_FILES` so
-  the deploy's repo swap does not wipe the host's copy (see
-  `doc/system/consumer-config.md`).
+  `ema` repo: the host-level `etc/ema.default.conf` it reads (overridden by the
+  optional `etc/ema.conf`; `ssl-ca`, an absolute path on the host) has its
+  consumer-facing shape in this repo's `etc/ema.default.conf` — a committed
+  default that rides with the repo, so it is no longer named in
+  `DEPLOY_PRIVATE_FILES` (see `doc/system/consumer-config.md`).
 - Client-side **server** verification (the client checking the server's cert via
   `ssl-ca`) is deferred, not dismissed — it needs CA-signed *server* certs.
 - Revocation: no CRL is consumed anywhere, so a leaked machine cert cannot be
