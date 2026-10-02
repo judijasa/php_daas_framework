@@ -25,9 +25,10 @@ declaration are consumer/sibling-repo concerns, out of scope here.
 #    derived by matching its local IPv4 against etc/team.ini)
 gen-cert
 
-# 3. offline CA machine: sign the CSR (team-ca.key never leaves that machine)
-openssl x509 -req -in client.csr -CA team-ca.crt -CAkey team-ca.key \
-    -CAcreateserial -days 365 -out client.crt
+# 3. offline CA machine: sign the CSR — a standard `openssl ca` operation
+#    (the CA key never leaves that machine). The CA workflow (sign, revoke,
+#    CRL) is consumer data: each consumer documents its own CA in its private
+#    docs.
 
 # 4. dev machine, repo root: install the signed cert + local key and write the
 #    ~/.my.cnf.d/<app>.cnf drop-in
@@ -109,11 +110,17 @@ The SSL dir is read from `etc/dev.default.conf`'s `SSL_DIR` (overridden by
 
 ## The offline CA step
 
-`gen-cert` never touches the CA key. The signing is a single `openssl x509`
-command the operator runs on the offline CA machine, which holds `team-ca.crt`
-(the public CA — a placeholder ships in `etc/team-ca.crt`) and `team-ca.key`
-(never committed, never networked). The public cert returns; the private key
-never moves.
+`gen-cert` never touches the CA key. The signing is a standard `openssl ca`
+operation the operator runs on the offline CA machine, which holds the CA
+certificate (a placeholder ships in `etc/team-ca.crt`) and the CA key (never
+committed, never networked). The public cert returns; the private key never
+moves.
+
+The full CA workflow — signing, revocation, and CRL generation (`openssl ca
+-revoke` / `-gencrl`) — is consumer data: `openssl ca` needs the `index.txt`
+ledger the consumer's CA maintains, and each consumer documents its own CA in
+its private docs. This framework only mints the CSR and installs the returned
+cert; it never runs the CA.
 
 ## App-layer wiring
 
@@ -145,13 +152,15 @@ public cert travels back to the host.
 
 - The `REQUIRE X509` declaration and the CA are consumer/sibling-repo data, not
   this framework's mechanism.
-- Server-side `ssl-ca` emission (the `[mysqld]` half) lives in the sibling
-  `ema` repo: the host-level `etc/ema.default.conf` it reads (overridden by the
-  optional `etc/ema.conf`; `ssl-ca`, an absolute path on the host) has its
-  consumer-facing shape in this repo's `etc/ema.default.conf` — a committed
-  default that rides with the repo, so it is no longer named in
+- Server-side `ssl-ca`/`ssl-crl` emission (the `[mysqld]` half) lives in the
+  sibling `ema` repo: the host-level `etc/ema.default.conf` it reads (overridden
+  by the optional `etc/ema.conf`; `ssl-ca` and `ssl-crl`, absolute paths on the
+  host) has its consumer-facing shape in this repo's `etc/ema.default.conf` — a
+  committed default that rides with the repo, so it is no longer named in
   `DEPLOY_PRIVATE_FILES` (see `doc/system/consumer-config.md`).
 - Client-side **server** verification (the client checking the server's cert via
   `ssl-ca`) is deferred, not dismissed — it needs CA-signed *server* certs.
-- Revocation: no CRL is consumed anywhere, so a leaked machine cert cannot be
-  revoked. A CA-side concern, recorded as a gap.
+- Revocation: the server half (checking a client cert against a CRL) is the
+  sibling `ema` repo's `ssl-crl`; the CA-side CRL generation is consumer data
+  (a standard `openssl ca` workflow), documented by each consumer in its
+  private docs.
