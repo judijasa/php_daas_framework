@@ -4,7 +4,7 @@ Date: 2026-09-18
 Scope: how this framework turns a consumer's host-hardening declaration into
 the desired `ufw` rule set for every prod host, then applies it as root with a
 fail-open ordering. The framework owns the mechanism (`bin/gen-firewall`); the
-consumer owns the data (the declaration, the `etc/machines.ini` `[prod]`
+consumer owns the data (the declaration, the `etc/machines.ini`
 roster, the `db:<name>` ports in `etc/reuter.ini`, and the ZeroTier range).
 sshd hardening is out of scope here — it stays a consumer-side manual
 pre-deployment step.
@@ -26,8 +26,8 @@ The CLI runs from the consumer checkout that holds `etc/machines.ini` and
 
 | Argument | Meaning |
 |---|---|
-| `host` | one `[prod]` host, as its short name or its ZeroTier IP (see `doc/system/host-resolution.md`). |
-| `all` | reconcile every `[prod]` host (the default). |
+| `host` | one prod host, as its short name or its ZeroTier IP (see `doc/system/host-resolution.md`). |
+| `all` | reconcile every prod host (the default). |
 | `-a`, `--apply` | actually apply over `ssh root@<host>` (default is dry-run). |
 | `-n`, `--dry-run` | print the computed rules without applying (the default). |
 
@@ -70,7 +70,7 @@ the public history:
 
 ### Roster and built-in tags
 
-`etc/machines.ini` `[prod]` maps each ZeroTier host to comma-separated
+`etc/machines.ini` maps each ZeroTier host to comma-separated
 `tag[:name]` tokens — the same roster grammar `pf-roster` parses, so the deploy
 chain and this CLI share one reading of the roster. `gen-firewall` understands
 two built-in tags; every other tag must map to a rule in `$tagRules` (an
@@ -107,5 +107,5 @@ otherwise reconciled as normal.
 - **Declaration schema is permissive to read** — `package_declaration()`
   coerces whatever `etc/host-hardening.php` sets into a typed shape and
   reports invalid rules rather than aborting on them.
-- **No `[prod]` roster yet** — the first live `--apply` is still ahead; until
+- **No roster yet** — the first live `--apply` is still ahead; until
   then `gen-firewall` only ever dry-runs or fails loudly on a missing roster.

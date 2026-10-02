@@ -210,7 +210,7 @@ as root over the socket), which is not shipped by this framework. `ema values
 
 The same shell also carries the host-level `etc/ema.default.conf` that `ema`
 reads when it provisions an instance (overridden by the optional `etc/ema.conf`):
-its `[default]` `ssl-ca` (an absolute path on the host) is written into that
+its `ssl-ca` (an absolute path on the host) is written into that
 instance's `[mysqld]`, which is the server half of a consumer's `REQUIRE X509`
 service account — the app-layer client half is the framework's `SSL_DIR` wiring
 (see `doc/system/machine-certs.md`). The default is committed, so it rides with

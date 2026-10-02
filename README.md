@@ -53,7 +53,7 @@ sandboxes, per-database instances, and the manual `reuter.ini` — is in
 ## Deploy
 
 ```bash
-bin/pf-deploy.sh                 # every [prod] host in etc/machines.ini
+bin/pf-deploy.sh                 # every prod host in etc/machines.ini
 bin/pf-deploy.sh <target_host>   # a single prod host
 ```
 

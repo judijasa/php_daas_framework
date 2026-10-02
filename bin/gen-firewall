@@ -11,7 +11,7 @@ require_once __DIR__ . '/../src/host_resolver.php';
 // declaration, computing the full desired ufw rule set for a host, and
 // applying it as root with a fail-open ordering. The consumer owns the data:
 // the declaration (`etc/host-hardening.php`), the `etc/machines.ini`
-// `[prod]` roster (which tags a host), `etc/reuter.ini` (the `db:<name>`
+// roster (which tags a host), `etc/reuter.ini` (the `db:<name>`
 // ports) and the ZeroTier range (private data). No tag name, port or range is
 // hardcoded here, and the cloud gate is observed on the host itself (its
 // virtualization fingerprint) rather than from a configured cloud endpoint.
@@ -44,10 +44,10 @@ const HELP = <<<'TXT'
 Usage: gen-firewall [host|all] [-a|--apply] [-n|--dry-run] [-h|--help]
 
 Reconcile the tag-driven ufw firewall for prod hosts, from the shared
-etc/host-hardening.php declaration and the etc/machines.ini [prod] roster.
+etc/host-hardening.php declaration and the etc/machines.ini roster.
 
-  host              one [prod] host, as its short name or its ZeroTier IP.
-  all               reconcile every [prod] host (the default).
+  host              one prod host, as its short name or its ZeroTier IP.
+  all               reconcile every prod host (the default).
   -a, --apply       actually apply over `ssh root@<host>` (default is dry-run).
   -n, --dry-run     print the computed rules without applying (the default).
   -h, --help        show this help.
@@ -403,7 +403,7 @@ function main(array $argv): int
 
     $roster = prod_roster($root . '/etc/machines.ini');
     if (count($roster) === 0) {
-        fwrite(STDERR, "gen-firewall: no [prod] roster in {$root}/etc/machines.ini (etc/machines.ini is consumer-owned private data — see doc/system/consumer-config.md)\n");
+        fwrite(STDERR, "gen-firewall: no prod roster in {$root}/etc/machines.ini (etc/machines.ini is consumer-owned private data — see doc/system/consumer-config.md)\n");
         return 1;
     }
 
@@ -412,7 +412,7 @@ function main(array $argv): int
         $targets = array_keys($roster);
     } else {
         // Either spelling: the shared host lookup turns a short name or a
-        // ZeroTier IP into the canonical host and enforces [prod] membership.
+        // ZeroTier IP into the canonical host and enforces prod membership.
         $error = null;
         $host = resolve_host($target, $root, $error);
         if ($host === null) {

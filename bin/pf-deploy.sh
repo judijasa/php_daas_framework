@@ -40,7 +40,7 @@
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
-#     [prod] ZeroTier-IP -> comma-separated `tag[:name]` tokens (a `db:<name>`
+#     ZeroTier-IP -> comma-separated `tag[:name]` tokens (a `db:<name>`
 #            token names a database and enforces the one-to-one server mapping
 #            — the instance itself is provisioned by `ema create`, not by
 #            deploy, and db-check verifies it via the host's own `mariadb@*`
@@ -49,10 +49,10 @@
 #            servers; each named token maps to exactly one server)
 #
 # Usage:
-#   pf-deploy.sh                # deploy to every [prod] host in etc/machines.ini
+#   pf-deploy.sh                # deploy to every prod host in etc/machines.ini
 #   pf-deploy.sh <target_host>  # deploy to a single prod host, by its short
 #                               # name or its ZeroTier IP (both spellings
-#                               # resolve to the same [prod] host; see
+#                               # resolve to the same prod host; see
 #                               # doc/system/host-resolution.md)
 #   .env  (git-ignored, machine-specific) - same contract as `phprun`:
 #     REPO_PATH              consumer repo root (set by the consumer's dev-init)
@@ -102,13 +102,13 @@ done < <(comm -13 <(printf '%s\n' "$_ENV_BEFORE") <(printf '%s\n' "$_ENV_AFTER")
 unset _v
 
 # Load the machine registry (git-ignored; template committed, consumer-owned).
-# [prod] lists every prod deploy target by ZeroTier IP; the host whose
+# The roster lists every prod deploy target by ZeroTier IP; the host whose
 # `tag[:name]` list carries a `db:` token is the database host. Every token is
 # also a cron scope (`host`-scoped jobs run on every host), passed as
 # HOST_TAGS to the server steps for scope filtering.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
   echo "pf-deploy: $PWD/etc/machines.ini not found" >&2
-  echo "  Copy etc/machines.ini.template to etc/machines.ini and fill in the [prod] roster." >&2
+  echo "  Copy etc/machines.ini.template to etc/machines.ini and fill in the roster." >&2
   exit 1
 fi
 
@@ -117,7 +117,7 @@ fi
 ROSTER_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-roster"
 HOST_BIN="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/pf-host"
 
-# Print each [prod] entry as "zerotier-ip=<comma-separated tag list>" (the
+# Print each entry as "zerotier-ip=<comma-separated tag list>" (the
 # host's `tag[:name]` tokens). `main` parses this to build the deploy roster.
 # The shared pf-roster CLI owns the machines.ini parse, also used by the
 # consumer deploy wrapper.
@@ -363,7 +363,7 @@ main() {
   done < <(read_prod_roster)
 
   if [ "${#hosts[@]}" -eq 0 ]; then
-    echo "pf-deploy: [prod] roster in etc/machines.ini is empty." >&2
+    echo "pf-deploy: prod roster in etc/machines.ini is empty." >&2
     exit 1
   fi
 
@@ -374,7 +374,7 @@ main() {
     exit 1
   fi
 
-  # Optional explicit host: deploy to that one only (must be in [prod]).
+  # Optional explicit host: deploy to that one only (must be in the roster).
   if [ "${#ARGS[@]}" -gt 0 ]; then
     if [ "${#ARGS[@]}" -gt 1 ]; then
       echo "pf-deploy: at most one target host may be given (got: ${ARGS[*]})" >&2
@@ -382,7 +382,7 @@ main() {
     fi
     # Either spelling: the shared host lookup (bin/pf-host) turns a short name
     # or a ZeroTier IP into the canonical host the roster is keyed by, and
-    # reports the reason itself when the host is unknown or not in [prod].
+    # reports the reason itself when the host is unknown or not in the roster.
     local wanted
     if ! wanted="$("$HOST_BIN" "${ARGS[0]}")"; then
       exit 1
@@ -393,7 +393,7 @@ main() {
         return 0
       fi
     done
-    echo "pf-deploy: host '${ARGS[0]}' ($wanted) is not in the [prod] roster of etc/machines.ini." >&2
+    echo "pf-deploy: host '${ARGS[0]}' ($wanted) is not in the roster of etc/machines.ini." >&2
     exit 1
   fi
 

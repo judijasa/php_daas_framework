@@ -96,7 +96,7 @@ Getting the private files onto a prod host is the framework's job for the files
 the consumer declares in `DEPLOY_PRIVATE_FILES`, and the consumer's job for
 everything else. What the framework guarantees on the reading side:
 
-- `bin/pf-deploy.sh` sources `etc/deploy.conf` and reads the `[prod]` roster
+- `bin/pf-deploy.sh` sources `etc/deploy.conf` and reads the roster
   from `etc/machines.ini` as plain files on the dev/deploy machine, and fails
   loudly when either is missing. It replays the sourced `deploy.conf`
   environment to every remote step and ships the files named in

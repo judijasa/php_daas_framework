@@ -19,7 +19,7 @@ tmux-remote <host> <session>     # creates or re-attaches (new-session -A)
 tmux-remote <host> <session>     # from the repo root
 ```
 
-`<host>` is a `[prod]` host, given as its short name or its ZeroTier IP — the
+`<host>` is a prod host, given as its short name or its ZeroTier IP — the
 shared host lookup resolves either spelling, and the name is what the alias is
 keyed by (see `doc/system/host-resolution.md`); the ssh alias resolved is
 `<app>-<host>`, where `<app>` is `basename "$PWD"` — the repo directory you are

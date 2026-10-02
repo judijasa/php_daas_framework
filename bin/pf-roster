@@ -5,16 +5,16 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../src/host_resolver.php';
 
-// pf-roster — [prod] roster queries for the deploy toolchain.
+// pf-roster — prod roster queries for the deploy toolchain.
 //
-// Reads etc/machines.ini [prod] from the consumer repo root (the current
+// Reads etc/machines.ini from the consumer repo root (the current
 // working directory) and answers generic tag queries, so pf-deploy.sh and
 // the consumer deploy wrapper share one parse of the `tag[:name]` token
 // list. The parse itself is the shared host lookup (src/host_resolver.php),
 // which also pairs a host's short name with its ZeroTier IP for bin/pf-host,
 // bin/gen-firewall and bin/pf-deploy.sh (see doc/system/host-resolution.md).
 //
-// [prod] value grammar (comma-separated tokens):
+// Value grammar (comma-separated tokens):
 //   bare tag     `web`       -> boolean flag (a deploy step on this host)
 //   bare tag     `worker`    -> a bare tag data jobs use as their cron scope
 //   named tag    `db:simo`   -> a `db` resource named `simo`
@@ -61,7 +61,7 @@ function validate(array $roster): int
                 continue;
             }
             if (isset($seen[$tok])) {
-                fwrite(STDERR, 'pf-roster: tag ' . $tok . ' is listed more than once in etc/machines.ini [prod] (a named tag maps to exactly one server).' . PHP_EOL);
+                fwrite(STDERR, 'pf-roster: tag ' . $tok . ' is listed more than once in etc/machines.ini (a named tag maps to exactly one server).' . PHP_EOL);
                 return 1;
             }
             $seen[$tok] = true;

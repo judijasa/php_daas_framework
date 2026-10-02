@@ -21,8 +21,8 @@ chmod 600 /home/<PROD_USER>/.ssh/authorized_keys && chown -R <PROD_USER>:<PROD_U
 # each prod host: install a cron daemon (only when the repo declares #[CronJob] jobs)
 
 # deploy machine, repo root
-pf-deploy.sh                 # every [prod] host in etc/machines.ini
-pf-deploy.sh <target_host>   # a single prod host (must be in [prod])
+pf-deploy.sh                 # every prod host in etc/machines.ini
+pf-deploy.sh <target_host>   # a single prod host (must be in the roster)
 ```
 
 ## Config surfaces
@@ -50,10 +50,10 @@ The deployment target (consumer-owned; template at `etc/deploy.conf.template`).
 
 ### `etc/machines.ini`
 
-The prod-server registry: `[prod]` ZeroTier-IP → `tag[:name]` tokens
+The prod-server registry: ZeroTier-IP → `tag[:name]` tokens
 (comma-separated per server). `db:<name>` names a database; every tag doubles
 as a cron `scope`; other tags are consumer-owned. `pf-deploy.sh` (default mode)
-targets every `[prod]` host; a host carrying a `db:<name>` token is a database
+targets every prod host; a host carrying a `db:<name>` token is a database
 host (its instance is provisioned by `ema create`, not deploy). Each named
 token maps to exactly one server; a server may host several databases. The
 shared `pf-roster` CLI parses this roster, and the shared host lookup resolves
@@ -115,8 +115,8 @@ systemd host with `curl` available.
 ## The pipeline
 
 ```bash
-pf-deploy.sh                 # every [prod] host in etc/machines.ini
-pf-deploy.sh <target_host>   # a single prod host (must be in [prod])
+pf-deploy.sh                 # every prod host in etc/machines.ini
+pf-deploy.sh <target_host>   # a single prod host (must be in the roster)
 ```
 
 The fixed pipeline: swap the repo (as `root`), copy the nix closure,

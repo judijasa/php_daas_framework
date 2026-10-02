@@ -7,7 +7,7 @@
 // would put them in the public history.
 //
 // gen-firewall reads etc/host-hardening.php and computes the desired ufw rule
-// set for each [prod] host from its etc/machines.ini tags, applied as root
+// set for each prod host from its etc/machines.ini tags, applied as root
 // with a fail-open ordering (SSH first, enable last). The framework owns the
 // mechanism and the built-in tags; this file carries only consumer data.
 // There is no SQL here — data only.

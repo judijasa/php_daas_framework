@@ -39,7 +39,7 @@ runs; `scope` is *where* it runs.
 | Argument   | Type     | Required | Meaning |
 |------------|----------|----------|---------|
 | `schedule` | `string` | yes      | The cron schedule expression for the entry. |
-| `scope`    | `string` | **yes**  | Where the job runs: `host` (every prod host) or an exact `tag[:name]` token from `etc/machines.ini [prod]`. |
+| `scope`    | `string` | **yes**  | Where the job runs: `host` (every prod host) or an exact `tag[:name]` token from `etc/machines.ini`. |
 
 `scope` has no default — a `#[CronJob]` without it is a hard error, rejected
 by both `cron-manifest` and the pre-commit attribute check. There is no
@@ -50,9 +50,9 @@ attribute.
 
 | scope value      | matches |
 |------------------|---------|
-| `host`           | every `[prod]` host |
+| `host`           | every prod host |
 | `worker`         | hosts with the bare `worker` token |
-| any `tag[:name]` | hosts whose `[prod]` entry carries that exact token |
+| any `tag[:name]` | hosts whose roster entry carries that exact token |
 
 `cron-manifest --host-tags <comma-list>` (the filter `pf-deploy.sh` runs on
 every host, passing that host's own normalized token list) emits a job iff:
@@ -61,6 +61,6 @@ every host, passing that host's own normalized token list) emits a job iff:
 - `scope` is an exact element of the comma list.
 
 Matching is exact token equality — no wildcards. `worker` is not
-special-cased: a job scoped `worker` runs only on hosts whose `[prod]` entry
+special-cased: a job scoped `worker` runs only on hosts whose roster entry
 carries the bare `worker` token. With no `--host-tags`, `cron-manifest` emits
 every job (dev/debug behavior).

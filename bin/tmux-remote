@@ -52,7 +52,7 @@ gen-ssh-config writes. The remote session is named <session> and configured by
 the framework's etc/tmux-remote.conf (red status bar, prefix C-a, so it never
 clashes with a local tmux's C-b).
 
-  <host>           a [prod] host: its short name or its ZeroTier IP (both
+  <host>           a prod host: its short name or its ZeroTier IP (both
                    spellings resolve to the same host; see
                    doc/system/host-resolution.md).
   <session>        tmux session name on the host (letters, digits, '.', '_', '-').

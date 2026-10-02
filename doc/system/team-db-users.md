@@ -84,7 +84,7 @@ subject to revoke.
 
 ## team.ini replaces machines.ini [dev]
 
-`etc/machines.ini` is now a prod-server-only roster (`[prod]` only).
+`etc/machines.ini` is now a prod-server-only roster.
 `DBUSER` is consumer policy: `init-local-env.sh` no longer derives it from
 `etc/team.ini`; the consumer writes its own `DBUSER`.
 

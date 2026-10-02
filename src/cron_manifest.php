@@ -8,7 +8,7 @@
 //
 // Each #[CronJob] declares where it runs via a required `scope` argument:
 //   - `host`       run on every prod host (host-maintenance jobs)
-//   - `tag[:name]` run only on hosts whose [prod] entry carries that exact
+//   - `tag[:name]` run only on hosts whose roster entry carries that exact
 //                  token (`worker`, `web`, `db:<name>`, …). Exact equality,
 //                  no wildcards.
 // `cron-manifest --host-tags <comma-list>` emits a job iff its `scope` is

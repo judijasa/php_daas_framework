@@ -1,10 +1,10 @@
 # Machine registry: prod machines only.
 # This file is private data: keep it in the consumer's private config repo and
 # place it at etc/machines.ini (see doc/system/consumer-config.md). It is
-# dev/deploy-time only — `pf-deploy.sh` reads the [prod] roster locally, on the
+# dev/deploy-time only — `pf-deploy.sh` reads the roster locally, on the
 # deploy machine, and `machines.ini` is never shipped to a host.
 #
-# [prod] prod deploy targets. Each key is the server's ZeroTier IP (the same
+# Prod deploy targets. Each key is the server's ZeroTier IP (the same
 #        address `pf-deploy.sh` uses for SSH). The value is a comma-separated
 #        list of `tag[:name]` tokens:
 #          bare tag    `web`       -> boolean flag (a deploy step on this host)
@@ -30,6 +30,5 @@
 #        (code-only), one database, or several databases (one MariaDB
 #        instance each, created by `ema create`).
 
-[prod]
 # 10.147.x.10=db:mydb, web, worker
 # 10.147.x.11=worker
