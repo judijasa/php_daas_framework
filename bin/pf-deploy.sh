@@ -443,16 +443,31 @@ deploy_to_host() {
   # declares in DEPLOY_PRIVATE_FILES into the freshly swapped etc/ in one step
   # — no stable per-app dir, no consumer hook. Values from etc/deploy.conf are
   # NOT shipped as a file; they are replayed as environment to every remote
-  # step below (A).
+  # step below (A). A name absent from etc/ is skipped (warned, not shipped):
+  # the consumer's deploy wrapper confirms the absence is intentional (e.g. no
+  # database provisioned yet) before it runs this CLI.
   if [ -n "${DEPLOY_PRIVATE_FILES:-}" ]; then
-    echo "Shipping private files ($DEPLOY_PRIVATE_FILES) to $REMOTE_HOST..." >&2
-    tar -C etc -cf - $DEPLOY_PRIVATE_FILES | ssh "root@$REMOTE_HOST" "
-      set -e
-      cd '$REMOTE_TARGET_DIR'
-      mkdir -p etc
-      tar -x -C etc --no-same-owner
-      for _f in $DEPLOY_PRIVATE_FILES; do chown $PROD_USER:$PROD_USER \"etc/\$_f\"; done
-    "
+    local _ship_files="" _f
+    for _f in $DEPLOY_PRIVATE_FILES; do
+      if [ -f "etc/$_f" ]; then
+        if [ -n "$_ship_files" ]; then
+          _ship_files="$_ship_files "
+        fi
+        _ship_files="$_ship_files$_f"
+      else
+        echo "pf-deploy: skipping absent private file etc/$_f (not shipped)" >&2
+      fi
+    done
+    if [ -n "$_ship_files" ]; then
+      echo "Shipping private files ($_ship_files) to $REMOTE_HOST..." >&2
+      tar -C etc -cf - $_ship_files | ssh "root@$REMOTE_HOST" "
+        set -e
+        cd '$REMOTE_TARGET_DIR'
+        mkdir -p etc
+        tar -x -C etc --no-same-owner
+        for _f in $_ship_files; do chown $PROD_USER:$PROD_USER \"etc/\$_f\"; done
+      "
+    fi
   fi
 
   # Deploy config replay (A): every post-swap remote step gets the deploy

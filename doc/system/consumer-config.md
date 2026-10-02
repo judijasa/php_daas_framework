@@ -100,7 +100,9 @@ everything else. What the framework guarantees on the reading side:
   from `etc/machines.ini` as plain files on the dev/deploy machine, and fails
   loudly when either is missing. It replays the sourced `deploy.conf`
   environment to every remote step and ships the files named in
-  `DEPLOY_PRIVATE_FILES` into the freshly swapped `etc/`.
+  `DEPLOY_PRIVATE_FILES` into the freshly swapped `etc/`, skipping any name
+  that is absent from `etc/` (the consumer's deploy wrapper confirms the
+  absence before running this CLI).
 - `bin/pf-provision.sh`, `bin/gen-env`, `bin/cron-manifest` and `bin/db-check`
   read the real files the same way: `deploy.conf` is sourced only when present
   (otherwise the replayed environment supplies the values); no fetching, no

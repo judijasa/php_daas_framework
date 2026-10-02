@@ -67,13 +67,14 @@ export DEPLOY_REUTER_INI=/srv/apps/<app>/etc/reuter.ini
 
 # DEPLOY_PRIVATE_FILES: space-separated etc/-relative private file names the
 # framework ships from the deploy machine's etc/ into the freshly swapped
-# etc/ on the host (whole, verbatim). `reuter.ini` is required on every prod
+# etc/ on the host (whole, verbatim). `reuter.ini` is the baseline on every prod
 # host; add `ema.conf` when the hosts provision instances (the server's
 # `ssl-ca`; see doc/system/ema.md) — a host that provisions nothing ignores it.
 # The list is one for all hosts. Skipped if unset; the consumer must have
-# materialized etc/ first (its own dev-init/fetch step), and every name must
-# exist in etc/ or the deploy fails (pf-deploy tars exactly these names).
-# export DEPLOY_PRIVATE_FILES="reuter.ini"           # the required baseline
+# materialized etc/ first (its own dev-init/fetch step). A name absent from
+# etc/ is skipped (warned, not shipped), not fatal; the consumer's deploy
+# wrapper confirms such an absence is intentional before it runs this CLI.
+# export DEPLOY_PRIVATE_FILES="reuter.ini"           # the expected baseline
 # export DEPLOY_PRIVATE_FILES="reuter.ini ema.conf"  # + the instance hosts' ssl-ca
 
 # DEPLOY_NIX_RESULT_DIR: remote nix result parent.
