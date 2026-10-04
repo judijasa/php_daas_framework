@@ -138,8 +138,10 @@ require_config() {
   fi
 }
 
-flight_checks() {
-  local REMOTE_HOST="$1"
+# Global preflight: environment and repo-state checks that are independent of
+# the target host. Run once in main(), before any host is deployed, so a bad
+# repo state aborts once instead of warning once per host.
+preflight_checks() {
   if [[ ! -n $IN_NIX_SHELL ]]; then
       echo "ERROR: This script must be run inside 'nix develop'"
       exit 1
@@ -171,6 +173,13 @@ flight_checks() {
     echo "ERROR: working tree is not clean"
     exit 1
   fi
+}
+
+# Host-specific preflight: is the target host reachable? Run per host (inside
+# deploy_to_host), so an unreachable host fails only that host, not the whole
+# roll-out.
+flight_checks() {
+  local REMOTE_HOST="$1"
 
   if ping -c 1 -W 2 "${REMOTE_HOST}" &> /dev/null; then
     echo "Host ${REMOTE_HOST} is online."
@@ -236,8 +245,22 @@ deploy_repo_remotely() {
       echo \"Deploy complete: $REV\" > \"\$FINAL_DIR/.deploy_version\"
       chown $PROD_USER:$PROD_USER \"\$FINAL_DIR/.deploy_version\"
 
-      # Piggyback: Check if nix daemon is running (multi-user install)
-      if systemctl is-active --quiet nix-daemon; then
+      # Piggyback: is Nix installed (multi-user store present)? Report not
+      # installed only when the store is genuinely absent - that is the sole
+      # trigger for the deploy-machine installer. A host that already has Nix
+      # but a stopped daemon (e.g. rebooted with a disabled unit) is fixed in
+      # place: start it here so the later nix-copy step finds a running
+      # daemon, instead of redundantly re-running the official installer
+      # (which refuses on the pre-existing backup file).
+      if [ -x /nix/var/nix/profiles/default/bin/nix ]; then
+        if ! systemctl is-active --quiet nix-daemon; then
+          echo 'nix installed but nix-daemon inactive; starting it...' >&2
+          systemctl enable --now nix-daemon
+          if ! systemctl is-active --quiet nix-daemon; then
+            echo 'nix-daemon did not become active; aborting deploy for this host.' >&2
+            exit 1
+          fi
+        fi
         NIX_INSTALLED='true'
       else
         NIX_INSTALLED='false'
@@ -350,6 +373,7 @@ done
 
 main() {
   require_config
+  preflight_checks
 
   # Build the prod roster from etc/machines.ini (via the shared pf-roster
   # CLI): hosts are ZeroTier IPs; the value is that host's `tag[:name]`
@@ -397,10 +421,27 @@ main() {
     exit 1
   fi
 
-  # Default: deploy to every prod host.
+  # Default: deploy to every prod host. Each host fails independently: a
+  # broken server (e.g. its nix-daemon will not start) is reported and
+  # skipped, so one failure does not abort the remaining roll-out. The run
+  # still exits non-zero if any host failed.
+  local overall=0 rc
+  local total="${#hosts[@]}"
+  local ok=0
   for i in "${!hosts[@]}"; do
-    deploy_to_host "${hosts[$i]}" "${taglists[$i]}"
+    set +e
+    ( set -e; deploy_to_host "${hosts[$i]}" "${taglists[$i]}" )
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+      echo "pf-deploy: deploy failed for host '${hosts[$i]}' (exit $rc); continuing with remaining hosts." >&2
+      overall=1
+    else
+      ok=$((ok + 1))
+    fi
   done
+  echo "pf-deploy: $ok of $total host(s) deployed successfully." >&2
+  return "$overall"
 }
 
 # Per-host deploy pipeline. A database host (its tag list carries a `db:`
@@ -436,7 +477,9 @@ deploy_to_host() {
     echo "ERROR: Both local ($(uname -m)) and remote ($REMOTE_ARCH) must be x86_64."
     exit 1
   fi
-  [ "$NIX_EXISTS" != "true" ] && install_nix_remotely "$REMOTE_HOST" "$PROD_USER" || true
+  if [ "$NIX_EXISTS" != "true" ]; then
+    install_nix_remotely "$REMOTE_HOST" "$PROD_USER"
+  fi
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
   # Private config, framework-owned transport (B): ship the files the consumer
