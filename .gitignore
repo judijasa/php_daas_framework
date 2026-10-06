@@ -9,7 +9,6 @@
 /etc/host-hardening.php
 /var/
 .env
-.private-source
 # Nix build output. `nix build` creates `result` as a symlink, so no trailing
 # slash here: a `/result/` rule would only match real directories and leave
 # the symlink untracked. `result-*` covers repeated/multi-output builds.

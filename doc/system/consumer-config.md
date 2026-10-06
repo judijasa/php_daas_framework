@@ -120,15 +120,6 @@ everything else. What the framework guarantees on the reading side:
   repo root on a host that provisions instances; an absent key means no
   `ssl-ca` line, not an error.
 
-### A consumer-side convention: `.private-source`
-
-`.private-source.example` documents the pointer shape consumers are encouraged
-to share: an untracked, git-ignored `.private-source` at the repo root naming
-the private repo's git URL (+ optional ref), fetched on demand into the
-git-ignored `var/private-data`. The framework does not read that file — it is
-the consumer's own dev-init tooling that fetches and materializes `etc/` before
-`deploy` ships `DEPLOY_PRIVATE_FILES`.
-
 ## Production (no git)
 
 Prod hosts have no git and no consumer-config tooling, so delivery runs from the
@@ -156,7 +147,6 @@ deploy all   # full deploy; ships DEPLOY_PRIVATE_FILES, replays deploy.conf env
 
 ## Security boundary
 
-The `.private-source` pointer provides information separation only. The real
-security boundary is access control on the private repository (and on the
-production systems). Repository privacy must be enforced by authentication and
-authorization, not by hiding the private repo's identity.
+The real security boundary is access control on the private repository (and on
+the production systems). Repository privacy must be enforced by authentication
+and authorization, not by hiding the private repo's identity.
