@@ -104,7 +104,7 @@ main() {
 
     # The consumer's etc/deploy.conf is private data kept on the deploy machine
     # (never shipped): source it as a plain file — the same loading contract as
-    # bin/cron-manifest and bin/pf-deploy.sh — and read the two values this CLI
+    # bin/cron-manifest and bin/deploy — and read the two values this CLI
     # needs.
     local deploy_conf="$PWD/etc/deploy.conf"
     if [[ ! -f "$deploy_conf" ]]; then

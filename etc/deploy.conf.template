@@ -18,7 +18,7 @@
 # .env (generated, git-ignored) holds machine settings; this file holds the
 # deployment target shared by every machine of the project.
 #
-# `gen-env` (run on the remote by pf-deploy on every deploy) projects the
+# `gen-env` (run on the remote by deploy on every deploy) projects the
 # git-ignored .env from THIS file — there is
 # no separate etc/env.prod anymore. The projection:
 #   REPO_PATH      := DEPLOY_TARGET_DIR
@@ -50,7 +50,7 @@ export DEPLOY_LOG_DIR=/var/log/<app>
 # DEPLOY_REUTER_INI: path to the consumer's manual reuter.ini — one
 # [<dbname>] section per database (SERVER/PORT/MYSQL_UNIX_PORT plus the
 # consumer's <ACCOUNT>_PASSWORD keys), recorded from `ema create`'s output.
-# gen-env writes it into .env as REUTER_INI; pf-deploy's db-check reads it to
+# gen-env writes it into .env as REUTER_INI; deploy's db-check reads it to
 # verify reachability. The file is the consumer's private data, and the repo
 # dir is replaced on every deploy, so name it in DEPLOY_PRIVATE_FILES (below)
 # and the framework ships it into the freshly swapped etc/.
@@ -89,12 +89,12 @@ export DEPLOY_NIX_GCROOT=/nix/var/nix/gcroots/<app>
 # export DEPLOY_INIT_CMD="make prod-init"
 
 # Optional cron config, consumed by the framework's built-in server steps: on
-# every host, pf-deploy installs the `cron-manifest` output (filtered by that
+# every host, deploy installs the `cron-manifest` output (filtered by that
 # host's tags — a job runs only where its `scope` matches, and `host`-scoped
 # jobs run everywhere) into CRON_FILE and restarts cron (after gen-env, so
 # the manifest is never written against a stale or missing .env). Omit if the
 # project has no cron; REQUIRED whenever the repo declares a `#[CronJob]`
-# attribute — pf-deploy fails loudly when unset there.
+# attribute — deploy fails loudly when unset there.
 # CRON_FILE: remote crontab file the manifest is installed to.
 # export CRON_FILE=/etc/cron.d/<app>-orchestrator
 # CRON_USER: user the cron entries run as (default: root).

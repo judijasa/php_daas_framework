@@ -38,7 +38,7 @@ consumer's own `doc/system/composer.md`.
   },
   "bin": [
     "bin/phprun",
-    "bin/pf-deploy.sh",
+    "bin/deploy",
     "bin/gen-env",
     "bin/db-check",
     "bin/gen-team-accounts",
@@ -117,7 +117,7 @@ The `bin` array installs these into `vendor/bin` (or the project's configured
 
 - `phprun`, `cron-manifest` — agent execution and cron generation (see
   `doc/system/agents.md`).
-- `pf-deploy.sh`, `pf-provision.sh`, `pf-server-steps.sh`, `gen-env`,
+- `deploy`, `pf-provision.sh`, `pf-server-steps.sh`, `gen-env`,
   `db-check`, `pf-roster` — the deploy chain (see `doc/system/deploy.md`).
 - `gen-team-accounts` — team-member DB users (see
   `doc/system/team-db-users.md`).

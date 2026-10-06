@@ -13,13 +13,13 @@ Every CLI that takes a host accepts either spelling:
 
 | CLI | Argument | Half it uses |
 |---|---|---|
-| `pf-deploy.sh <target_host>` | short name or ZeroTier IP | the ZeroTier IP (the roster key, the ssh target) |
+| `deploy <host>` | short name or ZeroTier IP | the ZeroTier IP (the roster key, the ssh target) |
 | `gen-firewall [host\|all]` | short name or ZeroTier IP | the ZeroTier IP (the roster key) |
 | `tmux-remote <host> <session>` | short name or ZeroTier IP | the short name (the `<app>-<name>` ssh alias gen-ssh-config wrote) |
 
 A host's **canonical form** is the pair of its short name and its ZeroTier IP.
 The IP is the identity everything else is keyed by — the roster key,
-the `ssh root@<host>` target, the `pf-deploy.sh` target — and the name is the
+the `ssh root@<host>` target, the `deploy` target — and the name is the
 operator-facing spelling the `/etc/hosts` merge and the generated dev ssh
 aliases are built from. `pf-roster` takes no host argument; it shares the same
 roster parse.
@@ -45,7 +45,7 @@ pf-host <name|ip>         # print the host's ZeroTier IP
 pf-host --name <name|ip>  # print the host's short name
 ```
 
-`bin/pf-host` is that lookup as a CLI, for the bash CLIs (`pf-deploy.sh`,
+`bin/pf-host` is that lookup as a CLI, for the bash CLIs (`deploy`,
 `tmux-remote`), which cannot call PHP functions directly; `--name` is what
 `tmux-remote` needs, because the alias is keyed by the name. The PHP CLIs
 (`gen-firewall`, `pf-roster`) include the module itself.
@@ -60,4 +60,4 @@ pf-host --name <name|ip>  # print the host's short name
   resolved before the roster is consulted.
 - **One reading of the roster.** `prod_roster()` and the `tag[:name]` token
   splitter live in the resolver, so `pf-roster`, `gen-firewall` and
-  `pf-deploy.sh` share one parse.
+  `deploy` share one parse.

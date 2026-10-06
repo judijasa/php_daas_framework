@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # Scans the consumer repo's src/ for functions decorated with both
 # #[CronJob] and #[Agent] and prints a crontab to stdout, ready to be
-# installed by pf-deploy (the framework's deploy CLI redirects it into the
+# installed by deploy (the framework's deploy CLI redirects it into the
 # configured CRON_FILE on every prod host, filtered by that host's tags).
 #
 # Each #[CronJob] declares where it runs via a required `scope` (`host` = run

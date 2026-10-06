@@ -8,11 +8,11 @@ require_once __DIR__ . '/../src/host_resolver.php';
 // pf-roster — prod roster queries for the deploy toolchain.
 //
 // Reads etc/machines.ini from the consumer repo root (the current
-// working directory) and answers generic tag queries, so pf-deploy.sh and
+// working directory) and answers generic tag queries, so deploy and
 // the consumer deploy wrapper share one parse of the `tag[:name]` token
 // list. The parse itself is the shared host lookup (src/host_resolver.php),
 // which also pairs a host's short name with its ZeroTier IP for bin/pf-host,
-// bin/gen-firewall and bin/pf-deploy.sh (see doc/system/host-resolution.md).
+// bin/gen-firewall and bin/deploy (see doc/system/host-resolution.md).
 //
 // Value grammar (comma-separated tokens):
 //   bare tag     `web`       -> boolean flag (a deploy step on this host)

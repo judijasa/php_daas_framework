@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# pf-deploy.sh — project-agnostic deployment CLI (php_daas_framework).
+# deploy — project-agnostic deployment CLI (php_daas_framework).
 #
 # Ships a consumer repo to a remote production server with a near-atomic
 # swap, then copies the nix closure, installs composer dependencies, runs
@@ -49,11 +49,12 @@
 #            servers; each named token maps to exactly one server)
 #
 # Usage:
-#   pf-deploy.sh                # deploy to every prod host in etc/machines.ini
-#   pf-deploy.sh <target_host>  # deploy to a single prod host, by its short
-#                               # name or its ZeroTier IP (both spellings
-#                               # resolve to the same prod host; see
-#                               # doc/system/host-resolution.md)
+#   deploy                # error: a target is required
+#   deploy all            # deploy to every prod host in etc/machines.ini
+#   deploy <host>         # deploy to a single prod host, by its short
+#                         # name or its ZeroTier IP (both spellings resolve
+#                         # to the same prod host; see
+#                         # doc/system/host-resolution.md)
 #   .env  (git-ignored, machine-specific) - same contract as `phprun`:
 #     REPO_PATH              consumer repo root (set by the consumer's dev-init)
 #
@@ -80,7 +81,7 @@ fi
 # .env (generated per environment), deploy.conf describes the deployment
 # target. It is required.
 if [[ ! -f "$PWD/etc/deploy.conf" ]]; then
-  echo "pf-deploy: $PWD/etc/deploy.conf not found" >&2
+  echo "deploy: $PWD/etc/deploy.conf not found" >&2
   echo "  Copy etc/deploy.conf.template to etc/deploy.conf and fill in the values — see doc/system/consumer-config.md." >&2
   exit 1
 fi
@@ -107,7 +108,7 @@ unset _v
 # also a cron scope (`host`-scoped jobs run on every host), passed as
 # HOST_TAGS to the server steps for scope filtering.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
-  echo "pf-deploy: $PWD/etc/machines.ini not found" >&2
+  echo "deploy: $PWD/etc/machines.ini not found" >&2
   echo "  Copy etc/machines.ini.template to etc/machines.ini and fill in the roster." >&2
   exit 1
 fi
@@ -133,7 +134,7 @@ require_config() {
     fi
   done
   if [ -n "$missing" ]; then
-    echo "pf-deploy: missing required config (REPO_PATH from .env; PROD_USER/DEPLOY_* from etc/deploy.conf):$missing" >&2
+    echo "deploy: missing required config (REPO_PATH from .env; PROD_USER/DEPLOY_* from etc/deploy.conf):$missing" >&2
     exit 1
   fi
 }
@@ -387,7 +388,7 @@ main() {
   done < <(read_prod_roster)
 
   if [ "${#hosts[@]}" -eq 0 ]; then
-    echo "pf-deploy: prod roster in etc/machines.ini is empty." >&2
+    echo "deploy: prod roster in etc/machines.ini is empty." >&2
     exit 1
   fi
 
@@ -398,12 +399,23 @@ main() {
     exit 1
   fi
 
+  # Target normalization: `deploy` (no target) is an error; `all` is the
+  # explicit "every host" spelling (it clears ARGS so the every-host branch
+  # below runs); anything else is a single host.
+  if [ "${#ARGS[@]}" -eq 0 ]; then
+    echo "deploy: no target defined — require 'all' or a host (short name or ZeroTier IP)" >&2
+    exit 1
+  fi
+  if [ "${#ARGS[@]}" -gt 1 ]; then
+    echo "deploy: at most one target may be given (got: ${ARGS[*]})" >&2
+    exit 1
+  fi
+  if [ "${ARGS[0]}" = "all" ]; then
+    ARGS=()
+  fi
+
   # Optional explicit host: deploy to that one only (must be in the roster).
   if [ "${#ARGS[@]}" -gt 0 ]; then
-    if [ "${#ARGS[@]}" -gt 1 ]; then
-      echo "pf-deploy: at most one target host may be given (got: ${ARGS[*]})" >&2
-      exit 1
-    fi
     # Either spelling: the shared host lookup (bin/pf-host) turns a short name
     # or a ZeroTier IP into the canonical host the roster is keyed by, and
     # reports the reason itself when the host is unknown or not in the roster.
@@ -417,11 +429,11 @@ main() {
         return 0
       fi
     done
-    echo "pf-deploy: host '${ARGS[0]}' ($wanted) is not in the roster of etc/machines.ini." >&2
+    echo "deploy: host '${ARGS[0]}' ($wanted) is not in the roster of etc/machines.ini." >&2
     exit 1
   fi
 
-  # Default: deploy to every prod host. Each host fails independently: a
+  # `all`: deploy to every prod host. Each host fails independently: a
   # broken server (e.g. its nix-daemon will not start) is reported and
   # skipped, so one failure does not abort the remaining roll-out. The run
   # still exits non-zero if any host failed.
@@ -434,13 +446,13 @@ main() {
     rc=$?
     set -e
     if [ "$rc" -ne 0 ]; then
-      echo "pf-deploy: deploy failed for host '${hosts[$i]}' (exit $rc); continuing with remaining hosts." >&2
+      echo "deploy: deploy failed for host '${hosts[$i]}' (exit $rc); continuing with remaining hosts." >&2
       overall=1
     else
       ok=$((ok + 1))
     fi
   done
-  echo "pf-deploy: $ok of $total host(s) deployed successfully." >&2
+  echo "deploy: $ok of $total host(s) deployed successfully." >&2
   return "$overall"
 }
 
@@ -457,7 +469,7 @@ deploy_to_host() {
   # CRON_FILE in etc/deploy.conf. The same file is deployed to every host, so
   # this also mirrors the remote guard in the server steps below.
   if grep -Rqs '#\[CronJob' src/ && [ -z "${CRON_FILE:-}" ]; then
-    echo "pf-deploy: this repo declares #[CronJob] attributes but etc/deploy.conf sets no CRON_FILE." >&2
+    echo "deploy: this repo declares #[CronJob] attributes but etc/deploy.conf sets no CRON_FILE." >&2
     echo "  Add CRON_FILE (and optionally CRON_USER) to etc/deploy.conf — see deploy.conf.template." >&2
     exit 1
   fi
@@ -498,7 +510,7 @@ deploy_to_host() {
         fi
         _ship_files="$_ship_files$_f"
       else
-        echo "pf-deploy: skipping absent private file etc/$_f (not shipped)" >&2
+        echo "deploy: skipping absent private file etc/$_f (not shipped)" >&2
       fi
     done
     if [ -n "$_ship_files" ]; then
@@ -525,7 +537,7 @@ $DEPLOY_CONF_ENV
 # committed deploy.conf. No hard file requirement.
 for _v in DEPLOY_TARGET_DIR DEPLOY_LOG_DIR DEPLOY_REUTER_INI DEPLOY_NIX_RESULT_DIR DEPLOY_NIX_GCROOT; do
     if [ -z "\${!_v:-}" ]; then
-        echo "pf-deploy: missing required config on host: \$_v" >&2
+        echo "deploy: missing required config on host: \$_v" >&2
         exit 1
     fi
 done

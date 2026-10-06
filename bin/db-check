@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # db-check — warn-only database verification for prod hosts.
 #
-# Runs as root on the remote, as a pf-deploy built-in server step (after
+# Runs as root on the remote, as a deploy built-in server step (after
 # gen-env). It NEVER repairs: it only verifies and warns, so a deploy can
 # proceed while an operator investigates. Two checks:
 #
@@ -24,7 +24,7 @@
 # Usage: db-check [--reuter-ini <path>]
 #   --reuter-ini  reuter.ini to check (default: $REUTER_INI or etc/reuter.ini)
 #
-# Exit code is always 0 (warn-only): pf-deploy must not abort on a DB miss.
+# Exit code is always 0 (warn-only): deploy must not abort on a DB miss.
 
 set -uo pipefail
 

@@ -32,7 +32,7 @@
 
 set -euo pipefail
 
-# Values come from the replayed deploy.conf environment (see pf-deploy.sh);
+# Values come from the replayed deploy.conf environment (see deploy);
 # a consumer that commits a real etc/deploy.conf still overrides it.
 if [[ -f ./etc/deploy.conf ]]; then
     set -a

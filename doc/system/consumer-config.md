@@ -97,7 +97,7 @@ Getting the private files onto a prod host is the framework's job for the files
 the consumer declares in `DEPLOY_PRIVATE_FILES`, and the consumer's job for
 everything else. What the framework guarantees on the reading side:
 
-- `bin/pf-deploy.sh` sources `etc/deploy.conf` and reads the roster
+- `deploy` sources `etc/deploy.conf` and reads the roster
   from `etc/machines.ini` as plain files on the dev/deploy machine, and fails
   loudly when either is missing. It replays the sourced `deploy.conf`
   environment to every remote step and ships the files named in
@@ -132,7 +132,7 @@ the consumer's own dev-init tooling that fetches and materializes `etc/` before
 ## Production (no git)
 
 Prod hosts have no git and no consumer-config tooling, so delivery runs from the
-deploy machine, which has both. `bin/pf-deploy.sh` swaps the repo directory on
+deploy machine, which has both. `deploy` swaps the repo directory on
 every deploy, which wipes `etc/`, so the real private files must be restored on
 the host **before** anything reads them. **`DEPLOY_PRIVATE_FILES`** (see
 `etc/deploy.conf.template`) covers that: it names the `etc/`-relative files
@@ -151,7 +151,7 @@ when present), but committing it is optional.
 
 ```bash
 # deploy machine, inside nix develop, on main:
-bin/pf-deploy.sh   # full deploy; ships DEPLOY_PRIVATE_FILES, replays deploy.conf env
+deploy all   # full deploy; ships DEPLOY_PRIVATE_FILES, replays deploy.conf env
 ```
 
 ## Security boundary

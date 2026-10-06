@@ -12,7 +12,7 @@ require_once __DIR__ . '/../src/host_resolver.php';
 // shared src/host_resolver.php — and reads back the half it needs:
 //
 //   the ZeroTier IP   the host's identity: the roster key, the
-//                     `ssh root@<host>` target (pf-deploy.sh)
+//                     `ssh root@<host>` target (deploy)
 //   the short name    the ssh-alias component gen-ssh-config prefixes
 //                     (`<app>-<name>`, what tmux-remote resolves)
 //

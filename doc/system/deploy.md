@@ -1,6 +1,6 @@
 # Deploying a consumer project
 
-How `pf-deploy.sh` pushes a consumer repo (or this repo, standalone) to a
+How `deploy` pushes a consumer repo (or this repo, standalone) to a
 production server. The ema side — how each database gets its own MariaDB
 instance and how the manual `reuter.ini` is recorded — is in
 `doc/system/ema.md`; this document covers the deploy config, the host
@@ -21,13 +21,13 @@ chmod 600 /home/<PROD_USER>/.ssh/authorized_keys && chown -R <PROD_USER>:<PROD_U
 # each prod host: install a cron daemon (only when the repo declares #[CronJob] jobs)
 
 # deploy machine, repo root
-pf-deploy.sh                 # every prod host in etc/machines.ini
-pf-deploy.sh <target_host>   # a single prod host (must be in the roster)
+deploy all    # every prod host in etc/machines.ini
+deploy <host> # a single prod host (must be in the roster)
 ```
 
 ## Config surfaces
 
-`pf-deploy.sh` reads three config surfaces from the repo root and fails loudly
+`deploy` reads three config surfaces from the repo root and fails loudly
 if `etc/deploy.conf` or `etc/machines.ini` is missing.
 
 ### `etc/deploy.conf`
@@ -44,7 +44,7 @@ The deployment target (consumer-owned; template at `etc/deploy.conf.template`).
 | `DEPLOY_NIX_RESULT_DIR` | Remote nix result parent (e.g. `/usr/local/<app>`). |
 | `DEPLOY_NIX_GCROOT` | Remote nix gcroot (e.g. `/nix/var/nix/gcroots/<app>`). |
 | `DEPLOY_INIT_CMD` | Optional consumer-specific provisioning command run after the framework's `pf-provision.sh`. |
-| `CRON_FILE` | Required whenever the repo declares a `#[CronJob]` attribute: remote crontab file `pf-deploy.sh` installs the scope-filtered `cron-manifest` output into on every host. |
+| `CRON_FILE` | Required whenever the repo declares a `#[CronJob]` attribute: remote crontab file `deploy` installs the scope-filtered `cron-manifest` output into on every host. |
 | `CRON_USER` | Optional user the cron entries run as (default `root`). |
 | `CRON_NIX_BIN` | Optional `PATH` override for the cron entries (default `$DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/result/bin`). |
 
@@ -52,8 +52,7 @@ The deployment target (consumer-owned; template at `etc/deploy.conf.template`).
 
 The prod-server registry: ZeroTier-IP → `tag[:name]` tokens
 (comma-separated per server). `db:<name>` names a database; every tag doubles
-as a cron `scope`; other tags are consumer-owned. `pf-deploy.sh` (default mode)
-targets every prod host; a host carrying a `db:<name>` token is a database
+as a cron `scope`; other tags are consumer-owned. `deploy all` targets every prod host; a host carrying a `db:<name>` token is a database
 host (its instance is provisioned by `ema create`, not deploy). Each named
 token maps to exactly one server; a server may host several databases. The
 shared `pf-roster` CLI parses this roster, and the shared host lookup resolves
@@ -62,7 +61,7 @@ file is private data (see `doc/system/consumer-config.md`).
 
 ### `.env`
 
-Same runtime contract as `phprun`. `pf-deploy.sh` needs `REPO_PATH` (set by
+Same runtime contract as `phprun`. `deploy` needs `REPO_PATH` (set by
 the consumer's dev-init); the remote `.env` is regenerated on every deploy by
 `gen-env` (see the pipeline below).
 
@@ -77,7 +76,7 @@ the consumer's dev-init); the remote `.env` is regenerated on every deploy by
 ## Before the first deploy
 
 The remote host must have the app user in place before the first
-`pf-deploy.sh` — the CLI does not create it (assert-only):
+`deploy` — the CLI does not create it (assert-only):
 
 1. Create the app user (`PROD_USER`) as root:
 
@@ -100,7 +99,7 @@ The remote host must have the app user in place before the first
    chown -R <PROD_USER>:<PROD_USER> /home/<PROD_USER>/.ssh
    ```
 
-   `pf-deploy.sh` SSHes in as both `root` and `<PROD_USER>` — the nix closure
+   `deploy` SSHes in as both `root` and `<PROD_USER>` — the nix closure
    copy and `composer install` run as the app user.
 
 3. Install a cron daemon — required only when the consumer declares
@@ -115,8 +114,8 @@ systemd host with `curl` available.
 ## The pipeline
 
 ```bash
-pf-deploy.sh                 # every prod host in etc/machines.ini
-pf-deploy.sh <target_host>   # a single prod host (must be in the roster)
+deploy all    # every prod host in etc/machines.ini
+deploy <host> # a single prod host (must be in the roster)
 ```
 
 The fixed pipeline: swap the repo (as `root`), copy the nix closure,
@@ -138,13 +137,13 @@ server steps:
    restart cron (on every host; `host`-scoped jobs run everywhere).
 
 Consumer-owned tag steps (restart services, restore website traversal, ...) are
-added by wrapping `vendor/bin/pf-deploy.sh` in the consumer's own deploy
+added by wrapping `vendor/bin/deploy` in the consumer's own deploy
 entrypoint:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-vendor/bin/pf-deploy.sh "$@"   # framework pipeline (every host, scope-filtered)
+vendor/bin/deploy "$@"   # framework pipeline (scope-filtered per host)
 # ... then, per prod host, the consumer-owned tag steps.
 ```
 

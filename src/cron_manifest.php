@@ -3,7 +3,7 @@
 
 // Scans all PHP files under the consumer repo's src/ for functions decorated
 // with both #[CronJob] and #[Agent] and prints a crontab to stdout, ready to
-// be installed (e.g. /etc/cron.d/<app>-orchestrator by pf-deploy on every
+// be installed (e.g. /etc/cron.d/<app>-orchestrator by deploy on every
 // prod host, filtered by that host's tag list — see --host-tags below).
 //
 // Each #[CronJob] declares where it runs via a required `scope` argument:
@@ -21,7 +21,7 @@
 //   - CRON_USER    from etc/deploy.conf; user the entries run as (default:
 //                  root).
 //   - CRON_NIX_BIN from etc/deploy.conf; dirs prepended to PATH by the
-//                  entries (pf-deploy defaults it to
+//                  entries (deploy defaults it to
 //                  $DEPLOY_TARGET_DIR/vendor/bin:$DEPLOY_NIX_RESULT_DIR/
 //                  result/bin so both `phprun` and `php` resolve).
 //

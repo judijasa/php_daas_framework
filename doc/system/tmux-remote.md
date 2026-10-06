@@ -48,7 +48,7 @@ convenience shell.
 
 `DEPLOY_TARGET_DIR` and `DEPLOY_NIX_RESULT_DIR` are read from the consumer's
 `etc/deploy.conf` (sourced locally, the same loading contract as
-`bin/pf-deploy.sh`; the file stays on the deploy machine). The host then runs:
+`deploy`; the file stays on the deploy machine). The host then runs:
 
 ```text
 cd "$DEPLOY_TARGET_DIR" && source .env \
@@ -115,7 +115,7 @@ Both fail loudly instead of half-working:
 - The consumer's remote `.env` must be bash-sourceable (in practice it is a
   `gen-env` projection).
 - The consumer's `etc/deploy.conf` must be in place locally: `tmux-remote` runs
-  from the deploy machine, like `pf-deploy.sh`.
+  from the deploy machine, like `deploy`.
 
 ## Notes
 

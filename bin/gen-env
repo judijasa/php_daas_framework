@@ -37,9 +37,9 @@ DEPLOY_CONF="$TARGET_DIR/etc/deploy.conf"
 ENV_FILE="$TARGET_DIR/.env"
 
 # Load the project-static deploy config when present (same loading contract as
-# bin/pf-deploy.sh: the file is sourced, so the `export` markers are optional).
+# bin/deploy: the file is sourced, so the `export` markers are optional).
 # When absent, the values are supplied by the replayed deploy.conf environment
-# (pf-deploy.sh runs gen-env with it in scope).
+# (deploy runs gen-env with it in scope).
 if [[ -f "$DEPLOY_CONF" ]]; then
     set -a
     # shellcheck disable=SC1090

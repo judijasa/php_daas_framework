@@ -54,7 +54,7 @@ attribute.
 | `worker`         | hosts with the bare `worker` token |
 | any `tag[:name]` | hosts whose roster entry carries that exact token |
 
-`cron-manifest --host-tags <comma-list>` (the filter `pf-deploy.sh` runs on
+`cron-manifest --host-tags <comma-list>` (the filter `deploy` runs on
 every host, passing that host's own normalized token list) emits a job iff:
 
 - `scope === 'host'`, or

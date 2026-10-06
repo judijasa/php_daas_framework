@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # pf-server-steps — framework's per-host server steps, run on the prod host by
-# pf-deploy.sh after the repo swap + provision.
+# deploy after the repo swap + provision.
 #
-# Values come from the replayed deploy.conf environment (see pf-deploy.sh);
+# Values come from the replayed deploy.conf environment (see deploy);
 # a consumer that commits a real etc/deploy.conf still overrides them (the
 # file is sourced only when present). It runs: gen-env (regenerate .env),
 # db-check (warn-only reachability), and — on every host — the scope-filtered
@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-# CWD is the deployed repo root (pf-deploy.sh cds there first).
+# CWD is the deployed repo root (deploy cds there first).
 if [[ -f ./etc/deploy.conf ]]; then
     set -a
     # shellcheck disable=SC1091
@@ -28,12 +28,12 @@ echo "    Verifying database connectivity (warn-only)..." >&2
 db-check --reuter-ini "$DEPLOY_REUTER_INI"
 
 # Cron install runs on every host, filtered by this host's own tag list
-# (HOST_TAGS, replayed by pf-deploy.sh): a job is emitted only when its scope
+# (HOST_TAGS, replayed by deploy): a job is emitted only when its scope
 # is `host` or an exact element of the list. Skipped entirely when the repo
 # declares no #[CronJob] jobs.
 if grep -Rqs '#\[CronJob' "$DEPLOY_TARGET_DIR/src"; then
     if [ -z "${CRON_FILE:-}" ]; then
-        echo "pf-deploy: this repo declares #[CronJob] attributes but deploy.conf sets no CRON_FILE." >&2
+        echo "deploy: this repo declares #[CronJob] attributes but deploy.conf sets no CRON_FILE." >&2
         exit 1
     fi
     # Cron entries need both phprun (vendor/bin) and php (nix result bin) on
@@ -54,8 +54,8 @@ if grep -Rqs '#\[CronJob' "$DEPLOY_TARGET_DIR/src"; then
         fi
     done
     if [ -z "$cron_svc" ]; then
-        echo "pf-deploy: no cron daemon found (tried cron/crond/cronie.service)." >&2
-        echo "pf-deploy: install a cron daemon on this host, then re-run the deploy." >&2
+        echo "deploy: no cron daemon found (tried cron/crond/cronie.service)." >&2
+        echo "deploy: install a cron daemon on this host, then re-run the deploy." >&2
         exit 1
     fi
     systemctl restart "$cron_svc"

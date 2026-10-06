@@ -28,7 +28,7 @@
   },
   "bin": [
     "bin/phprun",
-    "bin/pf-deploy.sh",
+    "bin/deploy",
     "bin/gen-env",
     "bin/db-check",
     "bin/gen-team-accounts",

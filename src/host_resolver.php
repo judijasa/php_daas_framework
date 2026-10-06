@@ -7,7 +7,7 @@ declare(strict_types=1);
 // A host has two spellings in this framework: the short name an operator types
 // (`simo0`) and the ZeroTier IP that is the host's identity everywhere else
 // (the etc/machines.ini key, the `ssh root@<host>` target, the
-// pf-deploy.sh target). Two consumer-owned private files pair them:
+// deploy target). Two consumer-owned private files pair them:
 //
 //   etc/hosts        `ip name` lines — the same mapping gen-ssh-config turns
 //                    into the dev ssh aliases. Optional private data: a

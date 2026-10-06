@@ -6,7 +6,7 @@ the `phprun` CLI.
 
 The repo is dual-role: a framework consumed by other projects, and a standalone
 forkable template that behaves like one of its own consumers (the same
-`make dev-init`, `bin/phprun`, and `bin/pf-deploy.sh` workflows run here as in
+`make dev-init`, `bin/phprun`, and `deploy` workflows run here as in
 a consumer).
 
 - `#[Agent]` / `#[CronJob]` — declare runnable agents, their schedules, and
@@ -53,8 +53,8 @@ sandboxes, per-database instances, and the manual `reuter.ini` — is in
 ## Deploy
 
 ```bash
-bin/pf-deploy.sh                 # every prod host in etc/machines.ini
-bin/pf-deploy.sh <target_host>   # a single prod host
+deploy all       # every prod host in etc/machines.ini
+deploy <host>    # a single prod host (short name or ZeroTier IP)
 ```
 
 The deploy config, host preparation, and pipeline are in

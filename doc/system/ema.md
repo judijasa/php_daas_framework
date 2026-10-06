@@ -161,16 +161,16 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
 
 ## Deploy chain
 
-- `pf-deploy.sh` ships `pkg/` and `srv/` (gitattributes keeps them in the
+- `deploy` ships `pkg/` and `srv/` (gitattributes keeps them in the
   archive), then runs `composer install` on the remote so the framework CLIs
   (`gen-env`, `db-check`, `pf-provision.sh`, ...) and `ema` land in
   `vendor/bin`.
-- `pf-deploy.sh` ships the private files the consumer names in
+- `deploy` ships the private files the consumer names in
   `DEPLOY_PRIVATE_FILES` into the freshly swapped `etc/` right after the repo
   swap + `composer install` and before anything reads them (the swap wipes
   `etc/`). `etc/deploy.conf` is never shipped: its values are replayed as
   environment to every remote step.
-- `pf-deploy.sh`'s built-in server steps (run after provisioning and
+- `deploy`'s built-in server steps (run after provisioning and
   `DEPLOY_INIT_CMD`, as root, on every host):
   1. `gen-env` → `.env` with `EMA_TARGET=prod` and
      `REUTER_INI=$DEPLOY_REUTER_INI`;
@@ -179,7 +179,7 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
      and TCP-checks each reuter.ini section;
   3. on every host: `cron-manifest --host-tags <host's tokens>` → `CRON_FILE`,
      restart cron (scope-filtered; `host`-scoped jobs run everywhere).
-- `vendor/bin/pf-provision.sh` (`pf-deploy.sh`, root) asserts the `PROD_USER`
+- `vendor/bin/pf-provision.sh` (`deploy`, root) asserts the `PROD_USER`
   account, creates the permanent system dirs, and installs the framework-owned
   `mariadb@.service` template unit. It never creates databases or users —
   instances are provisioned by `ema create` (which asserts the unit exists and
