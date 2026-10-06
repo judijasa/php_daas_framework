@@ -6,9 +6,10 @@
 # proceed while an operator investigates. Two checks:
 #
 #   1. Instance check (every host): enumerate the host's own `mariadb@<db>`
-#      systemd units (the unit name is the database name) and verify each
+#      systemd units (the unit name is the instance name) and verify each
 #      instance is up — the unit is active, the socket in /etc/<db>/my.cnf
-#      answers `mysqladmin ping`, and the schema exists in
+#      answers `mysqladmin ping`, and the schema it serves (its section's
+#      DBNAME, falling back to the instance name) exists in
 #      information_schema.SCHEMATA. App-only hosts have no such units, so
 #      this is a no-op there. The instance set is derived from the units
 #      alone — no roster read, so prod never touches machines.ini.
@@ -43,6 +44,30 @@ _schema_exists() {
     client_bin="$(command -v mariadb || command -v mysql || true)"
     [[ -z "$client_bin" ]] && return 1
     [[ -n "$("$client_bin" --socket="$socket" -u root -N -e "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$db'" 2>/dev/null)" ]]
+}
+
+# The schema served by instance <section>: its reuter.ini [<section>] DBNAME
+# (the header is the instance, DBNAME the schema it serves). Empty when the
+# file/section/key is absent — the caller falls back to the instance name (a
+# primary whose header is also its schema).
+_reuter_dbname() {
+    local ini="$1" section="$2"
+    [[ -f "$ini" ]] || return 0
+    awk -F= -v sec="$section" '
+        /^[[:space:]]*[[]/ {
+            hdr = $0
+            gsub(/^[[:space:]]*[[]/, "", hdr)
+            sub(/][[:space:]]*$/, "", hdr)
+            in_sec = (hdr == sec)
+            next
+        }
+        in_sec && $1 ~ /^[[:space:]]*DBNAME[[:space:]]*$/ {
+            val = substr($0, index($0, "=") + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+            print val
+            exit
+        }
+    ' "$ini"
 }
 
 # --- argument parsing ------------------------------------------------------
@@ -108,8 +133,10 @@ for unit in $units; do
         warn "instance $unit does not answer ping on socket $socket"
         continue
     fi
-    if ! _schema_exists "$socket" "$name"; then
-        warn "schema '$name' missing from instance $unit"
+    schema="$(_reuter_dbname "$REUTER_INI_PATH" "$name")"
+    schema="${schema:-$name}"
+    if ! _schema_exists "$socket" "$schema"; then
+        warn "schema '$schema' missing from instance $unit"
     fi
 done
 

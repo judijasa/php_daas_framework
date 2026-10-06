@@ -21,7 +21,8 @@ declare(strict_types=1);
 //   GRANT <role> TO 'member'@'%';
 //   SET DEFAULT ROLE <role> FOR 'member'@'%';
 // preceded by the role definitions (shared roles package first, then the
-// per-database grant package), with {{dbname}} filled from <db>.
+// per-database grant package), with {{dbname}} filled from the schema the
+// instance serves (srv/<db>-<GUID>/default.php dbname).
 //
 // Usage: gen-team-accounts <db> [-n|--dry-run] [--help]
 
@@ -31,7 +32,7 @@ Usage: gen-team-accounts <db> [flags]
 Reconcile team-member DB accounts (password, no certificate, any host) and
 roles for one database, from etc/team.ini + pkg/<db>.roles-<GUID>.
 
-  <db>              database name (resolves pkg/<db>.roles-<GUID>).
+  <db>              instance name (resolves pkg/<db>.roles-<GUID>).
   -n, --dry-run     print the reconcile SQL without applying it.
   -h, --help        show this help.
 
@@ -95,9 +96,25 @@ function sql_quote(string $value): string
     return str_replace("'", "''", $value);
 }
 
-function build_reconcile_sql(string $root, string $db, array $team, string $grantsDir): string
+function srv_dbname(string $root, string $instance): string
 {
-    $sql = '-- gen-team-accounts reconcile for `' . $db . '` (transient; never persisted)' . PHP_EOL;
+    $matches = glob($root . '/srv/' . $instance . '-*/') ?: [];
+    $matches = array_values(array_filter($matches, 'is_dir'));
+    if (count($matches) === 1) {
+        $default = $matches[0] . '/default.php';
+        if (is_file($default)) {
+            $config = include $default;
+            if ($config instanceof \Ema\Config\DatabaseConfig && $config->dbname !== '') {
+                return $config->dbname;
+            }
+        }
+    }
+    return $instance;
+}
+
+function build_reconcile_sql(string $root, string $db, string $dbname, array $team, string $grantsDir): string
+{
+    $sql = '-- gen-team-accounts reconcile for `' . $dbname . '` (transient; never persisted)' . PHP_EOL;
     $sql .= PHP_EOL . '-- Role definitions (shared roles package, then per-database grants)' . PHP_EOL;
 
     $roleNames = [];
@@ -114,7 +131,7 @@ function build_reconcile_sql(string $root, string $db, array $team, string $gran
     $sql .= read_upgrade_sql($grantsDir) . PHP_EOL;
 
     // Fill the database placeholder in the role/grant SQL.
-    $sql = str_replace('{{dbname}}', $db, $sql);
+    $sql = str_replace('{{dbname}}', $dbname, $sql);
     $roleNames = array_values(array_unique($roleNames));
     if (count($roleNames) === 0) {
         fwrite(STDERR, "gen-team-accounts: no CREATE ROLE statement found in the roles packages\n");
@@ -204,7 +221,8 @@ function main(array $argv): int
         return 1;
     }
 
-    $sql = build_reconcile_sql($root, $db, $team, $grantsDir);
+    $dbname = srv_dbname($root, $db);
+    $sql = build_reconcile_sql($root, $db, $dbname, $team, $grantsDir);
     fwrite(STDOUT, $sql);
 
     if ($dryRun) {
