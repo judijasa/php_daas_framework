@@ -49,11 +49,14 @@ provisioning.
 
 `replica-bootstrap` is that one-time step. It:
 
-1. creates a passwordless, host-pinned `replication` transport account on the
+1. preflights the replica→primary TCP channel (the primary's `PORT` must be
+   reachable from the replica host) and aborts before touching the primary if
+   it is not;
+2. creates a passwordless, host-pinned `replication` transport account on the
    primary (`CREATE USER 'replication'@'<replica-ip>' IDENTIFIED BY ''` +
    `GRANT REPLICATION SLAVE ON *.*` — an instance-level/global transport
    grant, not a per-database grant);
-2. takes a consistent snapshot of the primary (`mariabackup`, prepared) and
+3. takes a consistent snapshot of the primary (`mariabackup`, prepared) and
    ships it to the replica host.
 
 The consumer's replica provisioning then restores the shipped snapshot and
@@ -65,9 +68,10 @@ transport account or take the snapshot itself.
 `replica-bootstrap` runs from a dev machine with root SSH to both the primary
 and replica hosts (ZeroTier). It reads the primary's connectivity from the
 consumer's `etc/reuter.ini` section — `SERVER` (the primary host, also the
-SSH target) and `MYSQL_UNIX_PORT` (the instance's root/unix_socket). The
-replica's own section is not needed yet: its instance does not exist until it
-is provisioned.
+SSH target), `PORT` (the primary's TCP endpoint the replica connects back
+to) and `MYSQL_UNIX_PORT` (the instance's root/unix_socket). The replica's
+own section is not needed yet: its instance does not exist until it is
+provisioned.
 
 Invocation is the same script on either side of the package boundary; only the
 path differs — `bin/replica-bootstrap` in this repo, `vendor/bin/` in a
@@ -157,6 +161,9 @@ ships the `mariadb@.service` template unit.
   consumer's host-setup docs carry the concrete package for their distro).
 - **Dev machine** — root SSH to both the primary and the replica host
   (ZeroTier).
+- **Network** — the replica host must reach the primary's `PORT` (the run
+  preflights this and aborts before creating anything, so a firewall/network
+  miss fails early instead of surfacing inside `ema create`).
 
 ## Workflow
 

@@ -21,8 +21,9 @@
 #
 # Config:
 #   etc/reuter.ini   [<primary-db>] section — SERVER (the primary host, the
-#                    SSH target) and MYSQL_UNIX_PORT (the primary instance's
-#                    root/unix_socket). The replica's own section is not
+#                    SSH target), PORT (the primary's TCP endpoint the replica
+#                    connects back to) and MYSQL_UNIX_PORT (the primary
+#                    instance's root/unix_socket). The replica's own section is not
 #                    needed yet: its instance is created later by
 #                    `ema create`. Read from the working directory (run
 #                    from the consumer's repo root).
@@ -148,6 +149,17 @@ main() {
     local dest="${DEST:-/root/replica-snapshot-$PRIMARY}"
     local snapshot_tmp="/root/replica-bootstrap-$PRIMARY"
     local tarball="$snapshot_tmp.tar.gz"
+
+    local port
+    port="$(reuter_value "$REUTER_INI_PATH" "$PRIMARY" "PORT")"
+    [[ -n "$port" ]] || die "[$PRIMARY] has no PORT in $REUTER_INI_PATH (replication needs the primary's TCP endpoint)"
+
+    # Preflight the replication channel before touching the primary: the
+    # replica's IO thread will connect back to the primary on this port, a
+    # direction the account/snapshot step never exercises. A firewall or
+    # network miss would otherwise surface later, inside `ema create`, as a
+    # confusing `Slave_IO_Running='Connecting'` + `Connection timed out`.
+    run ssh "root@$REPLICA_HOST" "timeout 5 bash -c ': < /dev/tcp/$primary_host/$port' >/dev/null 2>&1" || die "primary's replication port $primary_host:$port not reachable from the replica — open the firewall allow rule (gen-firewall) and check ZeroTier reachability"
 
     # 1. Create the `replication` account, then take + prepare the snapshot on
     #    the primary (single SSH session; the values are passed as positional
