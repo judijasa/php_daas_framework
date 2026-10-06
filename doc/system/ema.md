@@ -117,16 +117,18 @@ nor the `.env`.
 ## The reuter.ini contract
 
 `etc/reuter.ini` is **manual, consumer-owned** private data — there is no
-generator anymore. `ema create` prints the `[<dbname>]` section and the
-operator records it (or `ema values <db>` recovers a lost record); the
+generator anymore. `ema create` prints the `[<instance>]` section and the
+operator records it (or `ema values <instance>` recovers a lost record); the
 consumer owns the file (it keeps it in its private config repo and places it
 in `etc/` — see `doc/system/consumer-config.md`). Sections are keyed by
-database name — the
-section header IS the dbname:
+instance name — the
+section header names the instance; `DBNAME` names the schema it serves
+(default: the header):
 
-    [mydb]
+    [mydb]                 ; the instance (section header)
     SERVER=10.147.x.x
     PORT=3306
+    DBNAME=mydb            ; the schema it serves (default: the header)
     <ACCOUNT>_PASSWORD=...
     MYSQL_UNIX_PORT=/path/to/mysql.sock
 

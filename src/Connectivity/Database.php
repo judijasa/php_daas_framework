@@ -65,7 +65,12 @@ class Database extends PDO
         $server = $cnf['SERVER'];
         $port = $cnf['PORT'] ?? '3306';
 
-        $dsn = "mysql:host={$server};port={$port};dbname={$dbname};charset=utf8mb4";
+        // The section header names the instance (what `$dbname` keys); the DSN's
+        // `dbname=` is the schema the instance serves — the section's DBNAME,
+        // defaulting to the header when the section omits it.
+        $schema = $cnf['DBNAME'] ?? $dbname;
+
+        $dsn = "mysql:host={$server};port={$port};dbname={$schema};charset=utf8mb4";
 
         $socket = getenv('MYSQL_UNIX_PORT');
         if ($socket !== false && $socket !== '') {
@@ -159,8 +164,11 @@ class Database extends PDO
         if ($socket === '') {
             throw new \RuntimeException("Section [$dbname] in $path has no MYSQL_UNIX_PORT.");
         }
+        // The schema the sandbox instance serves: its section's DBNAME,
+        // defaulting to the header ($dbname) when the section omits it.
+        $schema = $cnf['DBNAME'] ?? $dbname;
         return new self(
-            "mysql:unix_socket={$socket};dbname={$dbname};charset=utf8mb4",
+            "mysql:unix_socket={$socket};dbname={$schema};charset=utf8mb4",
             'root',
             '',
             self::baseOptions()

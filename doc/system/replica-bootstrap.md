@@ -167,11 +167,13 @@ ships the `mariadb@.service` template unit.
    to both hosts. It creates the transport account and ships the prepared
    snapshot to the replica host's `--dest`.
 3. Provision the replica: an `srv/<name>-<GUID>` package whose `default.php`
-   returns an `Ema\Config\DatabaseConfig` with `type: 'replica'` and
-   `replica_of: '<primary>'` (no `dependencies`/`upgrade.sql`), built with
+   returns an `Ema\Config\DatabaseConfig` with `type: 'replica'`,
+   `replica_of: '<primary>'` (the primary's instance) and `dbname: '<primary's
+   schema>'` (no `dependencies`/`upgrade.sql`), built with
    `ema create srv/<name>-<GUID> --from-snapshot <dest>` — ema restores the
    shipped snapshot and attaches replication from the recorded coordinate
-   (`read_only=1`, `replicate-rewrite-db = <primary>-><replica>`). A replica
+   (`read_only=1`); the replica serves the primary's schema under its own name
+   (no `replicate-rewrite-db`). A replica
    may also opt into verifying the primary's server certificate with
    `replica_ssl_verify_server_cert: true` — replica-only and default
    off (the primary's certificate is the self-signed one until a consumer

@@ -21,7 +21,7 @@ connectivity. `#[Agent]` is for DB connectivity only — where a job runs is
 
 | Argument    | Type      | Required             | Meaning |
 |-------------|-----------|----------------------|---------|
-| `dbTarget`  | `?string` | no                   | The database name. `phprun` resolves it through `Database::connectTo` and injects the connection as the call's first argument: under `EMA_TARGET=sandbox` it is the local `var/sandbox/<dbname>-<GUID>/reuter.ini` instance, under `EMA_TARGET=prod` (also unset/empty) the `[<dbname>]` section of the resolved `reuter.ini`. |
+| `dbTarget`  | `?string` | no                   | The instance name (the `reuter.ini` section header). `phprun` resolves it through `Database::connectTo` and injects the connection as the call's first argument: under `EMA_TARGET=sandbox` it is the local `var/sandbox/<name>-<GUID>/reuter.ini` instance, under `EMA_TARGET=prod` (also unset/empty) the `[<instance>]` section of the resolved `reuter.ini`. The schema the instance serves is the section's `DBNAME` (default: the header), never the target string. |
 | `dbAccount` | `?string` | under `EMA_TARGET=prod` | The service-account name whose `<ACCOUNT>_PASSWORD` key `Database::connectAs` reads from that `reuter.ini` section. Prod-only: sandbox mode ignores it and connects as `root` over the instance's socket. |
 
 An agent with no database (e.g. a host-maintenance job) uses
