@@ -235,6 +235,11 @@ deploy_repo_remotely() {
 
       echo 'Activating new repository codebase...' >&2
       mv \"\$TMP_DIR\" \"\$FINAL_DIR\"
+      # Preserve the live dir's mode across the swap: mktemp creates the temp
+      # dir 0700, which would clobber any mode the consumer set previously.
+      if [ -d \"\$BACKUP_DIR\" ]; then
+          chmod --reference=\"\$BACKUP_DIR\" \"\$FINAL_DIR\"
+      fi
 
       # Handle logging and capture old version output for stdout
       LOG_FILE=\"\$LOG_DIR/deploy_version.log\"
