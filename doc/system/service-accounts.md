@@ -97,7 +97,7 @@ database, which gate the Phase 3 revokes). Accounts are global in `mysql.user`
 is emitted identically on each per-database run — idempotent.
 
 `-n/--dry-run` prints the SQL without applying it. Otherwise it applies the
-SQL through `ema mariadb <db>`, with `EMA_TARGET=prod` pinned: the reconcile is
+SQL through `ema mdb <db>`, with `EMA_TARGET=prod` pinned: the reconcile is
 prod-only, so an operator shell in sandbox mode must not redirect it. The SQL is
 discarded after apply.
 
@@ -106,7 +106,7 @@ The CLI runs from the **operator machine**: planning reads `etc/team.ini`,
 only the SQL execution crosses the network. The target is the host carrying the
 database's `db:<name>` roster token (the framework's one-to-one server
 mapping); the CLI reaches it as `root` over `ssh` and runs the deployed repo's
-own `ema mariadb <db>` there, from the deployed repo root (`DEPLOY_TARGET_DIR`,
+own `ema mdb <db>` there, from the deployed repo root (`DEPLOY_TARGET_DIR`,
 read from the consumer's `etc/deploy.conf` — see `doc/system/consumer-config.md`)
 and with the deployed `vendor/bin` plus the nix result bin
 (`$DEPLOY_NIX_RESULT_DIR/result/bin`, see `doc/system/deploy.md`) on the remote

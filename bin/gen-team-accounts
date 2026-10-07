@@ -9,9 +9,9 @@ declare(strict_types=1);
 // role policy (the pkg/ roles packages).
 //
 // It emits transient SQL (never persisted) and, unless -n/--dry-run, applies
-// it as root through `ema mariadb <db> < file.sql`. ema owns the connection:
+// it as root through `ema mdb <db> < file.sql`. ema owns the connection:
 // it connects as root for sandboxes and as DBUSER for prod, so gen-team-accounts
-// runs `ema mariadb` with DBUSER=root to make the reconcile provision as
+// runs `ema mdb` with DBUSER=root to make the reconcile provision as
 // root. Run it as root on the DB host (root/unix_socket auth over the
 // MYSQL_UNIX_PORT socket from the manual reuter.ini section).
 //
@@ -166,7 +166,7 @@ function apply_sql(string $root, string $db, string $sql): int
         return 1;
     }
     $ema = is_executable($root . '/vendor/bin/ema') ? $root . '/vendor/bin/ema' : 'ema';
-    $cmd = 'DBUSER=root ' . escapeshellarg($ema) . ' mariadb ' . escapeshellarg($db) . ' < ' . escapeshellarg($tmp);
+    $cmd = 'DBUSER=root ' . escapeshellarg($ema) . ' mdb ' . escapeshellarg($db) . ' < ' . escapeshellarg($tmp);
     passthru($cmd, $code);
     @unlink($tmp);
     return $code;

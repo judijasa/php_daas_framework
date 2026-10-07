@@ -15,7 +15,7 @@ roles packages); this framework owns the `gen-team-accounts` CLI.
 
 # 2. DB host, as root
 gen-team-accounts <db> -n          # review the SQL
-gen-team-accounts <db>             # apply (via ema mariadb <db> < file.sql)
+gen-team-accounts <db>             # apply (via ema mdb <db> < file.sql)
 
 # 3. the member connects with a password (mariadb -p, or ~/.my.cnf)
 ```
@@ -65,7 +65,7 @@ emits transient SQL (never persisted):
     SET DEFAULT ROLE developer FOR 'john'@'%';
 
 `-n/--dry-run` prints the SQL without applying it. Otherwise it applies the
-SQL as root through `ema mariadb <db> < file.sql` (the reconcile provisions as
+SQL as root through `ema mdb <db> < file.sql` (the reconcile provisions as
 root; run it as root on the DB host — root/unix_socket auth over the
 `MYSQL_UNIX_PORT` socket from the manual reuter.ini section). The SQL is
 discarded after apply.

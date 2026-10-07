@@ -44,7 +44,7 @@ consumer's own provisioning.
   `doc/system/replica-bootstrap.md`.
 - `ema values <db>` — print the same connectivity values for an existing
   database (recovery when the record is lost). Prod-side as well: no flag.
-- `ema mariadb <db> < file.sql` — apply raw SQL over stdin as the section's
+- `ema mdb <db> < file.sql` — apply raw SQL over stdin as the section's
   client user. There is no `apply` verb (it is rejected). This is ema's only
   **dbname-addressed** verb, so it is the only one that consults `EMA_TARGET`
   (see below).
@@ -62,7 +62,7 @@ consumer's own provisioning.
   `/var/lib/mariadb/<db>` — when it exists on the host, `-` otherwise). Those
   printed paths are what the lifecycle verbs take.
 - `ema drop` is retired: deleting a prod database is a deliberate
-  `DROP DATABASE` over `ema mariadb`.
+  `DROP DATABASE` over `ema mdb`.
 
 The old `ema init db <name>` / `ema init tables <root> <db>` verbs no longer
 exist.
@@ -76,7 +76,7 @@ it narrowly:
 - the app layer (`Utils\Connectivity\Database`) dispatches on it for every
   connection it opens;
 - the `ema` CLI consults it only for its one **dbname-addressed** verb,
-  `ema mariadb <db>`: a database name alone is ambiguous (the same name exists
+  `ema mdb <db>`: a database name alone is ambiguous (the same name exists
   on both sides), which is exactly what lets the app layer point at a sandbox
   without changing dbname or user. Everything else resolves its own side —
   `ema sandbox` loads its instance's ini, `create`/`values` always act on prod,
@@ -90,11 +90,11 @@ The values:
   otherwise an error naming the full `<name>-<GUID>` form), connecting as
   `root` over that instance's `MYSQL_UNIX_PORT` with an empty password — the
   same root/socket auth ema applies its DDL with. A sandbox has no
-  credentials, so an agent's `dbAccount` is ignored; `ema mariadb <db>`
+  credentials, so an agent's `dbAccount` is ignored; `ema mdb <db>`
   likewise connects as `root` over the sandbox instance;
 - `prod` — prod target via `$REUTER_INI` (fallback `etc/reuter.ini`), with the
   app layer on the service-account path (`connectAs` over TCP) and
-  `ema mariadb <db>` connecting as `DBUSER`/`$USER`.
+  `ema mdb <db>` connecting as `DBUSER`/`$USER`.
 
 Any other value is an error. The connection-file path stays a separate env
 var (`REUTER_INI`); `EMA_TARGET` only picks the mode. The old `EMA_MODE` is
@@ -110,7 +110,7 @@ itself, so the session that runs it must have those values in scope
 `doc/system/tmux-remote.md`). The dev `.env` (init-local-env.sh) writes
 `EMA_TARGET=sandbox` and no `REUTER_INI`: `phprun` sources that `.env` before
 running an agent, which is how the app layer picks up the mode — and the dev
-shell (`pf-shell-enter.sh`) sources it too, which is how `ema mariadb <db>`
+shell (`pf-shell-enter.sh`) sources it too, which is how `ema mdb <db>`
 picks the sandbox instance there. The lifecycle verbs need neither the flag
 nor the `.env`.
 
