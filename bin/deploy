@@ -235,7 +235,6 @@ deploy_repo_remotely() {
 
       echo 'Activating new repository codebase...' >&2
       mv \"\$TMP_DIR\" \"\$FINAL_DIR\"
-      chmod o+x \"\$FINAL_DIR\"
 
       # Handle logging and capture old version output for stdout
       LOG_FILE=\"\$LOG_DIR/deploy_version.log\"
