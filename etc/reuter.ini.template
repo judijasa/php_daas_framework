@@ -8,8 +8,8 @@
 ;
 ; `$account` is a service-account name owned by the consumer (this framework
 ; does not name any account). The connector reads its password from the
-; <ACCOUNT>_PASSWORD key (uppercased account name + `_PASSWORD`); an empty
-; value means a passwordless account.
+; <ACCOUNT>_PASSWORD key (uppercased account name + `_PASSWORD`); an absent
+; or empty value means a passwordless account.
 ;
 ; This file carries prod connectivity only and is MANUALLY MAINTAINED by the
 ; consumer: it is private data, kept in the consumer's own private config repo

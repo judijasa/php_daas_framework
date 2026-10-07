@@ -145,7 +145,7 @@ them.
 `{{collation}}` (no user/grants placeholders). The service accounts and their
 grants are consumer policy: the consumer provisions them separately (on the DB
 host as root over the socket) and persists one `<ACCOUNT>_PASSWORD` key per
-account into the section (an empty value means a passwordless account).
+account into the section (an absent or empty value means a passwordless account).
 Per-object grants live in the consumer's `pkg/<name>-<GUID>/upgrade.sql`,
 applied by ema.
 

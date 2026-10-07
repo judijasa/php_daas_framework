@@ -119,19 +119,14 @@ class Database extends PDO
     // Open a connection for a service account (the prod path). The account
     // name is consumer policy — this framework does not know any specific
     // account. Its password is read from the <ACCOUNT>_PASSWORD key of the
-    // [<dbname>] section (uppercased account name + `_PASSWORD`); an empty
-    // value means a passwordless account.
+    // [<dbname>] section (uppercased account name + `_PASSWORD`); an absent
+    // or empty value means a passwordless account.
     public static function connectAs(string $dbname, string $account): self {
         if ($account === '') {
             throw new \RuntimeException("Database account name must not be empty.");
         }
         $cnf = self::loadSection(self::configPath(), $dbname);
         $key = strtoupper($account) . '_PASSWORD';
-        if (!array_key_exists($key, $cnf)) {
-            throw new \RuntimeException(
-                "Account '$account' has no '$key' key in section [$dbname]."
-            );
-        }
         // The prod path is TCP: when the consumer supplies an SSL dir, present
         // the machine's TLS client certificate (REQUIRE X509 membership). The
         // cert + key paths are derived from the single SSL_DIR value. Unset ->
@@ -147,7 +142,7 @@ class Database extends PDO
         return new self(
             self::buildDsn($dbname, $cnf),
             $account,
-            (string) $cnf[$key],
+            (string) ($cnf[$key] ?? ''),
             $options
         );
     }
