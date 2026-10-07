@@ -129,7 +129,10 @@ The `bin` array installs these into `vendor/bin` (or the project's configured
 - `gen-ssh-config` — dev ssh aliases (see `doc/system/ssh-config.md`).
 - `gen-firewall` — host hardening (see `doc/system/host-hardening.md`).
 - `tmux-remote` — remote tmux shell (see `doc/system/tmux-remote.md`).
-- `pf-shell-enter.sh`, `init-local-env.sh` — the dev-init machinery.
+- `pf-shell-enter.sh` — the dev-shell bootstrap: puts the repo's CLIs on PATH
+  (`vendor/bin` first, then `bin/`, so a consumer's `deploy` shadows the
+  framework's) and loads the repo-root `.env`.
+- `init-local-env.sh` — the dev-init machinery.
 
 `ema` itself is not listed here: it is a separate Composer package
 (`judijasa/ema`) that installs its own `vendor/bin/ema` alongside these CLIs.

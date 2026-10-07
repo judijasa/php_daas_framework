@@ -50,7 +50,6 @@
           ];
           shellHook = ''
             . ./bin/dev/pf-shell-enter.sh php_daas
-            [ -d bin ] && export PATH="$PWD/bin:$PATH"
 
             # Customize the prompt (PS1)
             # Define ANSI color codes for readability
