@@ -87,6 +87,16 @@ class Database extends PDO
         ];
     }
 
+    // reuter.ini values are strings. Absent/empty -> the secure default
+    // (verify the server); '0'/'false'/'no'/'off' (case-insensitive) -> OFF;
+    // anything else -> ON.
+    private static function serverVerification(?string $raw): bool {
+        if ($raw === null || trim($raw) === '') {
+            return true;
+        }
+        return !in_array(strtolower(trim($raw)), ['0', 'false', 'no', 'off'], true);
+    }
+
     // The app layer's mode switch, shared with the ema CLI: `sandbox` is
     // explicit, while `prod` is the default (also for unset/empty, which is
     // how the app layer behaved before EMA_TARGET existed). Any other value is
@@ -138,6 +148,19 @@ class Database extends PDO
         if ($sslDir !== false && $sslDir !== '') {
             $options[PDO::MYSQL_ATTR_SSL_CERT] = $sslDir . '/client.crt';
             $options[PDO::MYSQL_ATTR_SSL_KEY] = $sslDir . '/client.key';
+            // Server verification is ON by default (secure by default): the
+            // client authenticates the server against <SSL_DIR>/ca.crt. A
+            // consumer whose server cert is self-signed opts OUT explicitly
+            // with SSL_VERIFY_SERVER_CERT=0 in its [<instance>] section.
+            // PHP 8.4's mysqlnd verifies the server by default once a client
+            // cert is presented, so the opt-out must be explicit rather than
+            // relied on as a historical default.
+            if (self::serverVerification($cnf['SSL_VERIFY_SERVER_CERT'] ?? null)) {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $sslDir . '/ca.crt';
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+            } else {
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+            }
         }
         return new self(
             self::buildDsn($dbname, $cnf),

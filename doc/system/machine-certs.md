@@ -126,9 +126,22 @@ cert; it never runs the CA.
 
 `Utils\Connectivity\Database::connectAs()` reads `SSL_DIR` and, when set,
 passes `PDO::MYSQL_ATTR_SSL_CERT` (`<SSL_DIR>/client.crt`) and
-`PDO::MYSQL_ATTR_SSL_KEY` (`<SSL_DIR>/client.key`). Unset → plain TCP, exactly
+`PDO::MYSQL_ATTR_SSL_KEY` (`<SSL_DIR>/client.key`). Server verification is ON
+by default: unless the instance opts out, it also passes
+`PDO::MYSQL_ATTR_SSL_CA` (`<SSL_DIR>/ca.crt`) and
+`PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT = true`. Unset → plain TCP, exactly
 as before. The attributes are added in the prod/TCP path only: the dev sandbox
 connects as `root` over the local unix socket and never applies TLS.
+
+Verification is opt-out, not opt-in: a consumer whose server certificate is
+self-signed (no CA yet) sets `SSL_VERIFY_SERVER_CERT=0` in that instance's
+`reuter.ini` section, which drops the `SSL_CA` and sets
+`VERIFY_SERVER_CERT = false`. The default is the secure one — PHP 8.4's mysqlnd
+verifies the server by default once a client cert is presented, so the
+framework keeps that default rather than silently weakening it. Note that
+`<SSL_DIR>/ca.crt` must be the CA that signed the *server* certificate (not the
+client CA): until a consumer provisions a CA-signed server cert, its instances
+must stay opted out.
 
 ## Config surfaces
 
@@ -158,8 +171,12 @@ public cert travels back to the host.
   host) has its consumer-facing shape in this repo's `etc/ema.default.conf` — a
   committed default that rides with the repo, so it is no longer named in
   `DEPLOY_PRIVATE_FILES` (see `doc/system/consumer-config.md`).
-- Client-side **server** verification (the client checking the server's cert via
-  `ssl-ca`) is deferred, not dismissed — it needs CA-signed *server* certs.
+- Full mutual TLS (a CA-signed *server* cert + client-side `ssl-ca`) is the
+  follow-up: it needs a server certificate signed by a CA the client trusts.
+  Server verification is already the default (see "App-layer wiring"); what
+  remains is provisioning a CA-signed server cert, after which a consumer drops
+  its `SSL_VERIFY_SERVER_CERT=0` opt-out and supplies the server CA at
+  `<SSL_DIR>/ca.crt`.
 - Revocation: the server half (checking a client cert against a CRL) is the
   sibling `ema` repo's `ssl-crl`; the CA-side CRL generation is consumer data
   (a standard `openssl ca` workflow), documented by each consumer in its
