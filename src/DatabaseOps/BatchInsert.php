@@ -3,6 +3,8 @@
 namespace Utils\DatabaseOps;
 
 use PDO;
+use PDOException;
+use RuntimeException;
 
 class BatchInsert
 {
@@ -16,7 +18,15 @@ class BatchInsert
         foreach (array_chunk($rows, $batch_size) as $chunk) {
             $placeholders = implode(', ', array_fill(0, count($chunk), $placeholder));
             $sql          = "INSERT INTO {$table} ({$col_list}) VALUES {$placeholders} ON DUPLICATE KEY UPDATE {$columns[0]} = {$columns[0]}";
-            $conn->prepare($sql)->execute(array_merge(...$chunk));
+            try {
+                $conn->prepare($sql)->execute(array_merge(...$chunk));
+            } catch (PDOException $e) {
+                throw new RuntimeException(
+                    "BatchInsert into table '{$table}' (columns: {$col_list}) failed: {$e->getMessage()}",
+                    0,
+                    $e
+                );
+            }
         }
     }
 }
