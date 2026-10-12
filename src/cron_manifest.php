@@ -134,7 +134,10 @@ if ($host_tags !== null) {
 echo "NIX_BIN=$nix_bin" . PHP_EOL . PHP_EOL;
 foreach ($entries as $e) {
     $sched = $e['schedule'];
-    $cmd   = "phprun {$e['script']}:{$e['agent']}()";
+    // Escape the () so /bin/sh (dash) passes them through literally to phprun:
+    // an unquoted func() is a shell syntax error and aborts the job before
+    // phprun (and its log file) ever runs.
+    $cmd   = "phprun {$e['script']}:{$e['agent']}\(\);";
     echo "$sched $cron_user /bin/sh -c 'export PATH=\"\$NIX_BIN:\$PATH\"; cd $repo_root && $cmd'" . PHP_EOL;
 }
 
