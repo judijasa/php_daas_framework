@@ -124,6 +124,13 @@ in `DEPLOY_PRIVATE_FILES`, run `pf-provision.sh` (which installs the shared
 `mariadb@.service` unit) + the optional `DEPLOY_INIT_CMD`, then the built-in
 server steps:
 
+The closure is the deployed repo's own `packages.<system>.default`, built
+locally and symlinked on the host at `$DEPLOY_NIX_RESULT_DIR/result`: it is
+the host's runtime (php, composer, jq, tmux, bash) and the only source of
+`php` there. A flake that declares no such package makes `deploy` warn and
+skip the step, leaving the host without a runtime that every later step,
+`tmux-remote` and `gen-service-accounts` assume exists.
+
 1. **`gen-env`** — regenerate `.env` as a deterministic projection of
    `etc/deploy.conf` (`REPO_PATH`/`REPO_LOG`/`REUTER_INI`/`EMA_TARGET=prod`;
    `MYSQL_*`-free — the DB host's socket lives in the prod `reuter.ini`

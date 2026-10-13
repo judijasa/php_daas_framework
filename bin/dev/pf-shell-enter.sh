@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dev-shell runtime bootstrap, sourced by the shellHook of this repo's
-# flake (./bin/dev/pf-shell-enter.sh <PROJECT_NAME>) and of consumer flakes (shipped on PATH
-# via the framework's nix package). Must be sourced (not executed): the
+# flake (./bin/dev/pf-shell-enter.sh <PROJECT_NAME>) and of consumer flakes
+# (Composer-delivered into vendor/bin). Must be sourced (not executed): the
 # .env exports and the PATH entries must reach the interactive shell. Must
 # run from the repo root ($PWD).
 #

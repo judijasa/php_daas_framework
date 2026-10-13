@@ -11,6 +11,11 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
+        # The extension set mirrors composer.json's `ext-*` contract
+        # (mysqli/pdo_mysql for the DB layer, bz2 for the
+        # jakoch/phantomjs-installer composer side-effect): the flake makes
+        # the extensions exist/loadable, and composer.json enforces them at
+        # install (missing → hard failure).
         phpPkg = pkgs.php84.withExtensions ({ all, enabled }:
           enabled ++ [
             all.mysqli
@@ -27,23 +32,44 @@
         # full-repo push-time gates; pre-commit installs the pre-commit/pre-push
         # hook shims via `make dev-init` (bin/dev/init-git-hooks.sh).
         bashPkg = pkgs.bash;
+        jqPkg = pkgs.jq;      # the `ema` CLI (Composer-delivered) parses with jq
+        tmuxPkg = pkgs.tmux;  # pf-shell-enter.sh aliases it; tmux-remote runs it on the host
         mariadbPkg = pkgs.mariadb_118;
         phpLinter = pkgs.phpstan;
         pre-commit = pkgs.pre-commit;
+
+        # Common packages shared by dev and prod: the environment binaries
+        # only. Framework + ema code (src/, the CLIs, the dev scripts) is
+        # Composer-delivered to vendor/bin, so it is absent here — a flake
+        # input would make this repo a second consumption point for the same
+        # packages (see doc/system/composer.md).
+        commonPackages = [
+          bashPkg
+          phpPkg
+          phpComposer
+          jqPkg
+          tmuxPkg
+        ];
       in
       {
-        # DEVELOPMENT ENVIRONMENT ONLY: PHP + composer + local MariaDB, for
-        # standalone/template usage. Framework code (src/, the CLIs, and the
-        # dev scripts) is Composer-delivered (vendor/bin), not re-exported
-        # here, so the flake keeps only the environment binaries (php runtime
-        # + extensions, composer, mariadb, bash, phpstan, pre-commit). ema
-        # (CLI + init-cluster.sh) is also Composer-delivered via the
-        # `judijasa/ema` package, so it is absent from this shell.
+        # PRODUCTION ARTIFACT (Built when running 'nix build')
+        # The runtime the deployed repo executes in: `bin/deploy` builds it
+        # locally, copies the closure to the host and symlinks it at
+        # $DEPLOY_NIX_RESULT_DIR/result, so the host gets php (vendor/bin's
+        # phprun/ema call it), composer (the remote `composer install`), jq
+        # (ema), tmux (tmux-remote) and bash without building anything itself.
+        # It DOES NOT spin up background services.
+        packages.default = pkgs.symlinkJoin {
+          name = "prod-dependencies";
+          paths = commonPackages;
+        };
+
+        # DEVELOPMENT ENVIRONMENT (Triggered via 'nix develop')
+        # The prod runtime plus the dev-only tooling (local MariaDB, phpstan,
+        # pre-commit). `make dev-init` runs composer install to populate
+        # vendor/bin with the framework + ema CLIs.
         devShells.default = pkgs.mkShell {
-          buildInputs = [
-            bashPkg
-            phpPkg
-            phpComposer
+          buildInputs = commonPackages ++ [
             mariadbPkg
             phpLinter   # phpstan: scoped commit-time + full-repo push-time gates
             pre-commit  # pre-commit framework (hook shims installed by make dev-init)

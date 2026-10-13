@@ -18,7 +18,7 @@
 # (tracked, read as a fallback so a plain checkout works) is sourced first,
 # then the optional git-ignored etc/dev.conf (the override, sourced last, wins).
 # Backend for the Makefile target _dev-init-local-env (make dev-init) in
-# this repo and in consumer repos (shipped in the nix package, on PATH).
+# this repo and in consumer repos (Composer-delivered into vendor/bin).
 # Always regenerates the file: a stale .env would silently misconfigure
 # phprun (it loads the repo-root .env from the CWD at runtime).
 # Usage: init-local-env.sh [target-dir]   (defaults to $PWD)
