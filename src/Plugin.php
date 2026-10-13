@@ -61,6 +61,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface
     {
         self::installCasperJs($event);
         self::patchPhpcasperjs($event);
+        self::patchCasperJsBin($event);
     }
 
     private static function installCasperJs(Event $event): void
@@ -138,5 +139,32 @@ final class Plugin implements PluginInterface, EventSubscriberInterface
             file_put_contents($target, $patched);
             $event->getIO()->write('   - phpcasperjs: patched `private $script` to `protected $script`');
         }
+    }
+
+    /**
+     * casperjs-installer writes its bin proxy (the root project's
+     * bin-dir/casperjs) with a hard-coded `#!/bin/bash` shebang, which no host
+     * without /bin/bash can execute (NixOS, minimal containers). Rewrite that
+     * first line to the `env` form, so the interpreter is resolved from PATH —
+     * the same resolution this repo's own scripts rely on.
+     */
+    private static function patchCasperJsBin(Event $event): void
+    {
+        $binDir = $event->getComposer()->getConfig()->get('bin-dir');
+        $target = $binDir . '/casperjs';
+
+        if (!is_file($target)) {
+            return;
+        }
+
+        $content = (string) file_get_contents($target);
+        $shebang = "#!/bin/bash\n";
+
+        if (!str_starts_with($content, $shebang)) {
+            return;
+        }
+
+        file_put_contents($target, "#!/usr/bin/env bash\n" . substr($content, strlen($shebang)));
+        $event->getIO()->write('   - casperjs: patched `#!/bin/bash` to `#!/usr/bin/env bash`');
     }
 }
