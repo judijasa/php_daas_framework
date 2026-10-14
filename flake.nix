@@ -31,7 +31,9 @@
         # (.pre-commit-config.yaml): phpstan powers the scoped commit-time and
         # full-repo push-time gates; pre-commit installs the pre-commit/pre-push
         # hook shims via `make dev-init` (bin/dev/init-git-hooks.sh).
-        bashPkg = pkgs.bash;
+        # readline: fixes arrow keys in nix shell on NixOS (without it, arrows produce escape sequences)
+        # ncurses: together with readline, it fixes arrow keys in nix shell + tmux on NixOS
+        bashPkg = pkgs.bashInteractive;  # Includes readline + ncurses
         jqPkg = pkgs.jq;      # the `ema` CLI (Composer-delivered) parses with jq
         tmuxPkg = pkgs.tmux;  # pf-shell-enter.sh aliases it; tmux-remote runs it on the host
         mariadbPkg = pkgs.mariadb_118;
@@ -75,6 +77,9 @@
             pre-commit  # pre-commit framework (hook shims installed by make dev-init)
           ];
           shellHook = ''
+            # Set SHELL to bashInteractive so tmux uses bash with readline support
+            export SHELL="${pkgs.bashInteractive}/bin/bash"
+
             . ./bin/dev/pf-shell-enter.sh php_daas
 
             # Customize the prompt (PS1)
