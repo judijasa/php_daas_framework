@@ -4,7 +4,8 @@ A PHP framework for **data-as-a-service** agent projects: `#[Agent]` /
 `#[CronJob]` attributes, DB connectivity and resumable batch primitives, and
 the `phprun` CLI.
 
-The repo is dual-role: a framework consumed by other projects, and a standalone
+The repo is dual-role: a framework consumed by other projects
+(e.g. [judijasa/simox](https://github.com/judijasa/simox)), and a standalone
 forkable template that behaves like one of its own consumers (the same
 `make dev-init`, `bin/phprun`, and `deploy` workflows run here as in
 a consumer).
