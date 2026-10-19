@@ -15,7 +15,8 @@ a consumer).
 - `phprun` — runs an `#[Agent]` function, injecting a DB connection when the
   agent declares a `dbTarget`.
 - `Utils\Connectivity\Database`, `Utils\DatabaseOps` (`CursorSeq`,
-  `BatchInsert`, `BatchScan`), `Utils\Crawler\CasperTrio`, `Utils\Logger`.
+  `BatchInsert`, `BatchScan`), `Utils\Crawler\CasperTrio`,
+  `Utils\Crawler\HttpClient`, `Utils\Logger`.
 
 ## Quick start (dev)
 
