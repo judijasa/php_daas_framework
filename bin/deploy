@@ -66,6 +66,11 @@
 
 set -euo pipefail
 
+# Fail-fast SSH defaults: a stalled SSH connection (unreachable host, flaky
+# link, or a git remote that stops answering mid-handshake) must error out
+# with ssh's own diagnostic instead of hanging the deploy indefinitely.
+SSH_TIMEOUT_OPTS=(-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+
 # Load machine-specific settings from a .env in the current working directory
 # (the consumer repo root), same contract as bin/phprun. Values in .env
 # override anything already in the environment.
@@ -159,8 +164,15 @@ preflight_checks() {
     exit 1
   fi
 
-  # Fetch the latest remote state without merging
-  git fetch origin main 2>/dev/null
+  # Fetch the latest remote state without merging. Fail fast — with the
+  # git/ssh diagnostic — if the remote is unreachable, instead of hanging on
+  # a stalled SSH handshake or exiting silently under `set -e`.
+  local _fetch_err
+  if ! _fetch_err=$(GIT_SSH_COMMAND="ssh ${SSH_TIMEOUT_OPTS[*]}" git fetch origin main 2>&1); then
+    echo "ERROR: unable to fetch origin/main:" >&2
+    echo "$_fetch_err" >&2
+    exit 1
+  fi
   local LOCAL_REPO_STATE=$(git rev-parse main)
   local REMOTE_REPO_STATE=$(git rev-parse origin/main)
   if [ "$LOCAL_REPO_STATE" != "$REMOTE_REPO_STATE" ]; then
@@ -199,7 +211,7 @@ deploy_repo_remotely() {
   echo "Deploying commit: $REV" >&2
 
   # Deploy (atomic on remote)
-  git archive "$REV" | ssh "root@$REMOTE_HOST" "
+  git archive "$REV" | ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "
       set -e
 
       if ! id \"$PROD_USER\" &>/dev/null; then
@@ -285,7 +297,7 @@ install_nix_remotely() {
   local REMOTE_HOST="$1"
   local PROD_USER="$2"
   echo "Installing Nix (multi-user) on $REMOTE_HOST..."
-  if ! ssh "root@$REMOTE_HOST" "
+  if ! ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "
     set -e
     # The multi-user install requires systemd (nix-daemon.service) and curl.
     [ -d /run/systemd/system ] || { echo 'nix install requires a systemd host' >&2; exit 1; }
@@ -320,7 +332,7 @@ deploy_nix_packages() {
   NIX_GCROOT_DIR="$(dirname "$DEPLOY_NIX_GCROOT")"
   NIX_GCROOT_NAME="$(basename "$DEPLOY_NIX_GCROOT")"
 
-  ssh "root@$REMOTE_HOST" "
+  ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "
     set -e
     mkdir -p '$DEPLOY_NIX_RESULT_DIR' '$NIX_GCROOT_DIR'
     ln -sf /nix/var/nix/profiles/default/bin/nix-store /usr/local/bin/nix-store
@@ -340,7 +352,7 @@ deploy_nix_packages() {
   rm -f result
 
   echo "Registering nix store root on remote..."
-  ssh "root@$REMOTE_HOST" "
+  ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "
     /nix/var/nix/profiles/default/bin/nix-store --add-root $DEPLOY_NIX_GCROOT --realise $REMOTE_STORE_PATH
     ln -sfn '$REMOTE_STORE_PATH' '$DEPLOY_NIX_RESULT_DIR/result'
     # Legacy cleanup: the gcroot used to live in the prod user's home.
@@ -360,8 +372,9 @@ deploy_composer_dependencies() {
   # install is idempotent (composer.lock pins the exact dependency set), so
   # re-running it when nothing changed is cheap.
   echo "Running composer install on remote host..."
-      ssh "$PROD_USER@$REMOTE_HOST" "
+      ssh "${SSH_TIMEOUT_OPTS[@]}" "$PROD_USER@$REMOTE_HOST" "
           export PATH='$DEPLOY_NIX_RESULT_DIR/result/bin':\$PATH
+          export GIT_SSH_COMMAND='ssh ${SSH_TIMEOUT_OPTS[*]}'
           cd '$REMOTE_TARGET_DIR' && composer install
       "
 }
@@ -520,7 +533,7 @@ deploy_to_host() {
     done
     if [ -n "$_ship_files" ]; then
       echo "Shipping private files ($_ship_files) to $REMOTE_HOST..." >&2
-      tar -C etc -cf - $_ship_files | ssh "root@$REMOTE_HOST" "
+      tar -C etc -cf - $_ship_files | ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "
         set -e
         cd '$REMOTE_TARGET_DIR'
         mkdir -p etc
@@ -535,7 +548,7 @@ deploy_to_host() {
   # own. A consumer that commits a real etc/deploy.conf still overrides it —
   # the host-side scripts source the file only when present.
   echo "Checking the required deploy config on remote..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
+  ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
 set -euo pipefail
 $DEPLOY_CONF_ENV
 # The required values must be in scope now — from the replayed environment or a
@@ -553,7 +566,7 @@ EOF
   # runs on every deploy. (Database instances are provisioned by `ema create`
   # at database-creation time, not here.)
   echo "Running generic provisioning (vendor/bin/pf-provision.sh) on remote..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
+  ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
 set -euo pipefail
 $DEPLOY_CONF_ENV
 vendor/bin/pf-provision.sh
@@ -561,7 +574,7 @@ EOF
   # Optional consumer-specific extras, run after the generic step.
   if [ -n "${DEPLOY_INIT_CMD:-}" ]; then
     echo "Running consumer provisioning (DEPLOY_INIT_CMD) on remote..." >&2
-    ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
+    ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && bash -s" <<EOF
 set -euo pipefail
 $DEPLOY_CONF_ENV
 $DEPLOY_INIT_CMD
@@ -574,7 +587,7 @@ EOF
   # The steps run from the deployed repo root with the replayed deploy.conf
   # environment; the private etc/ files were shipped above.
   echo "Running framework server steps (gen-env, db-check, cron install) on remote..." >&2
-  ssh "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && HOST_TAGS='$TAGLIST' bash -s" <<EOF
+  ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "cd '$REMOTE_TARGET_DIR' && HOST_TAGS='$TAGLIST' bash -s" <<EOF
 set -euo pipefail
 $DEPLOY_CONF_ENV
 vendor/bin/pf-server-steps.sh
