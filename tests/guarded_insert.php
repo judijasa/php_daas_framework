@@ -86,6 +86,7 @@ $tables = [
     'gi_test_no_default',
     'gi_test_composite',
     'gi_test_prefix',
+    'gi_test_large',
 ];
 
 $drop = static function () use ($conn, $sequence, $tables): void {
@@ -332,6 +333,53 @@ try {
             10
         )
     );
+
+    // 7. A large payload in a full chunk does not corrupt the columns that
+    //    follow it (regression: MariaDB silently blanks placeholders after a
+    //    ~22 KB parameter in a many-branch UNION ALL derived table).
+    $conn->exec(
+        'CREATE TABLE `gi_test_large` ('
+        . ' `id` INT NOT NULL,'
+        . ' `code` VARCHAR(32) NOT NULL,'
+        . ' `payload` LONGTEXT NOT NULL,'
+        . ' `flag` TINYINT(1) NOT NULL,'
+        . ' UNIQUE KEY `uq_code` (`code`)'
+        . ')'
+    );
+    $large = str_repeat('x', 30 * 1024);
+    $rows = [];
+    for ($i = 0; $i < 200; $i++) {
+        $rows[] = [
+            sprintf('c%03d', $i),
+            $i === 0 ? $large : 'small-' . $i,
+            1,
+        ];
+    }
+    GuardedInsert::insert(
+        $conn,
+        'gi_test_large',
+        ['id', 'code', 'payload', 'flag'],
+        ['code'],
+        $rows,
+        200,
+        ['id' => "NEXT VALUE FOR {$sequence}"]
+    );
+    $check(
+        'a 30 KB payload in a 200-row chunk inserts every row',
+        200,
+        (int) $conn->query('SELECT COUNT(*) FROM `gi_test_large`')->fetchColumn()
+    );
+    $check(
+        'the flag column after the large payload is not blanked',
+        0,
+        (int) $conn->query('SELECT COUNT(*) FROM `gi_test_large` WHERE `flag` <> 1')->fetchColumn()
+    );
+    $check(
+        'the large payload round-trips',
+        strlen($large),
+        (int) $conn->query("SELECT CHAR_LENGTH(`payload`) FROM `gi_test_large` WHERE `code` = 'c000'")->fetchColumn()
+    );
+
 } finally {
     $drop();
 }
