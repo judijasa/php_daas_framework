@@ -36,6 +36,8 @@
         bashPkg = pkgs.bashInteractive;  # Includes readline + ncurses
         jqPkg = pkgs.jq;      # the `ema` CLI (Composer-delivered) parses with jq
         tmuxPkg = pkgs.tmux;  # pf-shell-enter.sh aliases it; tmux-remote runs it on the host
+        # casperjs' shebang is `#!/usr/bin/env python`; python3 ships it.
+        pythonPkg = pkgs.python3;
         mariadbPkg = pkgs.mariadb_118;
         phpLinter = pkgs.phpstan;
         pre-commit = pkgs.pre-commit;
@@ -51,6 +53,7 @@
           phpComposer
           jqPkg
           tmuxPkg
+          pythonPkg
         ];
       in
       {
@@ -59,7 +62,8 @@
         # locally, copies the closure to the host and symlinks it at
         # $DEPLOY_NIX_RESULT_DIR/result, so the host gets php (vendor/bin's
         # phprun/ema call it), composer (the remote `composer install`), jq
-        # (ema), tmux (tmux-remote) and bash without building anything itself.
+        # (ema), tmux (tmux-remote), python3 (casperjs' `env python` shebang)
+        # and bash without building anything itself.
         # It DOES NOT spin up background services.
         packages.default = pkgs.symlinkJoin {
           name = "prod-dependencies";
