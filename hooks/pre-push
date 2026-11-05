@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Git-native pre-push gate (installed by `make dev-init` via
+# `git config core.hooksPath hooks`). Full-repo PHPStan against a clean HEAD:
+# run-on-clean-tree.sh stashes dirty working-tree changes, runs phpstan over
+# the whole repo (per phpstan.dist.neon), then restores.
+
+set -euo pipefail
+
+exec ./hooks/run-on-clean-tree.sh phpstan analyse --memory-limit=512M

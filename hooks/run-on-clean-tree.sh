@@ -4,10 +4,9 @@
 #
 # Usage: hooks/run-on-clean-tree.sh <command> [args...]
 #
-# The .git/hooks/pre-push shim (installed and patched by `make dev-init`)
-# routes the pre-commit framework's pre-push stage through this script, so
-# that full-repo analyzers (see phpstan-full in .pre-commit-config.yaml)
-# always see exactly HEAD, never uncommitted junk.
+# The git-native hooks/pre-push dispatcher (installed by `make dev-init` via
+# `git config core.hooksPath hooks`) routes its full-repo analyzer through
+# this script, so that it always sees exactly HEAD, never uncommitted junk.
 
 set -euo pipefail
 

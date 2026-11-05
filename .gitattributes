@@ -8,7 +8,6 @@
 # consumers — keep composer.json (+ lock) and flake.nix/flake.lock out of here.
 
 # Linting and git tooling
-/.pre-commit-config.yaml export-ignore
 /phpstan.dist.neon export-ignore
 /hooks/ export-ignore
 /.gitignore export-ignore

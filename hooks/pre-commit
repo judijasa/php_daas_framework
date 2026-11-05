@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Git-native pre-commit dispatcher (installed by `make dev-init` via
+# `git config core.hooksPath hooks`). Runs the scoped, commit-time checks the
+# pre-commit framework used to orchestrate; full-repo analysis is deferred to
+# hooks/pre-push.
+
+set -euo pipefail
+
+# General formatting/whitespace check on the staged diff (always runs).
+./hooks/pre-commit-general.sh
+
+# composer.lock / flake.lock sync gates (each self-guards on its staged file).
+./hooks/pre-commit-composer.sh
+./hooks/pre-commit-flake.sh
+
+# Scoped PHPStan + attribute check on the staged .php files only (the full-repo
+# PHPStan run is the pre-push gate). --diff-filter=ACM drops deleted files,
+# which phpstan would otherwise reject as nonexistent paths.
+php_files=$(git diff --cached --name-only --diff-filter=ACM -- '*.php')
+if [ -n "$php_files" ]; then
+    phpstan analyse --memory-limit=512M $php_files
+    php hooks/check-php-attributes.php $php_files
+fi

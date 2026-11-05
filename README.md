@@ -79,7 +79,7 @@ flake.nix (environment binaries only — framework code is Composer-only):
 ```nix
 # packages.default  = php + mysqli/pdo_mysql/bz2, composer, bash, jq, tmux —
 #                     the runtime `deploy` ships to the host
-# devShells.default = that runtime + mariadb, phpstan, pre-commit
+# devShells.default = that runtime + mariadb, phpstan
 ```
 
 See [doc/system/composer.md](doc/system/composer.md) for the Composer plugin

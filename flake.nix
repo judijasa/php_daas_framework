@@ -27,10 +27,10 @@
         phpComposer = pkgs.php84Packages.composer.override {
           php = phpPkg;
         };
-        # Dev-only analysis tooling for the pre-commit framework
-        # (.pre-commit-config.yaml): phpstan powers the scoped commit-time and
-        # full-repo push-time gates; pre-commit installs the pre-commit/pre-push
-        # hook shims via `make dev-init` (bin/dev/init-git-hooks.sh).
+        # Dev-only analysis tooling for the git-native hooks (hooks/pre-commit,
+        # hooks/pre-push): phpstan powers the scoped commit-time and full-repo
+        # push-time gates; `make dev-init` (bin/dev/init-git-hooks.sh) points
+        # git at hooks/ via core.hooksPath.
         # readline: fixes arrow keys in nix shell on NixOS (without it, arrows produce escape sequences)
         # ncurses: together with readline, it fixes arrow keys in nix shell + tmux on NixOS
         bashPkg = pkgs.bashInteractive;  # Includes readline + ncurses
@@ -40,7 +40,6 @@
         pythonPkg = pkgs.python3;
         mariadbPkg = pkgs.mariadb_118;
         phpLinter = pkgs.phpstan;
-        pre-commit = pkgs.pre-commit;
 
         # Common packages shared by dev and prod: the environment binaries
         # only. Framework + ema code (src/, the CLIs, the dev scripts) is
@@ -71,14 +70,13 @@
         };
 
         # DEVELOPMENT ENVIRONMENT (Triggered via 'nix develop')
-        # The prod runtime plus the dev-only tooling (local MariaDB, phpstan,
-        # pre-commit). `make dev-init` runs composer install to populate
-        # vendor/bin with the framework + ema CLIs.
+        # The prod runtime plus the dev-only tooling (local MariaDB, phpstan).
+        # `make dev-init` runs composer install to populate vendor/bin with the
+        # framework + ema CLIs.
         devShells.default = pkgs.mkShell {
           buildInputs = commonPackages ++ [
             mariadbPkg
             phpLinter   # phpstan: scoped commit-time + full-repo push-time gates
-            pre-commit  # pre-commit framework (hook shims installed by make dev-init)
           ];
           shellHook = ''
             # Set SHELL to bashInteractive so tmux uses bash with readline support
