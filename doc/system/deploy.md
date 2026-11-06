@@ -13,11 +13,6 @@ preparation, and the fixed pipeline.
 useradd --create-home --shell /bin/bash --comment "Production app user" <PROD_USER>
 passwd --lock <PROD_USER>
 
-# each prod host: authorize the same public key root logs in with
-mkdir -p /home/<PROD_USER>/.ssh && chmod 700 /home/<PROD_USER>/.ssh
-echo "<ssh-ed25519 AAAA... your-key>" >> /home/<PROD_USER>/.ssh/authorized_keys
-chmod 600 /home/<PROD_USER>/.ssh/authorized_keys && chown -R <PROD_USER>:<PROD_USER> /home/<PROD_USER>/.ssh
-
 # each prod host: install a cron daemon (only when the repo declares #[CronJob] jobs)
 
 # deploy machine, repo root
@@ -36,7 +31,7 @@ The deployment target (consumer-owned; template at `etc/deploy.conf.template`).
 
 | Variable | Purpose |
 |---|---|
-| `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name. Must exist with SSH access before the first deploy. |
+| `PROD_USER` | Unprivileged app user on the remote host. Short, deliberate name — not the repo name. Must exist before the first deploy. |
 | `DEPLOY_TARGET_DIR` | Remote repo location (e.g. `/srv/apps/<app>`). |
 | `DEPLOY_LOG_DIR` | Remote log dir (`deploy_version.log` lives here). |
 | `DEPLOY_REUTER_INI` | Path to the consumer's manual reuter.ini. `gen-env` writes it into `.env` as `REUTER_INI`; `db-check` reads it to verify reachability. |
@@ -76,7 +71,9 @@ the consumer's dev-init); the remote `.env` is regenerated on every deploy by
 ## Before the first deploy
 
 The remote host must have the app user in place before the first
-`deploy` — the CLI does not create it (assert-only):
+`deploy` — the CLI does not create it (assert-only). The app user holds no
+SSH key: `deploy` reaches it as `root` via `sudo -u`, so only root's
+`authorized_keys` matters.
 
 1. Create the app user (`PROD_USER`) as root:
 
@@ -86,23 +83,10 @@ The remote host must have the app user in place before the first
    ```
 
    `--create-home` is required (the nix installation stores per-user state in
-   `~<PROD_USER>`); `passwd --lock` disables password login, making the SSH key
-   the only entry point.
+   `~<PROD_USER>`); `passwd --lock` disables password login — the account has
+   no login path.
 
-2. Install SSH access for that user (the same public key used to log in as
-   `root`):
-
-   ```bash
-   mkdir -p /home/<PROD_USER>/.ssh && chmod 700 /home/<PROD_USER>/.ssh
-   echo "<ssh-ed25519 AAAA... your-key>" >> /home/<PROD_USER>/.ssh/authorized_keys
-   chmod 600 /home/<PROD_USER>/.ssh/authorized_keys
-   chown -R <PROD_USER>:<PROD_USER> /home/<PROD_USER>/.ssh
-   ```
-
-   `deploy` SSHes in as both `root` and `<PROD_USER>` — the nix closure
-   copy and `composer install` run as the app user.
-
-3. Install a cron daemon — required only when the consumer declares
+2. Install a cron daemon — required only when the consumer declares
    `#[CronJob]` jobs (the deploy's cron step writes the crontab and restarts
    the daemon). The unit name is distro-specific (`cron` on Debian/Ubuntu,
    `crond` on RHEL/Fedora, `cronie` on Arch/Alpine); the deploy detects the

@@ -17,8 +17,9 @@
 # provisioning any instance).
 #
 # What this covers:
-#   1. Assert the app user (PROD_USER) exists — creation and SSH access are
-#      documented pre-deploy prerequisites (assert-only by design).
+#   1. Assert the app user (PROD_USER) exists — creation is a documented
+#      pre-deploy prerequisite (assert-only by design); the app user holds
+#      no SSH key (deploy reaches it as root via sudo -u).
 #   2. Create the permanent system dirs (log dir, deploy parent),
 #      owned by PROD_USER.
 #   3. Install the framework-owned mariadb@.service template unit (idempotent;
@@ -58,11 +59,11 @@ _fw_pkg_root() {
 }
 
 # 1. Assert the provisioning system user exists (assert-only by decision;
-#    ssh access to PROD_USER is a documented pre-deploy prerequisite).
+#    the app user needs no SSH access — deploy reaches it as root via sudo -u).
 echo "Asserting that system user '$PROD_USER' exists..."
 if ! id -u "$PROD_USER" >/dev/null 2>&1; then
     echo "ERROR: System user '$PROD_USER' does not exist on this host." >&2
-    echo "Please provision the user (and its ssh access) before running this deployment." >&2
+    echo "Please provision the user before running this deployment." >&2
     exit 1
 fi
 

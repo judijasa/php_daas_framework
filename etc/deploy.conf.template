@@ -36,7 +36,7 @@
 #
 # PROD_USER: unprivileged app user on the remote host. Choose a short,
 # deliberate name — NOT the repo name (e.g. php_daas_framework -> daas). The
-# user must already exist on the remote host with SSH access before the first
+# user must already exist on the remote host before the first
 # deploy (see README "Deploying a consumer project" -> "Before the first
 # deploy").
 export PROD_USER=<app-user>

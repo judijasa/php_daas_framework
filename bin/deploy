@@ -25,7 +25,7 @@
 #   etc/deploy.conf  (git-ignored, consumer-owned; required on the deploy
 #   machine) - project deployment target, shared by every prod host:
 #     PROD_USER              unprivileged app user on the remote host
-#                            (must exist with SSH access before first deploy)
+#                            (must exist before first deploy)
 #     DEPLOY_TARGET_DIR      remote repo location (e.g. /srv/apps/<app>)
 #     DEPLOY_LOG_DIR         remote log dir (deploy_version.log lives here)
 #     DEPLOY_REUTER_INI     remote path of the consumer's manual reuter.ini
@@ -215,7 +215,7 @@ deploy_repo_remotely() {
       set -e
 
       if ! id \"$PROD_USER\" &>/dev/null; then
-          echo \"User $PROD_USER doesn't exist. Create and setup ssh access to it.\" >&2
+          echo \"User $PROD_USER doesn't exist. Create it before the first deploy.\" >&2
           exit 1
       fi
 
@@ -295,7 +295,6 @@ deploy_repo_remotely() {
 
 install_nix_remotely() {
   local REMOTE_HOST="$1"
-  local PROD_USER="$2"
   echo "Installing Nix (multi-user) on $REMOTE_HOST..."
   if ! ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "
     set -e
@@ -304,7 +303,7 @@ install_nix_remotely() {
     command -v curl >/dev/null 2>&1 || { echo 'nix install requires curl' >&2; exit 1; }
     curl -L https://nixos.org/nix/install | sh -s -- --daemon --yes
     mkdir -p /etc/nix
-    echo 'trusted-users = root $PROD_USER' >> /etc/nix/nix.conf
+    echo 'trusted-users = root' >> /etc/nix/nix.conf
     systemctl restart nix-daemon
   "; then
       echo "Nix installation failed."
@@ -347,7 +346,7 @@ deploy_nix_packages() {
   echo "Building packages locally..."
   nix build
   echo "Copying nix closure to remote..."
-  nix copy --to "ssh://$PROD_USER@$REMOTE_HOST" ./result || return 1
+  nix copy --to "ssh://root@$REMOTE_HOST" ./result || return 1
   REMOTE_STORE_PATH=$(readlink -f ./result)
   rm -f result
 
@@ -372,10 +371,9 @@ deploy_composer_dependencies() {
   # install is idempotent (composer.lock pins the exact dependency set), so
   # re-running it when nothing changed is cheap.
   echo "Running composer install on remote host..."
-      ssh "${SSH_TIMEOUT_OPTS[@]}" "$PROD_USER@$REMOTE_HOST" "
+      ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "
           export PATH='$DEPLOY_NIX_RESULT_DIR/result/bin':\$PATH
-          export GIT_SSH_COMMAND='ssh ${SSH_TIMEOUT_OPTS[*]}'
-          cd '$REMOTE_TARGET_DIR' && composer install
+          cd '$REMOTE_TARGET_DIR' && sudo --preserve-env=PATH -u '$PROD_USER' -- composer install
       "
 }
 
@@ -508,7 +506,7 @@ deploy_to_host() {
     exit 1
   fi
   if [ "$NIX_EXISTS" != "true" ]; then
-    install_nix_remotely "$REMOTE_HOST" "$PROD_USER"
+    install_nix_remotely "$REMOTE_HOST"
   fi
   deploy_nix_packages "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"  # keep it before deploying composer
   deploy_composer_dependencies "$REMOTE_HOST" "$PROD_USER" "$REMOTE_TARGET_DIR"
