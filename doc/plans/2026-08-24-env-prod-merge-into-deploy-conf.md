@@ -1,7 +1,7 @@
 # Merge etc/env.prod into etc/deploy.conf — proposal
 
 Date: 2026-08-24
-Repos: php_daas_framework (framework) + consumers (simox)
+Repos: php_daas_framework (framework) + consumers (consumer repo)
 Status: proposal — not implemented
 
 ## Problem
@@ -58,7 +58,7 @@ projection emits only the four base keys.
 - framework `bin/gen-env` — projection + fail-fast on required `deploy.conf`
   keys + fixture tests (DB host vs app-only host).
 - delete framework `etc/env.prod.template`; delete consumer committed
-  `etc/env.prod` (simox).
+  `etc/env.prod` (consumer repo).
 - `etc/deploy.conf.template` — note that `gen-env` derives `.env` from it.
-- docs: framework README, simox README + `2026-08-14-deploy-relocation.md` /
+- docs: framework README, consumer repo README + `2026-08-14-deploy-relocation.md` /
   `2026-08-17-env-relocation.md` (they reference `etc/env.prod`).
