@@ -3,8 +3,9 @@
 #   - REPO_PATH/REPO_LOG: runtime paths consumed by phprun and the
 #     framework's Database class (derived here, never in etc/dev.conf);
 #   - the consumer-chosen dev values (export-style shell, sourced below and
-#     relayed verbatim into .env): DBUSER (consumer policy) and SSL_DIR (the
-#     machine's TLS client-cert directory).
+#     relayed verbatim into .env): DBUSER (consumer policy), SSL_DIR (the
+#     machine's TLS client-cert directory) and CLICKHOUSE_USER (the SQL user
+#     for a consumer's optional metrics hooks; absent -> the client's default).
 # EMA_TARGET is deliberately NOT written: unset means prod (the app layer's
 # default), so sandbox stays an explicit opt-in (`EMA_TARGET=sandbox`).
 #
@@ -34,8 +35,9 @@ DEV_DEFAULT_CONF="$REPO_PATH/etc/dev.default.conf"
 DEV_CONF="$REPO_PATH/etc/dev.conf"
 
 # Start from a clean slate: the committed default and the optional override are
-# the only sources for these keys (no ambient DBUSER/SSL_DIR leaks in).
-unset DBUSER SSL_DIR
+# the only sources for these keys (no ambient DBUSER/SSL_DIR/CLICKHOUSE_USER
+# leaks in).
+unset DBUSER SSL_DIR CLICKHOUSE_USER
 
 # Source the committed default, then the optional git-ignored override. Both are
 # export-style shell; the override wins (sourced last) and may set a key empty
@@ -67,6 +69,9 @@ case "${SSL_DIR:-}" in
         ;;
 esac
 
+# CLICKHOUSE_USER: absent/empty -> no key in .env (a consumer's ClickHouse
+# client falls back to its own default); any non-empty value is relayed as-is.
+
 {
     printf 'export REPO_PATH=%s\n' "$REPO_PATH"
     printf 'export REPO_LOG=%s\n' "$REPO_LOG"
@@ -74,6 +79,9 @@ esac
     printf 'export DBUSER=%s\n' "$DBUSER"
     if [ -n "${SSL_DIR:-}" ]; then
         printf 'export SSL_DIR=%s\n' "$SSL_DIR"
+    fi
+    if [ -n "${CLICKHOUSE_USER:-}" ]; then
+        printf 'export CLICKHOUSE_USER=%s\n' "$CLICKHOUSE_USER"
     fi
 } > "$REPO_PATH/.env"
 

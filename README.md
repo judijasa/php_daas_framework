@@ -13,7 +13,8 @@ a consumer).
 - `#[Agent]` / `#[CronJob]` — declare runnable agents, their schedules, and
   cron scope; see [doc/system/agents.md](doc/system/agents.md).
 - `phprun` — runs an `#[Agent]` function, injecting a DB connection when the
-  agent declares a `dbTarget`.
+  agent declares a `dbTarget`; optional `on_job_start`/`on_job_finish` hooks
+  report each run's boundaries (see [doc/system/agents.md](doc/system/agents.md)).
 - `Utils\Connectivity\Database`, `Utils\DatabaseOps` (`CursorSeq`,
   `BatchInsert`, `GuardedInsert`, `BatchScan`), `Utils\Crawler\CasperTrio`,
   `Utils\Crawler\HttpClient`, `Utils\Logger`.

@@ -64,3 +64,25 @@ Matching is exact token equality — no wildcards. `worker` is not
 special-cased: a job scoped `worker` runs only on hosts whose roster entry
 carries the bare `worker` token. With no `--host-tags`, `cron-manifest` emits
 every job (dev/debug behavior).
+
+## Instrumentation hooks
+
+`phprun` reports each run's boundaries to two **optional** global functions,
+resolved with `function_exists()` — a consumer that defines neither behaves
+exactly as before:
+
+```php
+function on_job_start(string $job, string $scope): void
+function on_job_finish(string $status, string $job, string $reason = ''): void
+```
+
+| Hook | When | Arguments |
+|------|------|-----------|
+| `on_job_start` | once, before the run | `$job` — `<script>:<function>`; `$scope` — the `#[CronJob]` scope, or `''` for a manual (unscheduled) agent |
+| `on_job_finish` | once, after the run | `$status` — `succeeded` or `failed`; `$job`; `$reason` — the exception message on failure |
+
+On failure the finish hook runs before the exception is rethrown, so the
+process still exits non-zero. A run that dies without unwinding (a signal, or
+`exit()` mid-run) emits `on_job_start` only — the missing finish is itself the
+signal. The framework stores nothing and knows no transport: it only announces
+boundaries, leaving recording and schema to the consumer.
