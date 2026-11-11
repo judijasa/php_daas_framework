@@ -61,17 +61,6 @@ database can serve the website against the database host.
 - [x] `flake.nix` + `composer.json`: ship `gen-reuter`.
 - [x] `etc/deploy.conf.template`, `README.md`: document the new model.
 
-### simox (`../simox`)
-
-- [x] `etc/machines.ini` (+ template): migrate `dev-machines.ini` into `[dev]`,
-      add `[prod]` ZeroTier roster.
-- [x] `etc/deploy.conf`: add `DEPLOY_DB_PORT` / `DEPLOY_DB_BIND`.
-- [x] `etc/env.prod`: drop `MYSQL_*` (TCP everywhere). *(2026-08-24:
-      `etc/env.prod` merged into `etc/deploy.conf`; `gen-env` now projects
-      `.env` from it, re-emitting `MYSQL_*` on the DB host only.)*
-- [x] `bin/deploy/post-nix.sh`: call `gen-reuter "$REUTER_INI"`.
-- [x] `.gitignore`, `README.md`.
-
 ### ema (`../ema`)
 
 - [x] `ema` resolves reuter.ini sections by database name (`ema mariadb <db>`,
