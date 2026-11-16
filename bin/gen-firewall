@@ -23,8 +23,9 @@ require_once __DIR__ . '/../src/host_resolver.php';
 //                          allow 22/tcp from the ZeroTier range (SSH)
 //   db:<name> (built-in)   allow <reuter.ini[name].PORT>/tcp from the
 //                          ZeroTier range
-//   <tag> (declared)       allow <PORT>/<PROTO> (public), optionally gated
-//                          on the host's own virtualization probe
+//   <tag> (declared)       allow <PORT>/<PROTO> (public), or scoped to the
+//                          ZeroTier range via scope => 'zerotier'; optionally
+//                          gated on the host's own virtualization probe
 //   worker (built-in)      no inbound rule
 //
 // Tags only add allows; the baseline owns the defaults and any denies. The
@@ -86,10 +87,12 @@ function package_vars(string $file): array
 
 // Load the host-hardening declaration and coerce it into a clean typed shape
 // regardless of what etc/host-hardening.php sets. A rule is either
-// 'PORT/PROTO' (public allow) or array('rule' => 'PORT/PROTO',
-// 'gate' => 'cloud') (applied only when the host reports as virtualized).
+// 'PORT/PROTO' (public allow), array('rule' => 'PORT/PROTO',
+// 'gate' => 'cloud') (applied only when the host reports as virtualized), or
+// array('rule' => 'PORT/PROTO', 'scope' => 'zerotier') (allowed only from the
+// ZeroTier range). Scope is never defaulted: absent means public.
 //
-// @return array{zerotierRange: string, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>}
+// @return array{zerotierRange: string, tagRules: array<string, array<int, array{rule: string, gate: string|null, scope: string|null}>>}
 function package_declaration(string $file): array
 {
     $vars = package_vars($file);
@@ -121,11 +124,12 @@ function package_declaration(string $file): array
 }
 
 // @param mixed $entry
-// @return array{rule: string, gate: string|null}|null
+// @return array{rule: string, gate: string|null, scope: string|null}|null
 function normalize_rule(mixed $entry): ?array
 {
     $rule = null;
     $gate = null;
+    $scope = null;
     if (is_string($entry) && $entry !== '') {
         $rule = $entry;
     } elseif (is_array($entry)) {
@@ -141,6 +145,13 @@ function normalize_rule(mixed $entry): ?array
             }
             $gate = $g;
         }
+        $s = $entry['scope'] ?? null;
+        if ($s !== null) {
+            if (!is_string($s)) {
+                return null;
+            }
+            $scope = $s;
+        }
     } else {
         return null;
     }
@@ -150,7 +161,7 @@ function normalize_rule(mixed $entry): ?array
         return null;
     }
 
-    return ['rule' => $rule, 'gate' => $gate];
+    return ['rule' => $rule, 'gate' => $gate, 'scope' => $scope];
 }
 
 // Resolve the ZeroTier range the baseline SSH and `db:<name>` rules are
@@ -254,7 +265,7 @@ function host_is_virtualized(string $host): bool
 // Compute one host's desired ufw steps. Returns null on a config error
 // (message already written to stderr).
 //
-// @param array{zerotierRange: string, tagRules: array<string, array<int, array{rule: string, gate: string|null}>>} $declaration
+// @param array{zerotierRange: string, tagRules: array<string, array<int, array{rule: string, gate: string|null, scope: string|null}>>} $declaration
 // @param array<string, array<string, string>> $reuter
 // @return array{host: string, tags: array<int,string>, steps: array<int, array{cmd: string, gated: bool}>}|null
 function build_host_plan(string $host, string $rawTags, array $declaration, array $reuter, string $range): ?array
@@ -293,14 +304,24 @@ function build_host_plan(string $host, string $rawTags, array $declaration, arra
             continue;
         }
         foreach ($tagRules[$tag] as $rule) {
-            if ($rule['gate'] === null) {
-                $steps[] = ['cmd' => 'ufw allow ' . $rule['rule'], 'gated' => false];
-            } elseif ($rule['gate'] === 'cloud') {
-                $steps[] = ['cmd' => 'ufw allow ' . $rule['rule'], 'gated' => true];
-            } else {
-                fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}' rule '{$rule['rule']}' has unknown gate '{$rule['gate']}' (only 'cloud' is supported)\n");
-                return null;
+            $gated = false;
+            if ($rule['gate'] !== null) {
+                if ($rule['gate'] !== 'cloud') {
+                    fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}' rule '{$rule['rule']}' has unknown gate '{$rule['gate']}' (only 'cloud' is supported)\n");
+                    return null;
+                }
+                $gated = true;
             }
+            $cmd = 'ufw allow ' . $rule['rule'];
+            if ($rule['scope'] !== null) {
+                if ($rule['scope'] !== 'zerotier') {
+                    fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}' rule '{$rule['rule']}' has unknown scope '{$rule['scope']}' (only 'zerotier' is supported)\n");
+                    return null;
+                }
+                [$port, $proto] = explode('/', $rule['rule'], 2);
+                $cmd = 'ufw allow from ' . $range . ' to any port ' . $port . ' proto ' . $proto;
+            }
+            $steps[] = ['cmd' => $cmd, 'gated' => $gated];
         }
     }
 

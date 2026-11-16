@@ -46,6 +46,7 @@ the public history:
     $tagRules      = array(
         'web' => array('80/tcp', '443/tcp'),
         'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud')),
+        'ch'  => array(array('rule' => '8123/tcp', 'scope' => 'zerotier')),
     );
 
 - `$zerotierRange` scopes the baseline SSH and `db:<name>` rules. A concrete
@@ -53,10 +54,13 @@ the public history:
   private third octet from the consumer's private `etc/hosts` (`ip name`
   mapping) — the range is never hardcoded here.
 - `$tagRules` maps a consumer-owned tag to its allow rules. A rule is either
-  `'PORT/PROTO'` (a public allow, e.g. `80/tcp`) or
+  `'PORT/PROTO'` (a public allow, e.g. `80/tcp`),
   `array('rule' => 'PORT/PROTO', 'gate' => 'cloud')` (applied only when the
-  host itself reports as virtualized). Any rule that is not a valid
-  `PORT/PROTO` is reported and ignored.
+  host itself reports as virtualized), or
+  `array('rule' => 'PORT/PROTO', 'scope' => 'zerotier')` (allowed only from
+  the ZeroTier range). Scope is never defaulted: a rule without `scope` is a
+  public allow. Any rule that is not a valid `PORT/PROTO` is reported and
+  ignored.
 - The `gate => 'cloud'` condition is mechanism-owned, not declared: at
   reconcile time the CLI asks the target host whether it is virtualized
   (`systemd-detect-virt`, over the same `ssh root@<host>` it already uses) and
