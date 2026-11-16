@@ -13,33 +13,43 @@
 // There is no SQL here — data only.
 //
 //   $zerotierRange = '10.147.x.0/24';
+//   $sshRule       = '22/tcp';
 //   $tagRules      = array(
 //       'web' => array(
 //           array('rule' => '80/tcp', 'scope' => 'public'),
 //           array('rule' => '443/tcp', 'scope' => 'public'),
 //       ),
-//       'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud', 'scope' => 'public')),
-//       'ch'  => array('8123/tcp'),
+//       'pub'     => array(array('rule' => '443/tcp', 'gate' => 'cloud', 'scope' => 'public')),
+//       'ch'      => array('8123/tcp'),
+//       'db:mydb' => array('3306/tcp'),
 //   );
 //
-// $zerotierRange scopes the baseline SSH and the built-in db:<name> allows.
-// A concrete CIDR is used verbatim; an 'x' template (e.g. 10.147.x.0/24)
+// $zerotierRange scopes the baseline SSH ($sshRule) and every ZeroTier-scoped
+// rule. A concrete CIDR is used verbatim; an 'x' template (e.g. 10.147.x.0/24)
 // resolves its private third octet from the consumer's private etc/hosts.
+// $sshRule is the baseline SSH allow — the only rule applied to every host,
+// and the first among allows (fail-open ordering). It is always scoped to
+// $zerotierRange and cannot be gated; it must be a 'PORT/PROTO' string.
 // $tagRules maps a consumer-owned tag to its allow rules. A rule is either
 // 'PORT/PROTO' (allowed only from the ZeroTier range — the default),
 // array('rule' => 'PORT/PROTO', 'scope' => 'public') (any source), or
 // array('rule' => 'PORT/PROTO', 'gate' => 'cloud') (applied only when the host
 // itself reports as virtualized — the framework probes the host for that at
 // reconcile time, so there is nothing cloud-specific to declare here). scope
-// defaults to 'zerotier'.
+// defaults to 'zerotier'. A database host's `db:<name>` tag is an ordinary
+// tag here: its port is a literal (a manual copy of `reuter.ini`'s `PORT`),
+// since gen-firewall reads no `reuter.ini`.
 
 $zerotierRange = '10.147.x.0/24';
+
+$sshRule = '22/tcp';
 
 $tagRules = array(
     'web' => array(
         array('rule' => '80/tcp', 'scope' => 'public'),
         array('rule' => '443/tcp', 'scope' => 'public'),
     ),
-    'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud', 'scope' => 'public')),
-    'ch'  => array('8123/tcp'),
+    'pub'     => array(array('rule' => '443/tcp', 'gate' => 'cloud', 'scope' => 'public')),
+    'ch'      => array('8123/tcp'),
+    'db:mydb' => array('3306/tcp'),
 );

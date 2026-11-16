@@ -11,18 +11,19 @@ require_once __DIR__ . '/../src/host_resolver.php';
 // declaration, computing the full desired ufw rule set for a host, and
 // applying it as root with a fail-open ordering. The consumer owns the data:
 // the declaration (`etc/host-hardening.php`), the `etc/machines.ini`
-// roster (which tags a host), `etc/reuter.ini` (the `db:<name>`
-// ports) and the ZeroTier range (private data). No tag name, port or range is
-// hardcoded here, and the cloud gate is observed on the host itself (its
-// virtualization fingerprint) rather than from a configured cloud endpoint.
+// roster (which tags a host) and the ZeroTier range (private data). No tag
+// name, port or range is hardcoded here, and the cloud gate is observed on
+// the host itself (its virtualization fingerprint) rather than from a
+// configured cloud endpoint. Every opened port is a literal in the
+// declaration — the baseline SSH is `$sshRule` (first among allows) and a
+// MariaDB prod-db port is a manual copy of the consumer's `reuter.ini`
+// `PORT`; gen-firewall reads no `reuter.ini`.
 // See doc/system/host-hardening.md for the full contract.
 //
 // Desired rule set (order-independent set union of a host's tags):
 //
 //   baseline (every host)  default deny incoming, default allow outgoing,
-//                          allow 22/tcp from the ZeroTier range (SSH)
-//   db:<name> (built-in)   allow <reuter.ini[name].PORT>/tcp from the
-//                          ZeroTier range
+//                          allow $sshRule from the ZeroTier range (SSH)
 //   <tag> (declared)       allow <PORT>/<PROTO> from the ZeroTier range (the
 //                          default), or any source via scope => 'public';
 //                          optionally gated on the host's own virtualization
@@ -36,8 +37,8 @@ require_once __DIR__ . '/../src/host_resolver.php';
 // host reachable and re-running converges.
 //
 // The CLI runs from the consumer checkout that holds `etc/machines.ini` and
-// `etc/reuter.ini` (the deploy/dev machine) and applies each host over
-// `ssh root@<host>`. It defaults to --dry-run: print the computed rules
+// `etc/host-hardening.php` (the deploy/dev machine) and applies each host
+// over `ssh root@<host>`. It defaults to --dry-run: print the computed rules
 // without applying; pass --apply to reconcile.
 //
 // Usage: gen-firewall [host|all] [-a|--apply] [-n|--dry-run] [-h|--help]
@@ -93,7 +94,7 @@ function package_vars(string $file): array
 // array('rule' => 'PORT/PROTO', 'gate' => 'cloud') (applied only when the
 // host reports as virtualized). scope defaults to 'zerotier'.
 //
-// @return array{zerotierRange: string, tagRules: array<string, array<int, array{rule: string, gate: string|null, scope: string}>>}
+// @return array{zerotierRange: string, sshRule: string, tagRules: array<string, array<int, array{rule: string, gate: string|null, scope: string}>>}
 function package_declaration(string $file): array
 {
     $vars = package_vars($file);
@@ -101,6 +102,11 @@ function package_declaration(string $file): array
     $zerotierRange = '';
     if (is_string($vars['zerotierRange'] ?? null)) {
         $zerotierRange = $vars['zerotierRange'];
+    }
+
+    $sshRule = '';
+    if (is_string($vars['sshRule'] ?? null)) {
+        $sshRule = $vars['sshRule'];
     }
 
     $tagRules = [];
@@ -121,7 +127,7 @@ function package_declaration(string $file): array
         }
     }
 
-    return ['zerotierRange' => $zerotierRange, 'tagRules' => $tagRules];
+    return ['zerotierRange' => $zerotierRange, 'sshRule' => $sshRule, 'tagRules' => $tagRules];
 }
 
 // @param mixed $entry
@@ -165,8 +171,8 @@ function normalize_rule(mixed $entry): ?array
     return ['rule' => $rule, 'gate' => $gate, 'scope' => $scope];
 }
 
-// Resolve the ZeroTier range the baseline SSH and `db:<name>` rules are
-// scoped to. A concrete CIDR is used verbatim; an 'x' template
+// Resolve the ZeroTier range the baseline SSH and every ZeroTier-scoped rule
+// are scoped to. A concrete CIDR is used verbatim; an 'x' template
 // (e.g. '10.147.x.0/24') resolves its private third octet from the consumer's
 // private etc/hosts (`ip name` mapping) — never hardcoded here.
 function resolve_zerotier_range(string $declared, string $root): ?string
@@ -216,31 +222,6 @@ function zerotier_octets(string $hostsPath, string $prefix): array
     return array_keys($octets);
 }
 
-// etc/reuter.ini sections: dbname => key => value (string-coerced).
-//
-// @return array<string, array<string, string>>
-function reuter_sections(string $path): array
-{
-    if (!is_file($path)) {
-        return [];
-    }
-    $cnf = parse_ini_file($path, true, INI_SCANNER_RAW);
-    if (!is_array($cnf)) {
-        return [];
-    }
-    $out = [];
-    foreach ($cnf as $name => $section) {
-        if (is_array($section)) {
-            $row = [];
-            foreach ($section as $key => $value) {
-                $row[(string) $key] = is_string($value) ? $value : '';
-            }
-            $out[(string) $name] = $row;
-        }
-    }
-    return $out;
-}
-
 // Does the host report itself as virtualized? The cloud gate asks whether a
 // host is a cloud/NAT'd instance rather than a plain LAN machine, and the
 // host's own virtualization fingerprint is the one provider-agnostic,
@@ -266,37 +247,28 @@ function host_is_virtualized(string $host): bool
 // Compute one host's desired ufw steps. Returns null on a config error
 // (message already written to stderr).
 //
-// @param array{zerotierRange: string, tagRules: array<string, array<int, array{rule: string, gate: string|null, scope: string}>>} $declaration
-// @param array<string, array<string, string>> $reuter
+// @param array{zerotierRange: string, sshRule: string, tagRules: array<string, array<int, array{rule: string, gate: string|null, scope: string}>>} $declaration
 // @return array{host: string, tags: array<int,string>, steps: array<int, array{cmd: string, gated: bool}>}|null
-function build_host_plan(string $host, string $rawTags, array $declaration, array $reuter, string $range): ?array
+function build_host_plan(string $host, string $rawTags, array $declaration, string $range): ?array
 {
     $tagRules = $declaration['tagRules'];
+    $sshRule = $declaration['sshRule'] ?? '';
 
     $steps = [];
     $steps[] = ['cmd' => 'ufw --force reset', 'gated' => false];
     $steps[] = ['cmd' => 'ufw default deny incoming', 'gated' => false];
     $steps[] = ['cmd' => 'ufw default allow outgoing', 'gated' => false];
     // SSH first: the operator stays reachable until the very last enable.
-    $steps[] = ['cmd' => 'ufw allow from ' . $range . ' to any port 22 proto tcp', 'gated' => false];
+    if (preg_match('/^\d{1,5}\/(tcp|udp)$/', $sshRule) !== 1) {
+        fwrite(STDERR, "gen-firewall: etc/host-hardening.php must declare \$sshRule as 'PORT/PROTO' (the baseline SSH allow, first among allows)\n");
+        return null;
+    }
+    [$sshPort, $sshProto] = explode('/', $sshRule, 2);
+    $steps[] = ['cmd' => 'ufw allow from ' . $range . ' to any port ' . $sshPort . ' proto ' . $sshProto, 'gated' => false];
 
     $hostTags = tokens($rawTags);
 
     foreach ($hostTags as $tag) {
-        if (strpos($tag, 'db:') === 0) {
-            $name = substr($tag, 3);
-            if ($name === '') {
-                fwrite(STDERR, "gen-firewall: host {$host} has an empty db: tag\n");
-                return null;
-            }
-            $port = $reuter[$name]['PORT'] ?? null;
-            if (!is_string($port) || $port === '') {
-                fwrite(STDERR, "gen-firewall: host {$host} tag '{$tag}': no PORT in etc/reuter.ini [{$name}]\n");
-                return null;
-            }
-            $steps[] = ['cmd' => 'ufw allow from ' . $range . ' to any port ' . $port . ' proto tcp', 'gated' => false];
-            continue;
-        }
         if ($tag === 'worker') {
             continue; // built-in tag: cron writes loopback/local, no inbound rule
         }
@@ -455,12 +427,10 @@ function main(array $argv): int
         return 1;
     }
 
-    $reuter = reuter_sections($root . '/etc/reuter.ini');
-
     // Compute every host's plan first, before touching any host.
     $plans = [];
     foreach ($targets as $host) {
-        $plan = build_host_plan($host, $roster[$host], $declaration, $reuter, $range);
+        $plan = build_host_plan($host, $roster[$host], $declaration, $range);
         if ($plan === null) {
             return 1;
         }
