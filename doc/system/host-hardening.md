@@ -44,9 +44,12 @@ the public history:
 
     $zerotierRange = '10.147.x.0/24';            // CIDR, or an 'x' template
     $tagRules      = array(
-        'web' => array('80/tcp', '443/tcp'),
-        'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud')),
-        'ch'  => array(array('rule' => '8123/tcp', 'scope' => 'zerotier')),
+        'web' => array(
+            array('rule' => '80/tcp', 'scope' => 'public'),
+            array('rule' => '443/tcp', 'scope' => 'public'),
+        ),
+        'pub' => array(array('rule' => '443/tcp', 'gate' => 'cloud', 'scope' => 'public')),
+        'ch'  => array('8123/tcp'),
     );
 
 - `$zerotierRange` scopes the baseline SSH and `db:<name>` rules. A concrete
@@ -54,13 +57,12 @@ the public history:
   private third octet from the consumer's private `etc/hosts` (`ip name`
   mapping) — the range is never hardcoded here.
 - `$tagRules` maps a consumer-owned tag to its allow rules. A rule is either
-  `'PORT/PROTO'` (a public allow, e.g. `80/tcp`),
+  `'PORT/PROTO'` (allowed only from the ZeroTier range — the default),
+  `array('rule' => 'PORT/PROTO', 'scope' => 'public')` (any source), or
   `array('rule' => 'PORT/PROTO', 'gate' => 'cloud')` (applied only when the
-  host itself reports as virtualized), or
-  `array('rule' => 'PORT/PROTO', 'scope' => 'zerotier')` (allowed only from
-  the ZeroTier range). Scope is never defaulted: a rule without `scope` is a
-  public allow. Any rule that is not a valid `PORT/PROTO` is reported and
-  ignored.
+  host itself reports as virtualized). `scope` defaults to `'zerotier'`; a rule
+  without `scope` is ZeroTier-scoped. Any rule that is not a valid
+  `PORT/PROTO` is reported and ignored.
 - The `gate => 'cloud'` condition is mechanism-owned, not declared: at
   reconcile time the CLI asks the target host whether it is virtualized
   (`systemd-detect-virt`, over the same `ssh root@<host>` it already uses) and
