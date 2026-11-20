@@ -370,10 +370,16 @@ deploy_composer_dependencies() {
   # scripts, and pf-provision.sh) would otherwise be empty on the remote. The
   # install is idempotent (composer.lock pins the exact dependency set), so
   # re-running it when nothing changed is cheap.
+  #
+  # `sudo` resolves the command name itself against the sudoers `secure_path`,
+  # not the PATH it hands to the child, so `--preserve-env=PATH` alone cannot
+  # make the closure's `composer` findable by name: invoke it by absolute
+  # path. PATH stays preserved so composer's own php subprocesses resolve to
+  # the closure.
   echo "Running composer install on remote host..."
       ssh "${SSH_TIMEOUT_OPTS[@]}" "root@$REMOTE_HOST" "
           export PATH='$DEPLOY_NIX_RESULT_DIR/result/bin':\$PATH
-          cd '$REMOTE_TARGET_DIR' && sudo --preserve-env=PATH -u '$PROD_USER' -- composer install
+          cd '$REMOTE_TARGET_DIR' && sudo --preserve-env=PATH -u '$PROD_USER' -- '$DEPLOY_NIX_RESULT_DIR/result/bin/composer' install
       "
 }
 
