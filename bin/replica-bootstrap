@@ -20,7 +20,7 @@
 # step over SSH.
 #
 # Config:
-#   etc/reuter.ini   [<primary-db>] section — SERVER (the primary host, the
+#   etc/reuter.ini   [mariadb:<primary-db>] section — SERVER (the primary host, the
 #                    SSH target), PORT (the primary's TCP endpoint the replica
 #                    connects back to) and MYSQL_UNIX_PORT (the primary
 #                    instance's root/unix_socket). The replica's own section is not
@@ -45,7 +45,7 @@
 #   replica-bootstrap --primary <db> --replica-host <zerotier-ip> \
 #       [--dest <remote-dir>] [--dry-run]
 #
-#   --primary <db>       primary database name (the [<db>] reuter.ini section).
+#   --primary <db>       primary database name (the [mariadb:<db>] reuter.ini section).
 #   --replica-host <ip>  replica host ZeroTier IP (the `replication`@<ip> host
 #                        pin and the snapshot destination host).
 #   --dest <dir>         remote directory on the replica host the snapshot
@@ -107,10 +107,10 @@ One-time transport bootstrap for a read-only replica: create the
 passwordless `replication` account on the primary and ship a consistent
 snapshot to the replica host (before `ema create` provisions the replica).
 
-Reads the primary's [<db>] section from ./etc/reuter.ini (run from the
+Reads the primary's [mariadb:<db>] section from ./etc/reuter.ini (run from the
 consumer's repo root); REUTER_INI is not consulted.
 
-  --primary <db>       primary database name (the [<db>] etc/reuter.ini section).
+  --primary <db>       primary database name (the [mariadb:<db>] etc/reuter.ini section).
   --replica-host <ip>  replica host ZeroTier IP (the `replication`@<ip> pin
                        and the snapshot destination host).
   --dest <dir>         remote directory on the replica host the snapshot
@@ -140,19 +140,19 @@ main() {
     [[ -f "$REUTER_INI_PATH" ]] || die "reuter.ini not found at $REUTER_INI_PATH (run from the consumer's repo root; consumer-owned private data — see doc/system/consumer-config.md)"
 
     local primary_host socket
-    primary_host="$(reuter_value "$REUTER_INI_PATH" "$PRIMARY" "SERVER")"
-    socket="$(reuter_value "$REUTER_INI_PATH" "$PRIMARY" "MYSQL_UNIX_PORT")"
+    primary_host="$(reuter_value "$REUTER_INI_PATH" "mariadb:$PRIMARY" "SERVER")"
+    socket="$(reuter_value "$REUTER_INI_PATH" "mariadb:$PRIMARY" "MYSQL_UNIX_PORT")"
 
-    [[ -n "$primary_host" ]] || die "[$PRIMARY] has no SERVER in $REUTER_INI_PATH"
-    [[ -n "$socket" ]] || die "[$PRIMARY] has no MYSQL_UNIX_PORT in $REUTER_INI_PATH (root/unix_socket auth is required)"
+    [[ -n "$primary_host" ]] || die "[mariadb:$PRIMARY] has no SERVER in $REUTER_INI_PATH"
+    [[ -n "$socket" ]] || die "[mariadb:$PRIMARY] has no MYSQL_UNIX_PORT in $REUTER_INI_PATH (root/unix_socket auth is required)"
 
     local dest="${DEST:-/root/replica-snapshot-$PRIMARY}"
     local snapshot_tmp="/root/replica-bootstrap-$PRIMARY"
     local tarball="$snapshot_tmp.tar.gz"
 
     local port
-    port="$(reuter_value "$REUTER_INI_PATH" "$PRIMARY" "PORT")"
-    [[ -n "$port" ]] || die "[$PRIMARY] has no PORT in $REUTER_INI_PATH (replication needs the primary's TCP endpoint)"
+    port="$(reuter_value "$REUTER_INI_PATH" "mariadb:$PRIMARY" "PORT")"
+    [[ -n "$port" ]] || die "[mariadb:$PRIMARY] has no PORT in $REUTER_INI_PATH (replication needs the primary's TCP endpoint)"
 
     # Preflight the replication channel before touching the primary: the
     # replica's IO thread will connect back to the primary on this port, a

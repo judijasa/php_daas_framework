@@ -14,7 +14,7 @@
 #
 # The .env is deliberately MYSQL_*-free: the app layer (Database.php) must
 # stay on TCP. REUTER_INI points at the consumer's manual reuter.ini (the
-# [<dbname>] sections recorded from `ema create` output) via the
+# [mariadb:<dbname>] sections recorded from `ema create` output) via the
 # DEPLOY_REUTER_INI deploy.conf key — it is no longer derived from a
 # DEPLOY_DB_INSTANCE unit name. SSL_DIR (optional) names the directory holding
 # the app's TLS client certificate (client.crt + client.key) for REQUIRE X509

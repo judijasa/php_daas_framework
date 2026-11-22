@@ -55,19 +55,20 @@ class Database extends PDO
         if ($cnf === false) {
             throw new \RuntimeException("Could not parse $path");
         }
-        if (!isset($cnf[$dbname])) {
-            throw new \RuntimeException("Target '$dbname' not found in $path");
+        $header = 'mariadb:' . $dbname;
+        if (!isset($cnf[$header])) {
+            throw new \RuntimeException("Section '$header' not found in $path");
         }
-        return $cnf[$dbname];
+        return $cnf[$header];
     }
 
     private static function buildDsn(string $dbname, array $cnf): string {
         $server = $cnf['SERVER'];
         $port = $cnf['PORT'] ?? '3306';
 
-        // The section header names the instance (what `$dbname` keys); the DSN's
+        // The header is mariadb:<instance> (what `$dbname` keys); the DSN's
         // `dbname=` is the schema the instance serves — the section's DBNAME,
-        // defaulting to the header when the section omits it.
+        // defaulting to the bare instance name when the section omits it.
         $schema = $cnf['DBNAME'] ?? $dbname;
 
         $dsn = "mysql:host={$server};port={$port};dbname={$schema};charset=utf8mb4";
@@ -129,7 +130,7 @@ class Database extends PDO
     // Open a connection for a service account (the prod path). The account
     // name is consumer policy — this framework does not know any specific
     // account. Its password is read from the <ACCOUNT>_PASSWORD key of the
-    // [<dbname>] section (uppercased account name + `_PASSWORD`); an absent
+    // [mariadb:<dbname>] section (uppercased account name + `_PASSWORD`); an absent
     // or empty value means a passwordless account.
     public static function connectAs(string $dbname, string $account): self {
         if ($account === '') {
@@ -151,7 +152,7 @@ class Database extends PDO
             // Server verification is ON by default (secure by default): the
             // client authenticates the server against <SSL_DIR>/ca.crt. A
             // consumer whose server cert is self-signed opts OUT explicitly
-            // with SSL_VERIFY_SERVER_CERT=0 in its [<instance>] section.
+            // with SSL_VERIFY_SERVER_CERT=0 in its [mariadb:<instance>] section.
             // PHP 8.4's mysqlnd verifies the server by default once a client
             // cert is presented, so the opt-out must be explicit rather than
             // relied on as a historical default.
@@ -180,10 +181,11 @@ class Database extends PDO
         $cnf = self::loadSection($path, $dbname);
         $socket = $cnf['MYSQL_UNIX_PORT'] ?? '';
         if ($socket === '') {
-            throw new \RuntimeException("Section [$dbname] in $path has no MYSQL_UNIX_PORT.");
+            throw new \RuntimeException("Section [mariadb:$dbname] in $path has no MYSQL_UNIX_PORT.");
         }
         // The schema the sandbox instance serves: its section's DBNAME,
-        // defaulting to the header ($dbname) when the section omits it.
+        // defaulting to the bare instance name ($dbname) when the section
+        // omits it.
         $schema = $cnf['DBNAME'] ?? $dbname;
         return new self(
             "mysql:unix_socket={$socket};dbname={$schema};charset=utf8mb4",

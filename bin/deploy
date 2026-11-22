@@ -29,7 +29,7 @@
 #     DEPLOY_TARGET_DIR      remote repo location (e.g. /srv/apps/<app>)
 #     DEPLOY_LOG_DIR         remote log dir (deploy_version.log lives here)
 #     DEPLOY_REUTER_INI     remote path of the consumer's manual reuter.ini
-#                            (the [<dbname>] connectivity recorded from
+#                            (the [mariadb:<dbname>] connectivity recorded from
 #                            `ema create`); gen-env projects it as REUTER_INI
 #     DEPLOY_NIX_RESULT_DIR  remote nix result parent (e.g. /usr/local/<app>)
 #     DEPLOY_NIX_GCROOT      remote nix gcroot (e.g. /nix/var/nix/gcroots/<app>)

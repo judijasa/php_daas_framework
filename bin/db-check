@@ -46,10 +46,10 @@ _schema_exists() {
     [[ -n "$("$client_bin" --socket="$socket" -u root -N -e "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$db'" 2>/dev/null)" ]]
 }
 
-# The schema served by instance <section>: its reuter.ini [<section>] DBNAME
-# (the header is the instance, DBNAME the schema it serves). Empty when the
-# file/section/key is absent — the caller falls back to the instance name (a
-# primary whose header is also its schema).
+# The schema served by instance <section>: its reuter.ini [mariadb:<section>]
+# DBNAME (the header is mariadb:<instance>, DBNAME the schema it serves).
+# Empty when the file/section/key is absent — the caller falls back to the
+# instance name (a primary whose name is also its schema).
 _reuter_dbname() {
     local ini="$1" section="$2"
     [[ -f "$ini" ]] || return 0
@@ -58,7 +58,7 @@ _reuter_dbname() {
             hdr = $0
             gsub(/^[[:space:]]*[[]/, "", hdr)
             sub(/][[:space:]]*$/, "", hdr)
-            in_sec = (hdr == sec)
+            in_sec = (hdr == "mariadb:" sec)
             next
         }
         in_sec && $1 ~ /^[[:space:]]*DBNAME[[:space:]]*$/ {
@@ -98,14 +98,15 @@ else
             if ($sock === false) { exit(1); }
             fclose($sock);
         ' "$server" "$port" 2>/dev/null; then
-            warn "cannot reach database '$db' at $server:$port (reuter.ini section [$db])"
+            warn "cannot reach database '$db' at $server:$port (reuter.ini section [mariadb:$db])"
         fi
     done < <(php -r '
         $ini = parse_ini_file($argv[1], true, INI_SCANNER_RAW);
         if (!is_array($ini)) { exit; }
         foreach ($ini as $sec => $keys) {
             if (!isset($keys["SERVER"]) || !isset($keys["PORT"])) { continue; }
-            echo $sec . "\t" . $keys["SERVER"] . "\t" . $keys["PORT"] . "\n";
+            $db = str_starts_with($sec, "mariadb:") ? substr($sec, strlen("mariadb:")) : $sec;
+            echo $db . "\t" . $keys["SERVER"] . "\t" . $keys["PORT"] . "\n";
         }
     ' "$REUTER_INI_PATH")
 fi

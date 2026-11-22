@@ -22,7 +22,7 @@ use Utils\Logger;
  * under `EMA_TARGET=sandbox` the target `test` resolves to that `test-*`
  * sandbox instance and the connection is root over the instance's socket —
  * the declared `dbAccount` is ignored (prod-only). Against prod the demo
- * would need an `[test]` section with a `DEMO_PASSWORD` key in the prod
+ * would need an `[mariadb:test]` section with a `DEMO_PASSWORD` key in the prod
  * reuter.ini.
  *
  * Re-running is safe: rows accumulate in `items` and BatchScan resumes
@@ -35,7 +35,7 @@ function main($conn): void
     //    Utils\Connectivity\Database::connectTo('test', 'demo') (injected by the
     //    runner): under EMA_TARGET=sandbox the target resolves the local
     //    `test-*` sandbox instance and connects as root over its socket;
-    //    under prod it reads the [test] section of the resolved reuter.ini
+    //    under prod it reads the [mariadb:test] section of the resolved reuter.ini
     //    with the `demo` service account.
 
     // 2) BatchInsert — persist 10 rows into `items` in chunks of 5.

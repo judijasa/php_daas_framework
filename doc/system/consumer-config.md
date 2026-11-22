@@ -60,7 +60,7 @@ stays reserved for the copy-me files.
 The dev sandbox's per-instance `var/sandbox/<name>-<GUID>/reuter.ini` is read
 by the app layer as well: under `EMA_TARGET=sandbox`, `Database::connectTo`
 resolves it by instance name (the schema it serves still comes from the
-section's `DBNAME`, defaulting to the header). It is generated, machine-local
+section's `DBNAME`, defaulting to the bare instance name). It is generated, machine-local
 data (ema writes it; the consumer git-ignores it), not a private config file —
 which is why the dev `.env` carries no `REUTER_INI` and no credentials: the
 sandbox is reached as `root` over its own socket.

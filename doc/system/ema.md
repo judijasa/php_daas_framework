@@ -35,7 +35,7 @@ consumer's own provisioning.
 - `ema create srv/<name>-<GUID>` — always on prod (one-sided: it does not read
   `EMA_TARGET`): provision the per-database instance (when absent) and create
   the database + apply its dependencies. It is **create-only**: it refuses
-  when the database already exists. On success it prints the `[<dbname>]`
+  when the database already exists. On success it prints the `[mariadb:<dbname>]`
   connectivity values (`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) to record in
   the manual reuter.ini. `--dry-run` prints the SQL without applying. A
   `type=replica` package (`type: 'replica'` + `replica_of: '<primary>'`)
@@ -117,18 +117,18 @@ nor the `.env`.
 ## The reuter.ini contract
 
 `etc/reuter.ini` is **manual, consumer-owned** private data — there is no
-generator anymore. `ema create` prints the `[<instance>]` section and the
-operator records it (or `ema values <instance>` recovers a lost record); the
-consumer owns the file (it keeps it in its private config repo and places it
-in `etc/` — see `doc/system/consumer-config.md`). Sections are keyed by
-instance name — the
-section header names the instance; `DBNAME` names the schema it serves
-(default: the header):
+generator anymore. `ema create` prints the `[mariadb:<instance>]` section and
+the operator records it (or `ema values <instance>` recovers a lost record);
+the consumer owns the file (it keeps it in its private config repo and places
+it in `etc/` — see `doc/system/consumer-config.md`). Sections are keyed by
+instance name, namespaced as `mariadb:<instance>` — the section header is
+`mariadb:<instance>`; `DBNAME` names the schema it serves (default: the bare
+instance name):
 
-    [mydb]                 ; the instance (section header)
+    [mariadb:mydb]         ; the instance (mariadb:<instance> header)
     SERVER=10.147.x.x
     PORT=3306
-    DBNAME=mydb            ; the schema it serves (default: the header)
+    DBNAME=mydb            ; the schema it serves (default: the bare instance name)
     <ACCOUNT>_PASSWORD=...
     MYSQL_UNIX_PORT=/path/to/mysql.sock
 
@@ -153,7 +153,7 @@ applied by ema.
 
 The prod `reuter.ini` is a **manually-maintained, consumer-owned** file: there
 is no `gen-reuter` and no `DEPLOY_DB_*` deploy config. The operator records
-the `[<dbname>]` section that `ema create` prints on success (or recovers it
+the `[mariadb:<dbname>]` section that `ema create` prints on success (or recovers it
 with `ema values <db>`), then commits/injects it as private data. A missing
 section on prod is a misconfiguration — `db-check` warns on it but does not
 repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
@@ -193,7 +193,7 @@ repair. `gen-env` only projects the file's *path* (`DEPLOY_REUTER_INI`) into
 `ema create srv/<name>-<GUID>` provisions the database's own MariaDB instance
 (datadir, `/etc/<db>/my.cnf`, auto-picked TCP port, started under the
 framework-installed `mariadb@<db>` systemd unit), creates the database, applies
-its schema packages, then prints the `[<dbname>]` connectivity values
+its schema packages, then prints the `[mariadb:<dbname>]` connectivity values
 (`SERVER`/`PORT`/`MYSQL_UNIX_PORT`/dbname) for the operator to record in the
 manual reuter.ini. The unit is installed by deploy (`pf-provision.sh`), so run
 a deploy before the first `ema create`. The session must be on the DB host with

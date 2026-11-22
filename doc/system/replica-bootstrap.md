@@ -12,7 +12,7 @@ provisioning, and the read routing).
 ```bash
 # primary: enable binary logging (log_bin); install the MariaDB client + a
 #          version-matched MariaDB backup package
-# primary: record its [<db>] section in etc/reuter.ini (from ema create, or ema values <db>)
+# primary: record its [mariadb:<db>] section in etc/reuter.ini (from ema create, or ema values <db>)
 
 # dev machine, repo root, with root SSH to both hosts
 bin/replica-bootstrap --primary <db> --replica-host <ip>
@@ -92,13 +92,13 @@ connectivity, so the repo-root file is the only source.
 
 | Flag | Meaning |
 |---|---|
-| `--primary <db>` | primary database name (the `[<db>]` `etc/reuter.ini` section). |
+| `--primary <db>` | primary database name (the `[mariadb:<db>]` `etc/reuter.ini` section). |
 | `--replica-host <ip>` | replica host ZeroTier IP — the `replication`@<ip> pin and the snapshot destination host. |
 | `--dest <dir>` | remote dir on the replica host the snapshot extracts into (default `/root/replica-snapshot-<db>`). |
 | `--dry-run` | print the commands without executing them. |
 
 The two address flags are deliberately asymmetric. `--primary` is a *name*: the
-`[<db>]` section is looked up, and it supplies the host *and* the
+`[mariadb:<db>]` section is looked up, and it supplies the host *and* the
 root/unix_socket. `--replica-host` is a literal *IP*, because the replica has
 no instance and no section yet — there is nothing to look up — and the value is
 used twice: as the `root@<ip>` SSH/scp target and as the `'replication'@'<ip>'`
@@ -167,7 +167,7 @@ ships the `mariadb@.service` template unit.
 
 ## Workflow
 
-1. Record the primary's `[<db>]` section in `etc/reuter.ini` (from `ema
+1. Record the primary's `[mariadb:<db>]` section in `etc/reuter.ini` (from `ema
    create` output, or `ema values <db>`).
 2. Run `bin/replica-bootstrap --primary <db> --replica-host <ip>` (in a
    consumer: `vendor/bin/replica-bootstrap …`) from a dev machine with root SSH
