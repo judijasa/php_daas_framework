@@ -52,7 +52,7 @@ the public history:
         ),
         'pub'     => array(array('rule' => '443/tcp', 'gate' => 'cloud', 'scope' => 'public')),
         'ch'      => array('8123/tcp'),
-        'db:mydb' => array('3306/tcp'),
+        'mariadb:mydb' => array('3306/tcp'),
     );
 
 - `$zerotierRange` scopes the baseline SSH (`$sshRule`) and every
@@ -71,7 +71,7 @@ the public history:
   `array('rule' => 'PORT/PROTO', 'gate' => 'cloud')` (applied only when the
   host itself reports as virtualized). `scope` defaults to `'zerotier'`; a rule
   without `scope` is ZeroTier-scoped. Any rule that is not a valid
-  `PORT/PROTO` is reported and ignored. A database host's `db:<name>` tag is
+  `PORT/PROTO` is reported and ignored. A database host's `mariadb:<name>` tag is
   an ordinary tag here: its port is a literal (a manual copy of
   `reuter.ini`'s `PORT`), since `gen-firewall` reads no `reuter.ini`.
 - The `gate => 'cloud'` condition is mechanism-owned, not declared: at
@@ -90,16 +90,16 @@ the public history:
 `etc/machines.ini` maps each ZeroTier host to comma-separated
 `tag[:name]` tokens — the same roster grammar `pf-roster` parses, so the deploy
 chain and this CLI share one reading of the roster. `gen-firewall` understands
-one built-in tag; every other tag (including `db:<name>`) must map to a rule
+one built-in tag; every other tag (including `mariadb:<name>`) must map to a rule
 in `$tagRules` (an unmapped tag warns and adds no allow):
 
 - **`worker`** — no inbound rule: cron writes loopback/local.
 
-A database host's `db:<name>` tag maps to an explicit rule carrying the
+A database host's `mariadb:<name>` tag maps to an explicit rule carrying the
 database's own TCP port (a manual copy of `reuter.ini[name].PORT`, recorded
 from `ema create`); `gen-firewall` reads no `reuter.ini`:
 
-    'db:mydb' => array('3306/tcp'),
+    'mariadb:mydb' => array('3306/tcp'),
 
 Every host gets the **baseline** regardless of tags:
 

@@ -17,10 +17,10 @@ require_once __DIR__ . '/../src/host_resolver.php';
 // Value grammar (comma-separated tokens):
 //   bare tag     `web`       -> boolean flag (a deploy step on this host)
 //   bare tag     `worker`    -> a bare tag data jobs use as their cron scope
-//   named tag    `db:simo`   -> a `db` resource named `simo`
+//   named tag    `mariadb:simo`   -> a `mariadb` resource named `simo`
 //   empty value              -> code-only host (no tagged step)
 //
-// `db` is the framework's built-in tag: `db:<name>` names a database and
+// `mariadb` is the framework's built-in tag: `mariadb:<name>` names a database and
 // enforces the one-to-one server mapping (the instance itself is provisioned
 // by `ema create`, and db-check verifies it via the host's own `mariadb@*`
 // units — not via this roster). Every tag doubles as a cron scope: a

@@ -7,7 +7,7 @@ declare(strict_types=1);
 // Standalone (no test framework): each case writes a throwaway etc/
 // (machines.ini + host-hardening.php), dry-runs the CLI against it, and
 // asserts the computed rules. Dry-run only — no ssh, no ufw, and no
-// reuter.ini (the db:<name> ports are explicit rules now, so their absence
+// reuter.ini (the mariadb:<name> ports are explicit rules now, so their absence
 // must not matter).
 //
 // Run: php tests/gen_firewall.php
@@ -65,31 +65,31 @@ $declaration = "<?php\n"
     . "\$zerotierRange = '10.99.233.0/24';\n"
     . "\$sshRule = '22/tcp';\n"
     . "\$tagRules = array(\n"
-    . "    'db:simo0' => array('38857/tcp'),\n"
-    . "    'db:simo1' => array('45765/tcp'),\n"
+    . "    'mariadb:simo0' => array('38857/tcp'),\n"
+    . "    'mariadb:simo1' => array('45765/tcp'),\n"
     . ");\n";
 
-// A db host's db:<name> tag resolves to its explicit declared port. No
+// A db host's mariadb:<name> tag resolves to its explicit declared port. No
 // reuter.ini is written, so the removed built-in lookup cannot be masking it.
 $result = $dry_run([
-    'machines.ini' => "10.99.233.181=db:simo0, worker\n10.99.233.242=db:simo1\n",
+    'machines.ini' => "10.99.233.181=mariadb:simo0, worker\n10.99.233.242=mariadb:simo1\n",
     'host-hardening.php' => $declaration,
 ]);
 
 $check('db host dry-run exits 0 with no reuter.ini present', $result['code'] === 0);
-$check('db:simo0 opens its declared 38857/tcp from the range', str_contains($result['output'], 'ufw allow from 10.99.233.0/24 to any port 38857 proto tcp'));
-$check('db:simo1 opens its declared 45765/tcp from the range', str_contains($result['output'], 'ufw allow from 10.99.233.0/24 to any port 45765 proto tcp'));
+$check('mariadb:simo0 opens its declared 38857/tcp from the range', str_contains($result['output'], 'ufw allow from 10.99.233.0/24 to any port 38857 proto tcp'));
+$check('mariadb:simo1 opens its declared 45765/tcp from the range', str_contains($result['output'], 'ufw allow from 10.99.233.0/24 to any port 45765 proto tcp'));
 $check('baseline SSH rule present', str_contains($result['output'], 'ufw allow from 10.99.233.0/24 to any port 22 proto tcp'));
 
-// An undeclared db:<name> tag is a warning that adds no allow, not the old
+// An undeclared mariadb:<name> tag is a warning that adds no allow, not the old
 // hard error on a missing reuter.ini PORT.
 $result = $dry_run([
-    'machines.ini' => "10.99.233.242=db:simo2\n",
+    'machines.ini' => "10.99.233.242=mariadb:simo2\n",
     'host-hardening.php' => $declaration,
 ]);
 
-$check('an undeclared db:<name> tag warns and still exits 0', $result['code'] === 0);
-$check('the undeclared tag reports "maps to no rule"', str_contains($result['output'], "'db:simo2' maps to no rule (adds no allow)"));
+$check('an undeclared mariadb:<name> tag warns and still exits 0', $result['code'] === 0);
+$check('the undeclared tag reports "maps to no rule"', str_contains($result['output'], "'mariadb:simo2' maps to no rule (adds no allow)"));
 
 // A missing $sshRule is a hard error: SSH is the first allow, and a plan
 // without it would lock the operator out under default deny incoming.

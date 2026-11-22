@@ -42,7 +42,7 @@ no account name, role name or source is hardcoded):
 
 - `sources` maps a source to the role it grants. `member` resolves to the
   `etc/team.ini` IPs; any other key is a `etc/machines.ini` tag
-  (bare, or `db:<name>`), matched exactly. Every source an account names must
+  (bare, or `mariadb:<name>`), matched exactly. Every source an account names must
   itself be declared here.
 - `accounts` maps an account name to the sources whose hosts it is pinned to.
   Its per-host roles are the union of those sources' roles, intersected with
@@ -104,7 +104,7 @@ discarded after apply.
 The CLI runs from the **operator machine**: planning reads `etc/team.ini`,
 `etc/machines.ini` and `pkg/*.roles-*` — private roster data that never leaves it — and
 only the SQL execution crosses the network. The target is the host carrying the
-database's `db:<name>` roster token (the framework's one-to-one server
+database's `mariadb:<name>` roster token (the framework's one-to-one server
 mapping); the CLI reaches it as `root` over `ssh` and runs the deployed repo's
 own `ema mdb <db>` there, from the deployed repo root (`DEPLOY_TARGET_DIR`,
 read from the consumer's `etc/deploy.conf` — see `doc/system/consumer-config.md`)
@@ -119,7 +119,7 @@ run.
 The reconcile therefore carries no database identity of its own: no `DBUSER`, no
 password, no privileged account on the TCP port, and nothing to add to
 `allowlist`. It is a dev-machine verb — a host carries no roster, so a host-side
-run has no `db:<name>` token to resolve and plans nothing.
+run has no `mariadb:<name>` token to resolve and plans nothing.
 
 ## Fail-open ordering
 

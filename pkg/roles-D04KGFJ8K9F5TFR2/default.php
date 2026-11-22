@@ -14,7 +14,7 @@
 //   ),
 //
 // sources maps a source to the role it grants: `member` resolves to the
-// etc/team.ini IPs, any other key is a machines.ini tag (bare or db:<name>).
+// etc/team.ini IPs, any other key is a machines.ini tag (bare or mariadb:<name>).
 // accounts maps an account name to the sources whose hosts it is pinned to;
 // its per-host roles are the union of those sources' roles. allowlist adds
 // accounts the closed-world drop must never remove (root, mariadb.sys and

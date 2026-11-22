@@ -10,8 +10,8 @@
 #          bare tag    `web`       -> boolean flag (a deploy step on this host)
 #          bare tag    `worker`    -> a bare tag data jobs use as their cron
 #                                     scope
-#          named tag   `db:mydb`   -> a `db` resource named `mydb`
-#        `db` is the framework's built-in tag: `db:<name>` names a database
+#          named tag   `mariadb:mydb`   -> a `mariadb` resource named `mydb`
+#        `mariadb` is the framework's built-in tag: `mariadb:<name>` names a database
 #        and enforces the one-to-one server mapping (the instance itself is
 #        provisioned by `ema create`; db-check verifies it via the host's own
 #        `mariadb@*` units, not this roster). Every tag doubles as a cron
@@ -21,14 +21,14 @@
 #        — a `host`-scoped job runs on every host. `worker` is an ordinary
 #        bare tag in that matcher, nothing special-cases it. Every other tag
 #        is consumer-owned and carried through generically. A host with a
-#        `db:<name>` token is a database host; an empty value is a code-only
+#        `mariadb:<name>` token is a database host; an empty value is a code-only
 #        server (it deploys the codebase but runs no tagged step).
 #
 #        Constraint: a named token may appear on exactly ONE server
-#        (`db:mydb` and `web:mysite` are independent). Bare flags carry no
+#        (`mariadb:mydb` and `web:mysite` are independent). Bare flags carry no
 #        name, hence no uniqueness constraint. A server may host no database
 #        (code-only), one database, or several databases (one MariaDB
 #        instance each, created by `ema create`).
 
-# 10.147.x.10=db:mydb, web, worker
+# 10.147.x.10=mariadb:mydb, web, worker
 # 10.147.x.11=worker

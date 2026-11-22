@@ -40,7 +40,7 @@
 #     DEPLOY_INIT_CMD        optional: consumer-specific provisioning command
 #                            run after the generic provision; skipped if unset.
 #   etc/machines.ini  (git-ignored; template committed) - prod machine registry:
-#     ZeroTier-IP -> comma-separated `tag[:name]` tokens (a `db:<name>`
+#     ZeroTier-IP -> comma-separated `tag[:name]` tokens (a `mariadb:<name>`
 #            token names a database and enforces the one-to-one server mapping
 #            — the instance itself is provisioned by `ema create`, not by
 #            deploy, and db-check verifies it via the host's own `mariadb@*`
@@ -109,7 +109,7 @@ unset _v
 
 # Load the machine registry (git-ignored; template committed, consumer-owned).
 # The roster lists every prod deploy target by ZeroTier IP; the host whose
-# `tag[:name]` list carries a `db:` token is the database host. Every token is
+# `tag[:name]` list carries a `mariadb:` token is the database host. Every token is
 # also a cron scope (`host`-scoped jobs run on every host), passed as
 # HOST_TAGS to the server steps for scope filtering.
 if [[ ! -f "$PWD/etc/machines.ini" ]]; then
@@ -400,7 +400,7 @@ main() {
 
   # Build the prod roster from etc/machines.ini (via the shared pf-roster
   # CLI): hosts are ZeroTier IPs; the value is that host's `tag[:name]`
-  # token list. A host carrying a `db:` token is the database host.
+  # token list. A host carrying a `mariadb:` token is the database host.
   local -a hosts=() taglists=()
   local host taglist i
   while IFS='=' read -r host taglist; do
@@ -478,7 +478,7 @@ main() {
   return "$overall"
 }
 
-# Per-host deploy pipeline. A database host (its tag list carries a `db:`
+# Per-host deploy pipeline. A database host (its tag list carries a `mariadb:`
 # token) names a database — the instance itself is provisioned by `ema
 # create`, not here (db-check verifies it via the host's own `mariadb@*`
 # units). The host's own tag list is passed as HOST_TAGS to the server steps

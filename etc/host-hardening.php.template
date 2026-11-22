@@ -21,7 +21,7 @@
 //       ),
 //       'pub'     => array(array('rule' => '443/tcp', 'gate' => 'cloud', 'scope' => 'public')),
 //       'ch'      => array('8123/tcp'),
-//       'db:mydb' => array('3306/tcp'),
+//       'mariadb:mydb' => array('3306/tcp'),
 //   );
 //
 // $zerotierRange scopes the baseline SSH ($sshRule) and every ZeroTier-scoped
@@ -36,7 +36,7 @@
 // array('rule' => 'PORT/PROTO', 'gate' => 'cloud') (applied only when the host
 // itself reports as virtualized — the framework probes the host for that at
 // reconcile time, so there is nothing cloud-specific to declare here). scope
-// defaults to 'zerotier'. A database host's `db:<name>` tag is an ordinary
+// defaults to 'zerotier'. A database host's `mariadb:<name>` tag is an ordinary
 // tag here: its port is a literal (a manual copy of `reuter.ini`'s `PORT`),
 // since gen-firewall reads no `reuter.ini`.
 
@@ -51,5 +51,5 @@ $tagRules = array(
     ),
     'pub'     => array(array('rule' => '443/tcp', 'gate' => 'cloud', 'scope' => 'public')),
     'ch'      => array('8123/tcp'),
-    'db:mydb' => array('3306/tcp'),
+    'mariadb:mydb' => array('3306/tcp'),
 );

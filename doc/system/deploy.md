@@ -46,8 +46,8 @@ The deployment target (consumer-owned; template at `etc/deploy.conf.template`).
 ### `etc/machines.ini`
 
 The prod-server registry: ZeroTier-IP → `tag[:name]` tokens
-(comma-separated per server). `db:<name>` names a database; every tag doubles
-as a cron `scope`; other tags are consumer-owned. `deploy all` targets every prod host; a host carrying a `db:<name>` token is a database
+(comma-separated per server). `mariadb:<name>` names a database; every tag doubles
+as a cron `scope`; other tags are consumer-owned. `deploy all` targets every prod host; a host carrying a `mariadb:<name>` token is a database
 host (its instance is provisioned by `ema create`, not deploy). Each named
 token maps to exactly one server; a server may host several databases. The
 shared `pf-roster` CLI parses this roster, and the shared host lookup resolves
