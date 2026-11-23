@@ -34,6 +34,10 @@
 
 declare(strict_types=1);
 
+/** @var list<string> $argv */
+$argv = $_SERVER['argv'] ?? [];
+$argc = count($argv);
+
 $schedules = [
     '5min'    => '*/5 * * * *',
     'hourly'  => '0 * * * *',

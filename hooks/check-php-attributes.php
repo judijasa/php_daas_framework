@@ -3,6 +3,9 @@
 
 declare(strict_types=1);
 
+/** @var list<string> $argv */
+$argv = $_SERVER['argv'] ?? [];
+
 $files = array_slice($argv, 1);
 $exitCode = 0;
 
